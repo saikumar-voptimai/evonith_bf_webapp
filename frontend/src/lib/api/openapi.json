@@ -22482,15 +22482,52 @@
             "title": "Environment",
             "type": "string"
           },
+          "frontend_build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Version name of the SPA build installed with the release (frontend/build/_app/version.json); None without a build",
+            "title": "Frontend Build"
+          },
           "git_sha": {
             "description": "Commit of the running release ('unknown' in development)",
             "title": "Git Sha",
             "type": "string"
           },
+          "installed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Installation time of the running release (UTC)",
+            "title": "Installed At"
+          },
           "python": {
             "description": "Python version",
             "title": "Python",
             "type": "string"
+          },
+          "release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Release tag of the running directory (RELEASE.json of deploy/jetson/release.sh); None in development",
+            "title": "Release"
           },
           "started_at": {
             "description": "Process start (UTC)",
@@ -28348,6 +28385,7 @@
     },
     "/api/version": {
       "get": {
+        "description": "The running release: its record (tag, commit, installation time) wins over ``BF_API_GIT_SHA``, which is shared\nby every release directory on the host (#318).",
         "operationId": "system_version",
         "responses": {
           "200": {

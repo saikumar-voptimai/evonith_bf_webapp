@@ -128,7 +128,9 @@ subtitle and the shift window are dropped. When the sections do not fit the heig
 scrolls and fades at the edge that has more items; focused items scroll clear of the fade. The collapse control sits
 in the product row. The Admin group is shown to administrators only; the section lists its views (`ADMIN_VIEWS`) in
 its own sub-navigation (`shell/SectionNav`), one route per view (`routes/admin/<view>/`). Navigation, page titles,
-subtitles and planned-page placeholders read `src/lib/nav.ts`.
+subtitles and planned-page placeholders read `src/lib/nav.ts`. The footer names the release the
+twin-api runs and the SPA build of the tab (`shell/VersionInfo`, `GET /api/version`, SV-6.4); when a newer build is
+installed it adds a warning and a Reload button, and the next in-app navigation loads the page in full.
 
 Sign-in page: product panel in the chrome colour (mark, section label, two-line headline with the second line in
 yellow, introduction, the BF-02 lining profile of `setting_ds_dv.yml` drawn as two bands rising from the lower right

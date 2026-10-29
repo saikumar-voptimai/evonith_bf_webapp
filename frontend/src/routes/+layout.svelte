@@ -1,8 +1,8 @@
 <script lang="ts">
 	import '../app.css';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
+	import { page, updated } from '$app/state';
 	import { UNAUTHORIZED_EVENT } from '#lib/api/client.ts';
 	import AppShell from '#lib/components/shell/AppShell.svelte';
 	import { toasts } from '#lib/components/toast.svelte.ts';
@@ -26,6 +26,12 @@
 		await session.logout().catch(() => undefined);
 		await goto(resolve(LOGIN_PATH));
 	}
+
+	// A newer build is installed (release.sh, SV-6.4): the next in-app navigation loads the page in full, so the tab
+	// never mixes the old build's code with the new build's assets.
+	beforeNavigate(({ willUnload, to }) => {
+		if (updated.current && !willUnload && to?.url) location.href = to.url.href;
+	});
 
 	// A 401 from any API call means the session has ended (expired, or signed out elsewhere).
 	$effect(() => {

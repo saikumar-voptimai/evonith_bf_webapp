@@ -1,6 +1,24 @@
+import { execFileSync } from 'node:child_process';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vitest/config';
+
+// Build version (SV-6.4, #318): BF_BUILD_VERSION (release.yml: the tag), else `git describe`, else "dev". It names
+// `_app/version.json` and `version` of `$app/env` (the footer); deterministic, so a commit builds the same
+// bytes. Open tabs poll it and offer a reload once a release installs another build.
+function buildVersion(): string {
+	const fromEnv = process.env.BF_BUILD_VERSION?.trim();
+	if (fromEnv) return fromEnv;
+	try {
+		const described = execFileSync('git', ['describe', '--tags', '--always', '--dirty'], {
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore']
+		}).trim();
+		return described || 'dev';
+	} catch {
+		return 'dev';
+	}
+}
 
 // Development proxy: the SPA calls relative paths (/api, /legacy) exactly as it does behind Caddy in production.
 const api = process.env.BF_API_URL ?? 'http://127.0.0.1:8100';
@@ -21,7 +39,9 @@ export default defineConfig({
 				fallback: '200.html',
 				precompress: false,
 				strict: true
-			})
+			}),
+			// Polled every 10 min (and when a tab regains focus): a control-room screen left on one page finds out.
+			version: { name: buildVersion(), pollInterval: 600_000 }
 		})
 	],
 	server: {
