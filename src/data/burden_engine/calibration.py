@@ -21,7 +21,7 @@ from data.burden_engine.inputs import repo_path
 # network_context and sinter_strength moved to the pure calibration module (SV-1.1: the twin uses them); still
 # importable from here.
 from utils.burden_engine.calibration import (CalibrationError, calibrate_from_shifts, network_context,  # noqa: F401
-                                             operating_regime, select_shifts, sinter_strength)
+                                             operating_regime, select_shifts, shift_mask, sinter_strength)
 from utils.burden_engine.engine import DEFAULT_CAL_PATH
 from utils.coke_energy.bf_balance import DEFAULTS
 from utils.coke_energy.pipeline import slag_superheat_c
@@ -38,6 +38,8 @@ class CalibrationInfo:
     n_shifts: int
     message: str = ""
     shifts: list[str] = field(default_factory=list)
+    # The window's balanced shifts with the stability filter's verdict (``shift_mask``; SV-4.6 calibration console)
+    mask: list[dict[str, Any]] = field(default_factory=list)
 
 
 def fallback_calibration(path: str | None = None) -> dict[str, Any]:
@@ -62,6 +64,7 @@ def live_calibration(result: Any, cfg: Mapping[str, Any], *, as_of: pd.Timestamp
     start = end - pd.Timedelta(days=window_days)
     window = (str(start.date()), str((end - pd.Timedelta(days=1)).date()))
     keys = select_shifts(S, R, start=start, end=end)
+    mask = shift_mask(R, keys, start=start, end=end)
     reg_keys = select_shifts(S, R, start=end - pd.Timedelta(days=regime_days), end=end)
     regime = operating_regime(S, R, reg_keys, enrich_tag_per_o2_pct) if len(reg_keys) else None
     settings = getattr(result, "settings", None)
@@ -72,11 +75,12 @@ def live_calibration(result: Any, cfg: Mapping[str, Any], *, as_of: pd.Timestamp
         cal["strata_flow"] = network_context(S, keys)
         cal["sinter_strength"] = sinter_strength(S, end) or cal.get("sinter_strength", {})
         return CalibrationInfo(cal, regime, "live", window, len(keys),
-                               f"Calibrated on {len(keys)} stable shifts, {window[0]} to {window[1]}.", list(map(str, keys)))
+                               f"Calibrated on {len(keys)} stable shifts, {window[0]} to {window[1]}.", list(map(str, keys)),
+                               mask)
     except CalibrationError as exc:
         msg = f"{exc} ({window[0]} to {window[1]}): using the shipped Jul-Oct 2026 calibration."
     except Exception as exc:  # noqa: BLE001 - a bad window must not take the page down
         logger.exception("burden engine live calibration failed")
         msg = f"Live calibration failed ({type(exc).__name__}: {exc}): using the shipped Jul-Oct 2026 calibration."
     return CalibrationInfo(fallback_calibration(ccfg.get("fallback_path")), regime, "fallback", window, len(keys), msg,
-                           list(map(str, keys)))
+                           list(map(str, keys)), mask)

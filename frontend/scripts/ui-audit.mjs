@@ -9,7 +9,8 @@
  *
  * Needs Playwright with Chromium (`pnpm dlx playwright install chromium` on a dev machine). The script answers
  * /api/health, /api/stream, /api/auth/* (account `auditor`, password `correct-horse`), /api/admin/audit
- * (`scripts/fixtures/audit-page.json`, checked against the API model by tests/test_api_admin.py) and the STRATA page's
+ * (`scripts/fixtures/audit-page.json`, checked against the API model by tests/test_api_admin.py), /api/admin/calibration
+ * (`scripts/fixtures/calibration-console.json`, checked by tests/test_api_calibration.py) and the STRATA page's
  * /api/strata/* (`strata-mock.mjs`) itself, so the audit does not need the twin-api. Exit code 1 on a critical or
  * serious axe violation, a horizontal overflow or a failed behaviour check.
  */
@@ -34,6 +35,11 @@ const arg = (name, fallback) => {
 const OUT = resolve(arg('out', join(ROOT, '.audit')));
 // Page of GET /api/admin/audit: a changed, a list-item, a created, a details-only and a deleted entry (SV-4.1, #304).
 const AUDIT_PAGE = JSON.parse(readFileSync(join(ROOT, 'scripts', 'fixtures', 'audit-page.json'), 'utf8'));
+// GET /api/admin/calibration: today's calibration with its mask, an earlier fallback day, three Jacobian files, two runs
+// (SV-4.6, #309).
+const CALIBRATION = JSON.parse(
+	readFileSync(join(ROOT, 'scripts', 'fixtures', 'calibration-console.json'), 'utf8')
+);
 const PORT = 4179;
 let base = arg('base', null);
 
@@ -49,6 +55,7 @@ const ROUTES = [
 	{ name: 'catalogue', path: '/dev/components' },
 	{ name: 'admin', path: '/admin' },
 	{ name: 'admin-audit', path: '/admin/audit' },
+	{ name: 'admin-calibration', path: '/admin/calibration' },
 	{ name: 'not-found', path: '/no-such-page' }
 ];
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
@@ -201,6 +208,12 @@ try {
 		auditQueries.push(query);
 		const offset = Number(query.offset ?? 0);
 		const body = { ...AUDIT_PAGE, offset, entries: offset > 0 ? [] : AUDIT_PAGE.entries };
+		return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+	});
+	// Calibration console mock: the fixture, made 3 h ago so that it reads as current.
+	await context.route(/\/api\/admin\/calibration(\?.*)?$/, (route) => {
+		const madeAt = new Date(Date.now() - 3 * 3600_000).toISOString();
+		const body = { ...CALIBRATION, calibration: { ...CALIBRATION.calibration, made_at: madeAt } };
 		return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 	});
 	// TRACE page (SV-1.10, #290): synthetic answers shaped as the API's response models.

@@ -23,6 +23,7 @@ from api.errors import ApiError
 from api.security.limits import DenyList, FailureLimiter
 from api.security.tokens import encode
 from api.settings import ApiSettings
+from data.twin.repositories import Actor
 from services.auth import ROLES, IdentityStore, NeonIdentityStore, Principal, Role, has_role
 from services.session_tokens import ISSUER, verify_session
 
@@ -78,6 +79,16 @@ def client_address(request: Request, trusted: frozenset[str]) -> str:
         if hop not in trusted:
             return hop
     return peer
+
+
+def request_actor(request: Request) -> Actor:
+    """The signed-in user of a request as the audit log records it: user name, role and client address."""
+    principal: Principal = request.state.principal
+    return Actor(
+        name=principal.username,
+        role=principal.role,
+        client_ip=client_address(request, auth_state(request).settings.trusted_proxy_set),
+    )
 
 
 def issue_token(state: AuthState, principal: Principal) -> tuple[str, dict[str, Any]]:

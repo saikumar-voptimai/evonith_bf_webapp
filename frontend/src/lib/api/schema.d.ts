@@ -46,6 +46,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calibration console
+         * @description The calibration ``calibration.nightly`` stored for the day: window, stable-shift mask, omega_cal, Q_LZ, Q_UZ,
+         *     r_H; the stored days; the Jacobian cache; the nightly job and its latest runs. 404 when ``day`` has none.
+         */
+        get: operations["admin_calibration_view"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/calibration/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recalibrate now
+         * @description Queue ``calibration.nightly`` now (the 14 days before today; today's calibration and its Jacobian) and record
+         *     the start in the audit log (``job.start``). A calibration job already queued or running is returned instead
+         *     (``duplicate``), and the request is recorded as well. Follow the job with GET /api/jobs/{job_id} or the
+         *     ``job.progress`` / ``job.done`` events.
+         */
+        post: operations["admin_start_calibration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/facts": {
         parameters: {
             query?: never;
@@ -658,7 +702,8 @@ export interface paths {
         put?: never;
         /**
          * Start a job
-         * @description Queue a job. A request equal to a queued or running job (same kind and parameters) returns that job.
+         * @description Queue a job. A request equal to a queued or running job (same kind and parameters) returns that job. The
+         *     start of an audited kind (``audited``) is recorded in the audit log and needs the twin store.
          */
         post: operations["jobs_submit"];
         delete?: never;
@@ -3110,6 +3155,190 @@ export interface components {
              */
             window: string;
         };
+        /** CalibrationConsole */
+        CalibrationConsole: {
+            /** @description The shown day's calibration */
+            calibration?: components["schemas"]["DayCalibration"] | null;
+            /**
+             * Current
+             * @description The shown calibration is today's
+             */
+            current: boolean;
+            /**
+             * Day
+             * @description IST day shown; null when no calibration is stored
+             */
+            day?: string | null;
+            /**
+             * Days
+             * @description Stored calibrations (the last 30 days), newest first
+             */
+            days: components["schemas"]["CalibrationDay"][];
+            jacobian_cache: components["schemas"]["JacobianCache"];
+            job: components["schemas"]["NightlyJob"];
+            /**
+             * Runs
+             * @description Latest runs of the nightly job, newest first (at most 10)
+             */
+            runs: components["schemas"]["CalibrationRun"][];
+            /**
+             * Runs Source
+             * @description Where the runs were read; null when neither the twin store nor Redis is available
+             */
+            runs_source?: ("twin.jobs" | "redis") | null;
+            /**
+             * Tests
+             * @description Tests of the stability filter with their bands
+             */
+            tests: components["schemas"]["StabilityTest"][];
+            /**
+             * Today
+             * Format: date
+             * @description Today (IST)
+             */
+            today: string;
+        };
+        /** CalibrationDay */
+        CalibrationDay: {
+            /**
+             * Coke Kg Thm
+             * @description Charged coke of the window, kg/tHM
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Coke Model Kg Thm
+             * @description Model coke at the calibration burden, kg/tHM
+             */
+            coke_model_kg_thm?: number | null;
+            /**
+             * Day
+             * @description IST day the calibration applies to
+             */
+            day?: string | null;
+            /**
+             * Jacobian Cached
+             * @description The file is in the cache; null when the job named none
+             */
+            jacobian_cached?: boolean | null;
+            /**
+             * Jacobian File
+             * @description Jacobian cache file the job named
+             */
+            jacobian_file?: string | null;
+            /**
+             * Job Id
+             * @description Job that made it
+             */
+            job_id?: string | null;
+            /**
+             * Made At
+             * @description When the job stored it (UTC)
+             */
+            made_at?: string | null;
+            /**
+             * N Shifts
+             * @description Stable shifts in the window, count
+             */
+            n_shifts: number;
+            /**
+             * Omega Cal
+             * @description Shaft efficiency, dimensionless
+             */
+            omega_cal?: number | null;
+            /**
+             * Q Lz Gj H
+             * @description Lower-zone heat loss, GJ/h
+             */
+            q_lz_gj_h?: number | null;
+            /**
+             * Q Uz Gj H
+             * @description Upper-zone heat loss, GJ/h
+             */
+            q_uz_gj_h?: number | null;
+            /**
+             * R H
+             * @description Hydrogen reduction share, dimensionless
+             */
+            r_h?: number | null;
+            /**
+             * Source
+             * @description live or fallback (the shipped calibration)
+             * @enum {string}
+             */
+            source: "live" | "fallback";
+        };
+        /** CalibrationRun */
+        CalibrationRun: {
+            /**
+             * Day
+             * @description IST day of the calibration it stored
+             */
+            day?: string | null;
+            /**
+             * Error
+             * @description Why it failed or was cancelled
+             */
+            error?: string | null;
+            /**
+             * Finished At
+             * @description End (UTC)
+             */
+            finished_at?: string | null;
+            /**
+             * Id
+             * @description Job id
+             */
+            id: string;
+            /**
+             * Run S
+             * @description Execution time over the tries, s
+             */
+            run_s?: number | null;
+            /**
+             * Scheduled
+             * @description Started by the schedule (02:30 IST) rather than by a user
+             */
+            scheduled: boolean;
+            /**
+             * Started At
+             * @description Start of the first try (UTC)
+             */
+            started_at?: string | null;
+            /**
+             * Status
+             * @description queued, running, done, failed or cancelled
+             */
+            status: string;
+            /**
+             * Submitted At
+             * @description Submission time (UTC)
+             */
+            submitted_at?: string | null;
+            /**
+             * Submitted By
+             * @description User name, or scheduler
+             */
+            submitted_by: string;
+            /**
+             * Tries
+             * @description Tries made, count
+             */
+            tries: number;
+        };
+        /** CalibrationRunStarted */
+        CalibrationRunStarted: {
+            /**
+             * Audit Id
+             * @description Audit-log entry of the start
+             */
+            audit_id: number;
+            /**
+             * Duplicate
+             * @description True when a calibration job was already queued or running
+             */
+            duplicate: boolean;
+            job: components["schemas"]["JobRecord"];
+        };
         /** CalibrationShift */
         CalibrationShift: {
             /**
@@ -3710,6 +3939,107 @@ export interface components {
              * @description Row labels (ISO 8601 times for a time index, IST as the tool gave)
              */
             index: unknown[];
+        };
+        /** DayCalibration */
+        DayCalibration: {
+            /**
+             * Coke Kg Thm
+             * @description Charged coke of the window (the calibration basis), kg/tHM
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Coke Model Kg Thm
+             * @description Coke the model gives at the calibration burden (fixed omega), kg/tHM
+             */
+            coke_model_kg_thm?: number | null;
+            /**
+             * Complete
+             * @description Live, on at least min_shifts stable shifts
+             */
+            complete: boolean;
+            /**
+             * Day
+             * @description IST day the calibration applies to
+             */
+            day?: string | null;
+            /**
+             * Job Id
+             * @description Job that made it
+             */
+            job_id?: string | null;
+            /**
+             * Made At
+             * @description When the job stored it (UTC)
+             */
+            made_at?: string | null;
+            /**
+             * Mask
+             * @description Every shift of the window's days, oldest first; null for a calibration made before SV-4.6
+             */
+            mask?: components["schemas"]["MaskShift"][] | null;
+            /**
+             * Message
+             * @description The calibration's own account of the window
+             */
+            message: string;
+            /**
+             * Min Shifts
+             * @description Stable shifts a live calibration needs, count
+             */
+            min_shifts: number;
+            /**
+             * N Shifts
+             * @description Stable shifts in the window, count
+             */
+            n_shifts: number;
+            /** @description The job's Jacobian step; null when it recorded none */
+            network?: components["schemas"]["NetworkStats"] | null;
+            /**
+             * Omega Cal
+             * @description Shaft efficiency of the calibration, dimensionless
+             */
+            omega_cal?: number | null;
+            /**
+             * Q Lz Gj H
+             * @description Lower-zone heat loss, GJ/h
+             */
+            q_lz_gj_h?: number | null;
+            /**
+             * Q Uz Gj H
+             * @description Upper-zone heat loss, GJ/h
+             */
+            q_uz_gj_h?: number | null;
+            /**
+             * R H
+             * @description Hydrogen reduction share, dimensionless
+             */
+            r_h?: number | null;
+            /**
+             * Shifts
+             * @description Shift keys averaged into the calibration
+             */
+            shifts: string[];
+            /**
+             * Source
+             * @description live: calibrated on the window; fallback: too few stable shifts, the shipped calibration
+             * @enum {string}
+             */
+            source: "live" | "fallback";
+            /**
+             * Window Days
+             * @description Window length, days
+             */
+            window_days?: number | null;
+            /**
+             * Window End
+             * @description Last IST day of the window (the day before)
+             */
+            window_end?: string | null;
+            /**
+             * Window Start
+             * @description First IST day of the window
+             */
+            window_start?: string | null;
         };
         /** DecisionRequest */
         DecisionRequest: {
@@ -5873,6 +6203,84 @@ export interface components {
              */
             start: string;
         };
+        /** JacobianCache */
+        JacobianCache: {
+            /**
+             * Day File
+             * @description Jacobian file of the shown calibration
+             */
+            day_file?: string | null;
+            /**
+             * Directory
+             * @description Cache folder, relative to the repository
+             */
+            directory: string;
+            /**
+             * Files
+             * @description The newest 50 files, newest first
+             */
+            files: components["schemas"]["JacobianFile"][];
+            /**
+             * N Files
+             * @description Files in the cache, count
+             */
+            n_files: number;
+            /**
+             * Network Version
+             * @description Current STRATA-Flow network version
+             */
+            network_version: string;
+            /**
+             * Stale Files
+             * @description Files of another network version, count
+             */
+            stale_files: number;
+            /**
+             * Status
+             * @description The shown calibration's Jacobian: cached; missing (the next STRATA-ω run solves it again, 17 solves); unknown (its job named no file); none (no calibration shown)
+             * @enum {string}
+             */
+            status: "cached" | "missing" | "unknown" | "none";
+            /**
+             * Total Bytes
+             * @description Size of the files, bytes
+             */
+            total_bytes: number;
+        };
+        /** JacobianFile */
+        JacobianFile: {
+            /**
+             * Current
+             * @description Built for the current network version (a stale file is never read)
+             */
+            current: boolean;
+            /**
+             * Days
+             * @description Stored calibration days whose job named the file, newest first
+             */
+            days: string[];
+            /**
+             * Modified At
+             * Format: date-time
+             * @description Last written (UTC)
+             */
+            modified_at: string;
+            /**
+             * Name
+             * @description File name, jacobian_<key>.json
+             */
+            name: string;
+            /**
+             * Network
+             * @description Network version the Jacobian was built for
+             */
+            network?: string | null;
+            /**
+             * Size Bytes
+             * @description File size, bytes
+             */
+            size_bytes: number;
+        };
         /** JobDoneData */
         JobDoneData: {
             /** Duration S */
@@ -5911,6 +6319,12 @@ export interface components {
         };
         /** JobKindInfo */
         JobKindInfo: {
+            /**
+             * Audited
+             * @description A user's start is recorded in the audit log (action job.start)
+             * @default false
+             */
+            audited: boolean;
             /** Description */
             description: string;
             /** Max Tries */
@@ -6713,6 +7127,67 @@ export interface components {
              */
             username: string;
         };
+        /** MaskShift */
+        MaskShift: {
+            /**
+             * Blast Meter Pct
+             * @description Blast meter against the reconciled blast, %
+             */
+            blast_meter_pct?: number | null;
+            /**
+             * C Closure Pct
+             * @description Carbon closure of the shift balance, %
+             */
+            c_closure_pct?: number | null;
+            /**
+             * Coke Kg Thm
+             * @description Charged coke, dry, kg/tHM
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Cooling Mj Thm
+             * @description Cooling losses of the shift balance, MJ/tHM
+             */
+            cooling_mj_thm?: number | null;
+            /**
+             * Day
+             * Format: date
+             * @description IST date of the shift start
+             */
+            day: string;
+            /**
+             * Failed
+             * @description Tests the shift failed (names of tests)
+             */
+            failed: string[];
+            /**
+             * Fe Closure Pct
+             * @description Iron closure of the shift balance, %
+             */
+            fe_closure_pct?: number | null;
+            /**
+             * Production T H
+             * @description Production, t/h
+             */
+            production_t_h?: number | null;
+            /**
+             * Shift
+             * @description Shift: A 06:00, B 14:00, C 22:00 IST
+             * @enum {string}
+             */
+            shift: "A" | "B" | "C";
+            /**
+             * Shift Key
+             * @description Shift key, YYYY-MM-DD_A|B|C (IST date of the shift start)
+             */
+            shift_key: string;
+            /**
+             * State
+             * @description used: averaged into the calibration; stable: passed the filter, not averaged; unstable: failed a test; missing: no balanced shift (data gap, or the C shift still running at the calibration)
+             * @enum {string}
+             */
+            state: "used" | "stable" | "unstable" | "missing";
+        };
         /** MaterialOption */
         MaterialOption: {
             /**
@@ -6897,6 +7372,79 @@ export interface components {
              * @description Network solves of this calibration in the run's process, count
              */
             solves?: number | null;
+        };
+        /** NetworkStats */
+        NetworkStats: {
+            /**
+             * Anchors
+             * @description Network states solved exactly, count
+             */
+            anchors?: number | null;
+            /**
+             * Cache File
+             * @description Jacobian cache file of the calibration state
+             */
+            cache_file?: string | null;
+            /**
+             * Jacobian
+             * @description Where the Jacobian came from: cache <file> or computed (...)
+             */
+            jacobian?: string | null;
+            /**
+             * Network
+             * @description STRATA-Flow network version
+             */
+            network?: string | null;
+            /**
+             * Seconds
+             * @description Time in network solves, s
+             */
+            seconds?: number | null;
+            /**
+             * Seconds Total
+             * @description Time of the Jacobian step, s
+             */
+            seconds_total?: number | null;
+            /**
+             * Solves
+             * @description Network solves of the job's process, count
+             */
+            solves?: number | null;
+        };
+        /** NightlyJob */
+        NightlyJob: {
+            /**
+             * Kind
+             * @description Job kind
+             */
+            kind: string;
+            /**
+             * Max Tries
+             * @description Tries before it fails, count
+             */
+            max_tries: number;
+            /**
+             * Next Slot
+             * @description Next scheduled run (UTC)
+             */
+            next_slot?: string | null;
+            /**
+             * Role
+             * @description Lowest role that may start it
+             */
+            role: string;
+            /**
+             * Schedule
+             * @description Scheduled times (IST)
+             */
+            schedule?: string | null;
+            /**
+             * Timeout S
+             * @description Time limit of one try, s
+             */
+            timeout_s: number;
+            /** Title */
+            title: string;
         };
         /** OmegaRow */
         OmegaRow: {
@@ -9541,6 +10089,34 @@ export interface components {
              * @description Age from which the source is stale, h (coke_energy.yml)
              */
             stale_after_h: number;
+        };
+        /** StabilityTest */
+        StabilityTest: {
+            /**
+             * Hi
+             * @description Upper end of the band (inclusive), unit of the test
+             */
+            hi: number;
+            /**
+             * Label
+             * @description What the test checks
+             */
+            label: string;
+            /**
+             * Lo
+             * @description Lower end of the band (inclusive), unit of the test
+             */
+            lo: number;
+            /**
+             * Name
+             * @description Test, named as the mask's value field (e.g. c_closure_pct)
+             */
+            name: string;
+            /**
+             * Unit
+             * @description Unit of the value and the band
+             */
+            unit: string;
         };
         /** StatusFreshness */
         StatusFreshness: {
@@ -12215,6 +12791,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BurntVsCharged"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_calibration_view: {
+        parameters: {
+            query?: {
+                /** @description IST day to show (default: the newest stored calibration) */
+                day?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationConsole"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_start_calibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationRunStarted"];
                 };
             };
             /** @description Client error (problem+json) */

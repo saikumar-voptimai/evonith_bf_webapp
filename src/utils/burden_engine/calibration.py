@@ -28,7 +28,7 @@ from utils.coke_energy.bf_thermo import MW
 from utils.coke_energy.weather import blast_moisture, mean_blast_moisture
 from utils.coke_energy.rist import TZ, calibrate_2z, solve_2z
 from utils.coke_energy.run_shifts import case_from_shift
-from utils.coke_energy.whatif import stable_mask
+from utils.coke_energy.whatif import STABLE_BOUNDS, stable_mask, stable_tests
 
 MATS = ("sin", "ore", "pel")
 CASE_KEYS = ("coke", "nut", "pci", "nut_kg", "pci_kg", "hm", "HMT", "slag_FeO_pct", "T_top", "HBT", "humidity_g",
@@ -92,6 +92,30 @@ def select_shifts(S: pd.DataFrame, R: pd.DataFrame, *, start=None, end=None, pci
         if nut is not None:
             sel = sel[((sel["NUTCOKE_CALC_MT"] / sel["PRODUCTIONTONNESPERHR"] * 1000) - nut).abs() <= tol_nut]
     return sel.index
+
+
+def shift_mask(R: pd.DataFrame, keys: Iterable[str], *, start, end) -> list[dict[str, Any]]:
+    """The balanced shifts dated in [start, end), oldest first, with the stability filter's verdict
+    (``whatif.stable_tests``): ``stable``, ``used`` (among ``keys``, the shifts a calibration averaged), the tests the
+    shift failed and its value per test (the balance's columns: kg/tHM, %, MJ/tHM, t/h; None when missing)."""
+    if R is None or R.empty or "sdate" not in R:
+        return []
+    d = pd.to_datetime(R["sdate"])
+    inside = (d >= pd.Timestamp(start)) & (d < pd.Timestamp(end))
+    if not inside.any():
+        return []
+    win = R[inside]
+    tests = stable_tests(win)
+    values = win[list(STABLE_BOUNDS)].apply(pd.to_numeric, errors="coerce")
+    letters = win["shift"].astype(str) if "shift" in win else pd.Series([str(k)[-1:] for k in win.index], win.index)
+    used = set(map(str, keys))
+    out = []
+    for key in sorted(win.index, key=lambda k: (d[k], letters[k])):
+        out.append(dict(shift_key=str(key), sdate=str(d[key].date()), shift=letters[key],
+                        stable=bool(tests.loc[key].all()), used=str(key) in used,
+                        failed=[c for c in STABLE_BOUNDS if not tests.at[key, c]],
+                        values={c: (float(v) if np.isfinite(v) else None) for c, v in values.loc[key].items()}))
+    return out
 
 
 def calibrate_from_shifts(S: pd.DataFrame, R: pd.DataFrame, keys: Iterable[str], p: Mapping[str, Any] | None = None,

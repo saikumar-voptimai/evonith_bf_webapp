@@ -447,6 +447,9 @@ class JobKind:
     #: Cron times in IST, ``(hours, minutes)`` with ``None`` for every hour; recorded jobs only.
     schedule: tuple[set[int] | None, set[int]] | None = None
     description: str = ""
+    #: A user's start writes an audit-log entry (``services.job_audit``, action ``job.start``); refused without the
+    #: twin store. Scheduler starts are recorded in ``twin.jobs`` only.
+    audited: bool = False
 
 
 CATALOG: dict[str, JobKind] = {}
@@ -632,8 +635,10 @@ register(
         schedule=({2}, {30}),
         description=(
             "Two-zone calibration on the stable shifts of the 14 days before today, saved as the day's calibration of "
-            "the optimiser runs, and the STRATA-Flow network Jacobian at it (17 solves, disk cache) (SV-1.7)."
+            "the optimiser runs, and the STRATA-Flow network Jacobian at it (17 solves, disk cache) (SV-1.7). Started "
+            "by hand from the calibration console (POST /api/admin/calibration/run), audited (SV-4.6)."
         ),
+        audited=True,
     )
 )
 register(

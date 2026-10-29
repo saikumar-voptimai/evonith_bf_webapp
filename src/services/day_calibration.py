@@ -64,9 +64,11 @@ def save(
     made_at: datetime,
     job_id: str | None = None,
     network: Mapping[str, Any] | None = None,
+    settings: Mapping[str, Any] | None = None,
     directory: Path | str | None = None,
 ) -> Path:
-    """Write the day's calibration (atomic replace) and keep the last ``KEEP`` days."""
+    """Write the day's calibration (atomic replace) and keep the last ``KEEP`` days. ``settings``: the calibration
+    settings it was made with (``burden_optimiser.yml → calibration``: window_days, min_shifts)."""
     path = path_for(day, directory)
     path.parent.mkdir(parents=True, exist_ok=True)
     doc = dict(
@@ -81,8 +83,10 @@ def save(
             n_shifts=info.n_shifts,
             message=info.message,
             shifts=list(info.shifts),
+            mask=list(info.mask),
         ),
         network=dict(network or {}),
+        settings=dict(settings or {}),
     )
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(_jsonable(doc), indent=1), encoding="utf-8")
@@ -113,6 +117,7 @@ def load(day: date, directory: Path | str | None = None) -> CalibrationInfo | No
         n_shifts=int(i.get("n_shifts", 0)),
         message=i.get("message", ""),
         shifts=list(i.get("shifts") or []),
+        mask=list(i.get("mask") or []),
     )
 
 

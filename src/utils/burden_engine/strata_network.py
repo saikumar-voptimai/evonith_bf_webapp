@@ -279,9 +279,11 @@ class NetworkParts:
             self.J = None
             self.U, self.Y = u0[None, :].copy(), self.solve(u0)[None, :]
             self.jacobian_source = "none (exact mode: a network solve at every state)"
+            self.cache_file = None
             return self
         key = self._key(u0, tag)
         path = self.cache_dir / f"jacobian_{key}.json" if self.cache_dir else None
+        self.cache_file = path.name if path is not None else None      # the calibration console checks it (SV-4.6)
         if path is not None and path.exists():
             try:
                 d = json.loads(path.read_text(encoding="utf-8"))
@@ -320,7 +322,7 @@ class NetworkParts:
 
     def stats(self) -> dict[str, Any]:
         return dict(network=NET_VERSION, solves=self.n_solves, seconds=round(self.sec_solves, 1), anchors=len(self.U),
-                    jacobian=getattr(self, "jacobian_source", ""))
+                    jacobian=getattr(self, "jacobian_source", ""), cache_file=getattr(self, "cache_file", None))
 
 
 _POOL: dict[str, NetworkParts] = {}

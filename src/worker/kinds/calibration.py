@@ -37,7 +37,13 @@ async def nightly(job: JobContext, params: NoParams) -> dict[str, Any]:
     network = await job.run_cpu(day_calibration.network_jacobian, json.dumps(optimiser.jsonable(info.cal)))
     previous = await asyncio.to_thread(day_calibration.load, day.fromordinal(day.toordinal() - 1))
     path = await asyncio.to_thread(
-        day_calibration.save, info, day, made_at=datetime.now(UTC), job_id=job.job_id, network=network
+        day_calibration.save,
+        info,
+        day,
+        made_at=datetime.now(UTC),
+        job_id=job.job_id,
+        network=network,
+        settings=cfg.get("calibration", {}),
     )
     out = day_calibration.summary(info) | {"day": day.isoformat(), "file": path.name, "network": network}
     if previous is not None:
