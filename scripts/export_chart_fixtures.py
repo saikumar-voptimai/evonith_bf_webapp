@@ -44,8 +44,7 @@ def rist_fixture() -> dict[str, Any]:
     import pandas as pd
 
     from utils.coke_energy.bf_balance import DEFAULTS, calibrate_loss
-    from utils.coke_energy.rist import Y_W
-    from utils.coke_energy.rist_diagram import OperatingLine, shift_rist
+    from utils.coke_energy.rist_diagram import rist_dict, shift_rist
     from utils.coke_energy.run_shifts import case_from_shift, shift_balance
 
     rows = pd.read_csv(SHIFT_INPUTS, index_col=0)
@@ -68,34 +67,22 @@ def rist_fixture() -> dict[str, Any]:
         skey=SHIFT_KEY,
     )
 
-    def line(op: OperatingLine | None) -> dict[str, float | None] | None:
-        if op is None:
-            return None
-        return {
-            "mu": _r(op.mu),
-            "y_a": _r(op.y_a),
-            "y_d": _r(op.y_d),
-            "omega": _r(op.omega),
-            "eta_w": _r(op.eta_w),
-            "y_wc": _r(op.y_wc),
-            "x_top": _r(op.x_top),
-            "y_top_c": _r(op.y_top_c),
-            "y_top": _r(op.y_top),
-        }
+    def rounded(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {k: rounded(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [rounded(v) for v in value]
+        return _r(value) if isinstance(value, float) else value
 
+    # The FORGE API serves the same dictionary per shift (services.forge, SV-1.11).
+    payload = rounded(rist_dict(rs))
+    payload["t_r"] = _r(rs.T_R, 3)
     a = rs.actual
     return {
         "source": (
             f"utils.coke_energy.rist_diagram.shift_rist, {SHIFT_KEY} of tests/fixtures/coke_energy/shift_inputs.csv"
         ),
-        "skey": rs.skey,
-        "t_r": _r(rs.T_R, 3),
-        "y_w": _r(Y_W),
-        "actual": line(a),
-        "model": line(rs.model),
-        "p_actual": _pt(rs.p_actual),
-        "p_model": _pt(rs.p_model),
-        "ideal": None if rs.ideal_mu is None else {"mu": _r(rs.ideal_mu), "y_a": _r(rs.ideal_y_a)},
+        **payload,
         "expected": {
             "a": _pt(a.a),
             "d": _pt(a.d),

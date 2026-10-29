@@ -162,6 +162,7 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 	for (const s of visible) {
 		if (s.band) {
 			// Stacked pair: an invisible base at the lower edge, then the span to the upper edge, filled.
+			// stackStrategy 'all': the default 'samesign' does not stack a positive span on a negative base.
 			const base = s.band.points.map(([t, lo, hi]) => [toAxis(t), lo !== null && hi !== null ? lo : null]);
 			const span = s.band.points.map(([t, lo, hi]) => [
 				toAxis(t),
@@ -174,6 +175,7 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 					type: 'line',
 					data: base,
 					stack,
+					stackStrategy: 'all',
 					symbol: 'none',
 					lineStyle: { opacity: 0 },
 					silent: true,
@@ -185,6 +187,7 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 					type: 'line',
 					data: span,
 					stack,
+					stackStrategy: 'all',
 					symbol: 'none',
 					lineStyle: { opacity: 0 },
 					areaStyle: { color: theme.token(s.band.fill), opacity: 1 },

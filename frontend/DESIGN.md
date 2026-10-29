@@ -169,9 +169,9 @@ Colour:
   0.43–0.77), chroma ≥ 0.105 (floor 0.10), neighbouring slots ΔE ≥ 9.1 under protanopia and deuteranopia (gate 8) and
   ≥ 16.8 for normal vision (gate 15), contrast ≥ 3.5:1 on the canvas (gate 3). Any two of the first three slots
   (scatter series): ΔE ≥ 9.5 (CVD) and ≥ 16.1 (normal).
-- Entity colours are aliases of the slots: `--vo-series-trace` = slot 1, `-forge` = 2, `-strata` = 3 (±1σ band as a
-  14 % wash), `-hmt` = 4 (forecast interval 14 %), `-charged` = context grey. Hiding a series never repaints the
-  others.
+- Entity colours are aliases of the slots: `--vo-series-trace` = slot 1, `-forge` = 2 (its rolling bias ±1 SD on the
+  FORGE page as a 14 % wash), `-strata` = 3 (±1σ band as a 14 % wash), `-hmt` = 4 (forecast interval 14 %),
+  `-charged` = context grey. Hiding a series never repaints the others.
 - Text in a chart uses the text tokens (labels muted, values in text ink); the mark beside it carries the colour.
 
 Marks and axes:

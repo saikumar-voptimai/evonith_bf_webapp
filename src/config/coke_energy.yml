@@ -210,3 +210,9 @@ coke_energy:
       implied_lag:
         low_h: 5.0                   # implied transit time outside 5-8 h (reference 6.2 h)
         high_h: 8.0
+    # FORGE page (SV-1.11, services.forge): the twin.forge job (HH:20) stores every balanced shift and the Rist
+    # geometry of the stable shifts dated in the rist_days before the latest balanced shift; the page's statistics
+    # cover stats_days (page 10's default period of the prediction section).
+    forge:
+      stats_days: 30
+      rist_days: 30

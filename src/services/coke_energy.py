@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +40,8 @@ from utils.memo import memo
 PLANT_TZ = "Asia/Kolkata"
 # How far back lab samples are read for the freshness check (a burden-distribution change can be months old).
 SAMPLE_LOOKBACK = pd.Timedelta(days=60)
+# Most shifts one Rist animation draws (page 10 shows the latest 360 of a longer period).
+RIST_MAX_FRAMES = 360
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "coke_energy.yml"
 
 
@@ -210,6 +213,25 @@ def build_page_data(keys: DataKeys, settings: PipelineSettings, loaders: Loaders
         charged=charged,
         names=loaders.names(),
     )
+
+
+def rist_candidates(table: pd.DataFrame) -> pd.DataFrame:
+    """Shifts the Rist diagram animates: stable, with burnt coke and a fixed-omega prediction (page 10, FORGE)."""
+    return table[table.stable & table.K_energy.notna() & table.K_burnt.notna()]
+
+
+def rist_keys(
+    table: pd.DataFrame, start: date | None = None, end: date | None = None, limit: int | None = RIST_MAX_FRAMES
+) -> list[str]:
+    """Keys of the Rist shifts dated ``start`` to ``end`` (IST days, both included), oldest first; the latest
+    ``limit`` of them (None: all)."""
+    rows = rist_candidates(table)
+    if start is not None:
+        rows = rows[rows.sdate.dt.date >= start]
+    if end is not None:
+        rows = rows[rows.sdate.dt.date <= end]
+    keys = [str(k) for k in rows.index]
+    return keys[-limit:] if limit is not None and len(keys) > limit else keys
 
 
 def build_rist_frames(data: PageData, settings: PipelineSettings, skeys: Sequence[str]) -> list[RistShift]:

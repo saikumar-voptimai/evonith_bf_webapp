@@ -951,6 +951,11 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   YAML is the fallback when the store is off, empty or unreachable. Page 9 (`ui/bmo/operator_inputs.py`), page 11 and
   the worker (`load_yard` → `EvonithBmoContextProvider.get_operator_inputs`) and `GET` / `PUT /api/operator-inputs`
   (`?at=` date = end of the IST day) all read this one source.
+- FORGE page (SV-1.11): the `twin.forge` job (HH:20 IST, `services/forge.py` `refresh`) stores the Coke Energy
+  pipeline's balanced shifts and Rist frames in `src/storage/forge/`; `GET /api/forge/prediction | rist | calibration`
+  (role user) only read that view. Statistics are page 10's (`accuracy.period_rows` / `accuracy`; the rolling window
+  is the `twin.forge.stats_days` before each day and the day, 31 days), Rist lines are `rist_diagram`'s points
+  (`tests/test_services_forge.py`). Bands in `TimeSeriesChart` stack with `stackStrategy: 'all'` (negative edges).
 - UI: look of the V-OptimAIse product family as in Optimus (user decision 27 Oct 2026): dark green-charcoal sidebar,
   light canvas, white panels, yellow accent, Inter, tracked upper-case section labels. Colours, sizes and spacing only
   from `frontend/src/lib/theme/tokens.css` (no hex values in components); build pages from

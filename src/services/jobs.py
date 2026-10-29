@@ -266,6 +266,22 @@ register(
 )
 register(
     JobKind(
+        name="twin.forge",
+        title="FORGE view",
+        role="supervisor",
+        timeout_s=900,
+        max_tries=2,  # HH:20 and HH:25 when the sources cannot be read
+        retry_delay_s=300,
+        schedule=(None, {20}),
+        description=(
+            "Runs the Coke Energy pipeline (memoised with twin.evaluate), draws the Rist geometry of the stable shifts "
+            "of the last 30 days and stores the FORGE view the /forge page reads: every balanced shift's FORGE, burnt, "
+            "oxygen-balance and charged coke with its calibration (SV-1.11)."
+        ),
+    )
+)
+register(
+    JobKind(
         name="optimiser.step2",
         title="Scheduled Step 2",
         role="supervisor",
