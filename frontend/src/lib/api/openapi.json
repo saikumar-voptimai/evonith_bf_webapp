@@ -14095,7 +14095,7 @@
     },
     "/api/auth/login": {
       "post": {
-        "description": "Check the account against ``identity.users`` and start a 12 h session (cookie).\n\nAfter ``login_max_failures`` failed attempts from one address within ``login_window_s``, further attempts are\nrefused with 429 and ``Retry-After`` until the oldest failure leaves the window.",
+        "description": "Check the account against ``identity.users`` and start a 12 h session (cookie, path ``/``: the Streamlit pages\nunder ``/legacy`` sign in from it).\n\nAfter ``login_max_failures`` failed attempts from one address within ``login_window_s``, further attempts are\nrefused with 429 and ``Retry-After`` until the oldest failure leaves the window.",
         "operationId": "auth_login",
         "requestBody": {
           "content": {
@@ -14147,7 +14147,7 @@
     },
     "/api/auth/logout": {
       "post": {
-        "description": "End the session: its token id is refused until it would have expired, and the cookie is removed.",
+        "description": "End the session: its token id is refused until it would have expired (also by the Streamlit pages when Redis\nis configured), and the cookie is removed.",
         "operationId": "auth_logout",
         "responses": {
           "204": {

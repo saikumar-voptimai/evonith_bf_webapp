@@ -36,7 +36,8 @@ export interface paths {
         put?: never;
         /**
          * Sign in
-         * @description Check the account against ``identity.users`` and start a 12 h session (cookie).
+         * @description Check the account against ``identity.users`` and start a 12 h session (cookie, path ``/``: the Streamlit pages
+         *     under ``/legacy`` sign in from it).
          *
          *     After ``login_max_failures`` failed attempts from one address within ``login_window_s``, further attempts are
          *     refused with 429 and ``Retry-After`` until the oldest failure leaves the window.
@@ -59,7 +60,8 @@ export interface paths {
         put?: never;
         /**
          * Sign out
-         * @description End the session: its token id is refused until it would have expired, and the cookie is removed.
+         * @description End the session: its token id is refused until it would have expired (also by the Streamlit pages when Redis
+         *     is configured), and the cookie is removed.
          */
         post: operations["auth_logout"];
         delete?: never;

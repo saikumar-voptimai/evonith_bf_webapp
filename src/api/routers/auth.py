@@ -10,7 +10,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 
-from api.auth import COOKIE_PATH, auth_state, client_address, issue_token, read_session, require_role
+from api.auth import (
+    COOKIE_PATH,
+    STALE_COOKIE_PATHS,
+    auth_state,
+    client_address,
+    issue_token,
+    read_session,
+    require_role,
+)
 from api.errors import ApiError
 from services.auth import IdentityUnavailable, Principal, Role
 
@@ -44,7 +52,8 @@ def _session_info(principal: Principal, exp: int) -> SessionInfo:
 
 @router.post("/login", response_model=SessionInfo, summary="Sign in")
 def login(body: LoginRequest, request: Request, response: Response) -> SessionInfo:
-    """Check the account against ``identity.users`` and start a 12 h session (cookie).
+    """Check the account against ``identity.users`` and start a 12 h session (cookie, path ``/``: the Streamlit pages
+    under ``/legacy`` sign in from it).
 
     After ``login_max_failures`` failed attempts from one address within ``login_window_s``, further attempts are
     refused with 429 and ``Retry-After`` until the oldest failure leaves the window.
@@ -92,7 +101,8 @@ def me(request: Request, principal: Annotated[Principal, Depends(require_role("u
 
 @router.post("/logout", status_code=204, response_class=Response, summary="Sign out")
 def logout(request: Request) -> Response:
-    """End the session: its token id is refused until it would have expired, and the cookie is removed."""
+    """End the session: its token id is refused until it would have expired (also by the Streamlit pages when Redis
+    is configured), and the cookie is removed."""
     state = auth_state(request)
     session = read_session(request)
     if session is not None:
@@ -100,11 +110,12 @@ def logout(request: Request) -> Response:
         state.denylist.add(claims["jti"], claims["exp"])
         log.info("sign-out %s", principal.username)
     response = Response(status_code=204)
-    response.delete_cookie(
-        state.settings.cookie_name,
-        path=COOKIE_PATH,
-        secure=state.settings.cookie_secure,
-        httponly=True,
-        samesite="strict",
-    )
+    for path in (COOKIE_PATH, *STALE_COOKIE_PATHS):
+        response.delete_cookie(
+            state.settings.cookie_name,
+            path=path,
+            secure=state.settings.cookie_secure,
+            httponly=True,
+            samesite="strict",
+        )
     return response

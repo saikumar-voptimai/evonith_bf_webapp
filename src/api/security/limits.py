@@ -1,8 +1,9 @@
 """Sign-in failure limit per client address and the revoked-session list.
 
-Both hold their state in the API process. One API process (the Jetson service unit) shares them across all requests;
-with several processes each keeps its own state, so the Redis-backed versions arrive with the job queue (SV-0.8, #277)
-behind the same methods.
+Both hold their state in the API process. One API process (the Jetson service unit) shares them across all requests.
+With ``BF_REDIS_URL`` the revoked-session list is also kept in Redis (``services.session_tokens.RedisRevocations``,
+SV-6.6 #320), where the Streamlit pages under ``/legacy`` and other processes see it; the failure limit stays per
+process.
 """
 
 from __future__ import annotations
@@ -11,6 +12,8 @@ import threading
 import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
+
+from services.session_tokens import RevocationStore
 
 
 class FailureLimiter:
@@ -68,12 +71,17 @@ class FailureLimiter:
 
 
 class DenyList:
-    """Token ids of ended sessions, kept until the token would have expired anyway."""
+    """Token ids of ended sessions, kept until the token would have expired anyway.
 
-    def __init__(self, *, clock: Callable[[], float] = time.time) -> None:
+    ``shared`` (Redis when configured) receives every revocation and is asked for ids revoked by another process, e.g.
+    a sign-out on a Streamlit page; while it is not reachable only this process's entries count.
+    """
+
+    def __init__(self, *, clock: Callable[[], float] = time.time, shared: RevocationStore | None = None) -> None:
         self._clock = clock
         self._entries: dict[str, float] = {}
         self._lock = threading.Lock()
+        self.shared = shared
 
     def add(self, jti: str, expires_at: float) -> None:
         with self._lock:
@@ -82,8 +90,12 @@ class DenyList:
                 del self._entries[key]
             if expires_at > now:
                 self._entries[jti] = expires_at
+        if self.shared is not None:
+            self.shared.add(jti, expires_at)
 
     def contains(self, jti: str) -> bool:
         with self._lock:
             exp = self._entries.get(jti)
-            return exp is not None and exp > self._clock()
+            if exp is not None and exp > self._clock():
+                return True
+        return self.shared is not None and self.shared.contains(jti)

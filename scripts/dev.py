@@ -128,7 +128,8 @@ def main(argv: list[str]) -> int:
             "the job routes answer 503. Start Redis (Linux: apt install redis-server; Windows: Memurai or WSL) "
             "or set BF_REDIS_URL."
         )
-    if "api" in names and not env.get("BF_API_JWT_SECRET"):
+    if {"api", "legacy"} & set(names) and not env.get("BF_API_JWT_SECRET"):
+        # One key for both: Streamlit (/legacy) signs in from the API session cookie (SV-6.6, #320).
         env["BF_API_JWT_SECRET"] = _dev_jwt_secret()
     procs: dict[str, subprocess.Popen] = {}
     flags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WINDOWS else 0

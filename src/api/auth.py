@@ -1,8 +1,10 @@
 """Sessions and role checks of the twin-api (SV-0.4, #273).
 
-A successful sign-in sets an HS256 session token (12 h) in an httpOnly, Secure, SameSite=Strict cookie limited to
-``/api``. Every router declares its minimum role with ``require_role``; ``tests/test_api_auth.py`` fails when a route
-outside ``PUBLIC_PATHS`` has none. Roles rank admin > supervisor > user.
+A successful sign-in sets an HS256 session token (12 h) in an httpOnly, Secure, SameSite=Strict cookie with path ``/``:
+the Streamlit pages under ``/legacy`` on the same origin read it for single sign-on (SV-6.6, #320) and verify it with
+``services.session_tokens``, the rules used here. Until SV-6.6 the cookie path was ``/api``; sign-out also expires a
+cookie left at that path. Every router declares its minimum role with ``require_role``; ``tests/test_api_auth.py`` fails
+when a route outside ``PUBLIC_PATHS`` has none. Roles rank admin > supervisor > user.
 """
 
 from __future__ import annotations
@@ -19,14 +21,16 @@ from fastapi import Depends, Request
 
 from api.errors import ApiError
 from api.security.limits import DenyList, FailureLimiter
-from api.security.tokens import TokenError, decode, encode
+from api.security.tokens import encode
 from api.settings import ApiSettings
-from services.auth import ROLES, IdentityStore, NeonIdentityStore, Principal, Role, has_role, normalise_role
+from services.auth import ROLES, IdentityStore, NeonIdentityStore, Principal, Role, has_role
+from services.session_tokens import ISSUER, verify_session
 
 log = logging.getLogger("api.auth")
 
-ISSUER = "bf02-twin-api"
-COOKIE_PATH = "/api"
+COOKIE_PATH = "/"
+# Paths of earlier session cookies, expired at sign-out (``/api`` until SV-6.6).
+STALE_COOKIE_PATHS = ("/api",)
 # Routes that answer without a session: liveness, version, sign-in and sign-out.
 PUBLIC_PATHS = frozenset({"/api/health", "/api/version", "/api/auth/login", "/api/auth/logout"})
 
@@ -56,7 +60,7 @@ def build_auth_state(settings: ApiSettings) -> AuthState:
         key=key,
         identity=NeonIdentityStore(settings.identity_db_url),
         limiter=FailureLimiter(settings.login_max_failures, settings.login_window_s),
-        denylist=DenyList(),
+        denylist=DenyList(shared=settings.revocations()),
     )
 
 
@@ -91,21 +95,20 @@ def issue_token(state: AuthState, principal: Principal) -> tuple[str, dict[str, 
 
 
 def read_session(request: Request) -> tuple[Principal, dict[str, Any]] | None:
-    """The principal and claims of a valid, unrevoked session cookie; None otherwise."""
+    """The principal and claims of a valid, unrevoked session cookie; None otherwise.
+
+    With Redis configured the revocation check is a Redis round trip: call it from a worker thread in async code.
+    """
     state = auth_state(request)
-    token = request.cookies.get(state.settings.cookie_name)
-    if not token:
+    session = verify_session(
+        request.cookies.get(state.settings.cookie_name),
+        state.key,
+        now=int(state.clock()),
+        is_revoked=state.denylist.contains,
+    )
+    if session is None:
         return None
-    try:
-        claims = decode(token, state.key, now=int(state.clock()))
-    except TokenError:
-        return None
-    role = normalise_role(claims.get("role"))
-    jti = claims.get("jti")
-    if role is None or not isinstance(jti, str) or claims.get("iss") != ISSUER or state.denylist.contains(jti):
-        return None
-    uid = claims.get("uid")
-    return Principal(username=str(claims.get("sub")), role=role, user_id=uid if isinstance(uid, str) else None), claims
+    return session.principal, dict(session.claims)
 
 
 def current_principal(request: Request) -> Principal:

@@ -4,13 +4,30 @@ User credentials and roles are persisted in the database through
 ``furnace_data.relational``. This module only keeps the current browser
 session in ``st.session_state`` and derives permissions from the persisted
 role returned at login time.
+
+Single sign-on with the twin-api (SV-6.6, #320): behind Caddy the Streamlit
+pages run under ``/legacy`` on the origin of the Svelte frontend, so the
+browser sends the API session cookie to Streamlit. :func:`sync_api_session`
+verifies it with ``services.session_tokens`` (the API's rules: signature,
+expiry, issuer, role, revoked ids in Redis when reachable) and signs the
+Streamlit session in with the token's user and role. The Streamlit login
+form stays the fallback.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import logging
+import time
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from functools import lru_cache
 
 import streamlit as st
+from pydantic import ValidationError
+
+from services.session_tokens import RevocationStore, Session, SessionSettings, verify_session
+
+log = logging.getLogger("utils.session")
 
 
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
@@ -133,14 +150,114 @@ def login_user(username: str, role: str, user_id: str | None = None) -> None:
     _set_permissions(role)
 
 
-def logout_user() -> None:
-    """Clear authenticated session state and rerun the app."""
-    for key in (
-        "auth_user",
-        "auth_user_id",
-        "role",
-        "permissions",
-        "admin_tool_selection",
-    ):
+def _clear_auth() -> None:
+    for key in AUTH_KEYS:
         st.session_state.pop(key, None)
+
+
+def logout_user() -> None:
+    """Clear authenticated session state and rerun the app.
+
+    A session signed in from the twin-api cookie also ends the API session (its token id is revoked in Redis, when
+    configured, so the Svelte frontend signs out too) and is not signed in again from the same cookie.
+    """
+    state = st.session_state
+    if state.get(AUTH_SOURCE_KEY) == AUTH_SOURCE_API:
+        jti = state.get(AUTH_JTI_KEY)
+        if jti:
+            state[SSO_DECLINED_KEY] = jti
+            sso = api_sso()
+            if sso is not None and sso.revocations is not None:
+                sso.revocations.add(str(jti), float(state.get(AUTH_EXPIRES_KEY) or 0))
+            log.info("sign-out %s (twin-api session)", state.get("auth_user"))
+    _clear_auth()
     st.rerun()
+
+
+# ---------------------------------------------------------------- single sign-on with the twin-api (SV-6.6, #320)
+
+AUTH_SOURCE_KEY = "auth_source"  # "api": signed in from the twin-api session cookie
+AUTH_SOURCE_API = "api"
+AUTH_JTI_KEY = "auth_jti"  # token id of that cookie
+AUTH_EXPIRES_KEY = "auth_expires_at"  # end of the API session, s since the Unix epoch (UTC)
+SSO_DECLINED_KEY = "sso_declined_jti"  # token id this Streamlit session signed out of
+AUTH_KEYS = (
+    "auth_user",
+    "auth_user_id",
+    "role",
+    "permissions",
+    "admin_tool_selection",
+    AUTH_SOURCE_KEY,
+    AUTH_JTI_KEY,
+    AUTH_EXPIRES_KEY,
+)
+
+
+@dataclass(frozen=True)
+class ApiSso:
+    """How Streamlit verifies the twin-api session cookie."""
+
+    key: bytes
+    cookie_name: str = "bf_session"
+    revocations: RevocationStore | None = None
+    clock: Callable[[], float] = field(default=time.time)
+
+
+@lru_cache(maxsize=1)
+def api_sso() -> ApiSso | None:
+    """Single sign-on settings from the twin-api's environment (``BF_API_JWT_SECRET``, ``BF_API_COOKIE_NAME``,
+    ``BF_REDIS_URL``, also from the repository ``.env``); None without a signing key: Streamlit login only."""
+    try:
+        settings = SessionSettings()
+    except ValidationError as exc:
+        log.warning("single sign-on with the twin-api is off: %s", exc.errors()[0].get("msg"))
+        return None
+    key = settings.signing_key()
+    if key is None:
+        return None
+    return ApiSso(key=key, cookie_name=settings.cookie_name, revocations=settings.revocations())
+
+
+def api_cookie_session(sso: ApiSso) -> Session | None:
+    """The valid, unrevoked twin-api session of this browser session's cookie, or None."""
+    cookies = getattr(getattr(st, "context", None), "cookies", None) or {}
+    revocations = sso.revocations
+    return verify_session(
+        cookies.get(sso.cookie_name),
+        sso.key,
+        now=int(sso.clock()),
+        is_revoked=revocations.contains if revocations is not None else None,
+    )
+
+
+def sync_api_session() -> bool:
+    """Follow the twin-api session cookie; True when the Streamlit session is signed in from it.
+
+    Called on every run of the app, before the login gate:
+
+    - signed in from the cookie earlier: the cookie is checked again, so an expired or revoked API session (sign-out
+      in the Svelte frontend, seen through Redis) ends the Streamlit session at its next run;
+    - signed in with the Streamlit login form: unchanged;
+    - not signed in: a valid cookie signs in with the token's user, user id and role, unless this Streamlit session
+      signed out of that token.
+    """
+    sso = api_sso()
+    if sso is None:
+        return False
+    state = st.session_state
+    from_api = state.get(AUTH_SOURCE_KEY) == AUTH_SOURCE_API
+    if "auth_user" in state and not from_api:
+        return False
+    session = api_cookie_session(sso)
+    if from_api:
+        if session is not None and session.jti == state.get(AUTH_JTI_KEY):
+            return True
+        _clear_auth()
+    if session is None or session.jti == state.get(SSO_DECLINED_KEY):
+        return False
+    principal = session.principal
+    login_user(principal.username, principal.role, user_id=principal.user_id)
+    state[AUTH_SOURCE_KEY] = AUTH_SOURCE_API
+    state[AUTH_JTI_KEY] = session.jti
+    state[AUTH_EXPIRES_KEY] = session.expires_at
+    return True

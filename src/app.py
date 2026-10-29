@@ -16,7 +16,7 @@ st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
 
 from config.page_registry import get_navigation_pages
 from utils.logger import setup_logger
-from utils.session import is_logged_in
+from utils.session import is_logged_in, sync_api_session
 
 # Initialize logging once
 setup_logger()
@@ -25,6 +25,9 @@ setup_logger()
 # ------------------------------------------------------
 #  Authentication Gate
 # ------------------------------------------------------
+# Single sign-on: a valid twin-api session cookie (Svelte frontend, same origin under /legacy) signs this session in
+# with its user and role; the login form below stays the fallback (SV-6.6, #320).
+sync_api_session()
 if not is_logged_in():
     from ui.login_page import LoginPage  # lazy import avoids partial-module cache on rerun
 
