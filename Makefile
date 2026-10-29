@@ -22,7 +22,7 @@ RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/ui/coke_ener
 	tests/test_strata_parallel.py tests/test_burden_engine_step1.py tests/bmo_golden.py tests/test_bmo_golden.py \
 	src/ui/bmo/operator_inputs.py tests/test_jetson_scripts.py \
 	src/agents/furnacemind/tool_state.py src/agents/furnacemind/turn.py tests/furnacemind_fakes.py \
-	src/utils/bmo/editor_tables.py
+	src/utils/bmo/editor_tables.py scripts/jetson_wheel_audit.py tests/test_jetson_wheel_audit.py
 # The Jetson (SV-6.1): JetPack 6 = Ubuntu 22.04, glibc 2.35, CPython 3.12 from uv. Every locked package needs a wheel
 # for it, except these, which have none and install from their source archive (pypika: pure Python; quickjs:
 # C extension, built with the Jetson's compiler).
@@ -30,7 +30,7 @@ JETSON_PLATFORM := aarch64-manylinux_2_35
 JETSON_SOURCE_BUILDS := pypika quickjs
 
 .PHONY: help dev api worker legacy web install build check lint lint-web lint-py format test test-web test-py client \
-	fixtures db-upgrade db-downgrade db-current audit-ui lock-check
+	fixtures db-upgrade db-downgrade db-current audit-ui lock-check wheel-audit
 
 help:
 	@echo "make dev      SPA (5173) + API (8100) + worker + Streamlit (/legacy, 8501)"
@@ -44,6 +44,7 @@ help:
 	@echo "make db-upgrade / db-downgrade / db-current   twin schema migrations (BF_TWIN_DB_URL or DATABASE_URL)"
 	@echo "make audit-ui build the SPA, then axe-core, layout and keyboard checks with screenshots (Playwright)"
 	@echo "make lock-check  uv.lock matches pyproject.toml and installs on the Jetson (linux-aarch64)"
+	@echo "make wheel-audit the lock-check recipe and the file uv installs per package on the Jetson (docs/jetson_wheel_audit.md)"
 
 dev:
 	$(PY) scripts/dev.py
@@ -118,3 +119,6 @@ lock-check:
 	$(UV_LOCK) pip compile "$$req" --no-deps --quiet --python-version 3.12 --python-platform $(JETSON_PLATFORM) \
 		--only-binary :all: $(addprefix --no-binary ,$(JETSON_SOURCE_BUILDS)) > /dev/null; \
 	echo "uv.lock installs on $(JETSON_PLATFORM) (source builds: $(JETSON_SOURCE_BUILDS))"
+
+wheel-audit:
+	$(PY) scripts/jetson_wheel_audit.py --uv "$(UV_LOCK)" --write

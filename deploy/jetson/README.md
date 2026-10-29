@@ -7,7 +7,7 @@ Production host for the Svelte frontend, the twin-api, the twin-worker and Strea
 | #279 (SV-0.10) | `Caddyfile`: static SPA with `200.html` fallback, `/api` → twin-api, `/legacy` → Streamlit (this file, below) |
 | #280 (SV-0.11) | CI release artefacts (`frontend-build.tar.gz`, lock files) and the aarch64 lock check (below) |
 | #315 (SV-6.1) | `provision.sh`, `verify_base.sh`: JetPack 6.x, NVMe at `/var/lib/bf-webapp`, nvpmodel MAXN, chrony, ufw, user `bfapp`, directory layout, logrotate (below) |
-| #316 (SV-6.2) | Python 3.12 via uv on aarch64, wheel audit, runtime benchmark |
+| #316 (SV-6.2) | `install_python.sh`: uv 0.7.13 and uv-managed CPython 3.12, `uv sync --frozen`, import check; wheel audit (`docs/jetson_wheel_audit.md`); `benchmark.sh`: optimiser runtimes against the plan's targets (`docs/jetson_benchmark.md`) (below) |
 | #317 (SV-6.3) | systemd units: caddy, twin-api, twin-worker, streamlit, redis, furnace-data-service |
 | #318 (SV-6.4) | `release.sh <tag>`: CI artefact, `uv sync --frozen`, `alembic -n twin upgrade head`, smoke test, rollback |
 
@@ -182,10 +182,65 @@ A tag `v*` runs `.github/workflows/release.yml`: the full CI suite, then the Git
 
 `release.sh` (SV-6.4, #318) consumes these files.
 
+## Python and uv (`install_python.sh`, SV-6.2)
+
+The project runs on CPython 3.12 installed by uv (python-build-standalone), never on JetPack's system Python, and
+installs from `uv.lock` with `uv sync --frozen`. `install_python.sh` sets this up; run it as root after `provision.sh`,
+and again for every checkout or release directory to sync. Like `provision.sh` it changes only what differs.
+
+```bash
+sudo deploy/jetson/install_python.sh                          # uv, CPython 3.12, /etc/bf-webapp/uv.env
+sudo deploy/jetson/install_python.sh --release ~/bf-webapp    # also: uv sync --frozen there, then the import check
+```
+
+| Option | Meaning |
+|---|---|
+| `--uv-version V` | uv release to install (default 0.7.13, the lock rule's version: CLAUDE.md, Makefile `UV_LOCK`) |
+| `--python X.Y` | CPython minor version (default 3.12, `requires-python` and the lock check's target) |
+| `--release DIR` | Checkout or release directory: `uv sync --frozen` as the directory's owner (bfapp for a release directory, the operator for a checkout; never root), then the import check |
+| `--no-check` | Skip the import check after the sync |
+
+| Step | Result |
+|---|---|
+| platform | Stops unless aarch64, L4T R36 (JetPack 6.x), Ubuntu 22.04, and `provision.sh` has run (`bfapp`, `/etc/bf-webapp`, `/var/lib/bf-webapp/cache`) |
+| packages | `build-essential` (quickjs compiles its C extension during `uv sync`), `curl`, `ca-certificates` |
+| uv | `/usr/local/bin/uv` and `uvx` from the GitHub release tarball `uv-aarch64-unknown-linux-gnu.tar.gz`, checked against its `.sha256` file; replaced only when the version differs |
+| python | `uv python install 3.12` into `/opt/bf-webapp/python` (root-owned, readable by all) |
+| env | `/etc/bf-webapp/uv.env` (root:bfapp 640): `UV_PYTHON_INSTALL_DIR=/opt/bf-webapp/python`, `UV_PYTHON=3.12`, `UV_PYTHON_PREFERENCE=only-managed`, `UV_PYTHON_DOWNLOADS=never`, `UV_CACHE_DIR=/var/lib/bf-webapp/cache/uv`, `UV_LINK_MODE=copy`, `UV_FROZEN=1`, `UV_NO_PROGRESS=1`. `EnvironmentFile=` of the units (SV-6.3) and read by `release.sh` (SV-6.4) |
+| release | With `--release DIR`: `uv sync --frozen` in DIR with these variables (the operator keeps their own uv cache), then imports torch, scipy, numpy, pandas, psycopg2, duckdb, chromadb, pyarrow, influxdb_client_3, sentence_transformers, xgboost, onnxruntime, quickjs and pypika in the synced `.venv`, and solves one LP with HiGHS through scipy |
+
+The downloads (uv release, python-build-standalone, PyPI) need GitHub and PyPI from the Jetson, or a plant mirror
+(`UV_PYTHON_INSTALL_MIRROR`, `UV_INDEX_URL`). After a sync, as the checkout's owner: `uv run --no-sync pytest -q tests/`
+(full suite) and the benchmark below.
+
+**Benchmark** (`benchmark.sh`; `docs/jetson_benchmark.md`). Runs `scripts/optimiser_bench.py` in the modes `solve`,
+`jacobian --solvers 8`, `step2`, `max_production` and `step1` on the reference plan day, writes the measured table into
+`docs/jetson_benchmark.md` and compares each mode with its target of section 10 of the plan (#262): network solve
+2.8 s, Jacobian 6 s, Step 2 90 s, maximum production 300 s, Step 1 600 s. Run it as the checkout's owner, not root;
+it changes nothing on the system. Exit status 1 when a mode is above its target or gave no result.
+
+```bash
+deploy/jetson/benchmark.sh --open-issue                       # all five modes; an issue per runtime above target
+deploy/jetson/benchmark.sh --mode solve --mode jacobian       # a partial run leaves the document as it is
+```
+
+| Option | Meaning |
+|---|---|
+| `--release DIR` | Synced checkout or release directory (default: the repository of the script) |
+| `--solvers N` | Solver processes of the `jacobian` mode (default 8, the target's pool); the other modes use `BF_STRATA_SOLVERS`, else min(8, cpus) |
+| `--mode M` | One of `solve`, `jacobian`, `step2`, `max_production`, `step1`; repeat for several (default all five) |
+| `--doc FILE` | Document whose block between `<!-- benchmark:start -->` and `<!-- benchmark:end -->` is replaced (default `docs/jetson_benchmark.md`) |
+| `--log-dir DIR` | Output of every mode, the results TSV and the issue bodies (default `/tmp/bf-benchmark-<UTC time>`) |
+| `--live-day` | Plan day and blast moisture of today instead of the reference day 2026-10-15 with the shipped moisture |
+| `--open-issue` | Open a GitHub issue (`gh`, signed in) for each mode above its target; without it the script prints the `gh issue create` command |
+| `--repo OWNER/NAME` | Repository of the issues (default: the checkout's `origin`, else `saikumar-voptimai/evonith_bf_webapp`) |
+
 ## Python packages on aarch64
 
 `make lock-check` (CI job `static`) resolves `uv.lock` for `aarch64-manylinux_2_35` (JetPack 6: Ubuntu 22.04,
 glibc 2.35) and CPython 3.12 from wheels, with two exceptions that publish no aarch64 wheel and build from source
-during `uv sync`: `pypika` (pure Python) and `quickjs` (C extension; needs `build-essential`). The check covers wheel
-availability only: torch 2.2.2 from PyPI is the CPU build on aarch64, and its use of the Jetson GPU (NVIDIA's
-JetPack wheel) belongs to the wheel audit and runtime benchmark of SV-6.2 (#316).
+during `uv sync`: `pypika` (pure Python) and `quickjs` (C extension; needs `build-essential`). The wheel audit
+(`docs/jetson_wheel_audit.md`, `python scripts/jetson_wheel_audit.py --write` or `make wheel-audit`) runs the same
+recipe and records which file uv installs for each package: on 29 Oct 2026, 244 packages, all from aarch64 or
+pure-Python wheels except those two, glibc floor at most 2.34. torch 2.2.2 from PyPI is the CPU build on aarch64 (its
+CUDA libraries are locked for x86_64 only); the Orin GPU is not used.

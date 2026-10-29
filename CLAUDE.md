@@ -1036,6 +1036,11 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
 - A new Python package needs a linux-aarch64 wheel for the Jetson (`make lock-check`: glibc 2.35, CPython 3.12), or
   an entry in `JETSON_SOURCE_BUILDS` (Makefile) with the reason. Never write `-o /dev/null` for a uv command: uv
   replaces the output file by a rename, which turns `/dev/null` into a regular file when run as root.
+  After a lock change re-run the wheel audit (`python scripts/jetson_wheel_audit.py --write` → `docs/jetson_wheel_audit.md`;
+  `tests/test_jetson_wheel_audit.py` fails on drift). On the device (SV-6.2): `deploy/jetson/install_python.sh` (uv
+  0.7.13, uv-managed CPython 3.12, `/etc/bf-webapp/uv.env`; `--release DIR`: `uv sync --frozen` as DIR's owner, import
+  check), then `deploy/jetson/benchmark.sh --open-issue` (→ `docs/jetson_benchmark.md`; targets solve 2.8 s, Jacobian
+  6 s, Step 2 90 s, maximum production 300 s, Step 1 600 s).
 - Tests: never write stubs into `sys.modules` while a file is collected (they stay for the session and break later
   files); import the module under test with `tests/module_stubs.import_with_stubs`. Tests that need a service use
   the `requires_service` marker (`needs_postgres`, `needs_redis`). `tests/conftest.py` sets placeholder

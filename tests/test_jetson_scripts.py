@@ -1,6 +1,8 @@
-"""The Jetson base-system scripts (SV-6.1, #315): ``deploy/jetson/provision.sh`` and ``verify_base.sh``.
+"""The Jetson scripts: base system (SV-6.1, #315: ``provision.sh``, ``verify_base.sh``), Python and benchmark (SV-6.2,
+#316: ``install_python.sh``, ``benchmark.sh``).
 
-The scripts run as root on the Orin, so this file never runs a step. It checks the syntax (``bash -n``), the steps and
+The scripts run on the Orin (the first three as root), so this file never runs a system step; ``benchmark.sh`` runs
+end to end on a fake release with a fake uv. It checks the syntax (``bash -n``), the steps and
 their order, the argument checks (they stop before the first step), and the pure functions the scripts define: the
 rendered configuration files, the JetPack / nvpmodel / fstab / CIDR helpers and the parsers of ``chronyc tracking``,
 ``ufw status`` and ``ss``. Each function is called in bash after sourcing the script (``main`` runs only when the file
@@ -21,6 +23,9 @@ ROOT = Path(__file__).resolve().parents[1]
 JETSON = ROOT / "deploy" / "jetson"
 PROVISION = JETSON / "provision.sh"
 VERIFY = JETSON / "verify_base.sh"
+INSTALL = JETSON / "install_python.sh"
+BENCH = JETSON / "benchmark.sh"
+SCRIPTS = [PROVISION, VERIFY, INSTALL, BENCH]
 UUID = "0f3a1b2c-1111-2222-3333-444455556666"
 
 
@@ -78,7 +83,7 @@ def _function_body(text: str, name: str) -> str:
 # ---- both scripts ---------------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("script", [PROVISION, VERIFY], ids=lambda p: p.name)
+@pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
 def test_script_is_valid_bash_with_lf_line_ends(script: Path) -> None:
     raw = script.read_bytes()
     assert b"\r" not in raw, "CRLF line ends: bash on the Jetson fails on them"
@@ -112,13 +117,13 @@ def test_both_scripts_hold_the_same_layout_table() -> None:
 
 def test_readme_documents_every_option() -> None:
     readme = (JETSON / "README.md").read_text(encoding="utf-8")
-    for script in (PROVISION, VERIFY):
+    for script in SCRIPTS:
         usage = _call(script, "usage")
         options = set(re.findall(r"--[a-z][a-z-]+", usage)) - {"--help"}
         assert options, script.name
         missing = sorted(o for o in options if o not in readme)
         assert not missing, f"{script.name} options missing from README: {missing}"
-    assert "provision.sh" in readme and "verify_base.sh" in readme and "nmap" in readme
+    assert all(script.name in readme for script in SCRIPTS) and "nmap" in readme
 
 
 # ---- provision.sh: steps and arguments ------------------------------------------------------------------------------
@@ -444,3 +449,283 @@ def test_verify_checks_every_area_and_validates_its_arguments() -> None:
     code += '"${EXTRA_UNITS[*]}" "$HTTP_REDIRECT"'
     done = _snippet(VERIFY, code, "--max-offset-ms", "50", "--admin-subnet", "10.1.0.0/16", "--unit", "bf-api.service")
     assert done.stdout == "50|10.1.0.0/16|bf-api.service|1"
+
+
+# ---- install_python.sh (SV-6.2) -------------------------------------------------------------------------------------
+
+
+def test_install_python_runs_its_steps_in_order_and_the_release_last() -> None:
+    text = INSTALL.read_text(encoding="utf-8")
+    main = _function_body(text, "main")
+    assert re.findall(r"^\t(step_\w+)$", main, re.M) == [
+        "step_platform",
+        "step_packages",  # build-essential before uv sync builds quickjs
+        "step_uv",
+        "step_python",
+        "step_env",
+    ]
+    assert main.index("step_env") < main.index("|| step_release") < main.index("summary")
+    body = {name: _function_body(text, name) for name in ("step_platform", "step_uv", "step_python", "step_release")}
+    assert "# R36 " in body["step_platform"] and "22.04" in body["step_platform"]
+    assert "checksum_ok" in body["step_uv"] and "trap - RETURN" in body["step_uv"]  # the trap must not outlive it
+    assert "managed_python" in body["step_python"] and "python install" in body["step_python"]
+    managed = _function_body(text, "managed_python")  # never a project .venv: from / without VIRTUAL_ENV
+    assert "cd /" in managed and "-u VIRTUAL_ENV" in managed and "UV_PYTHON_PREFERENCE=only-managed" in managed
+    assert "sync --frozen" in body["step_release"] and "import_check_script" in body["step_release"]
+    assert "[[ $owner != root ]]" in body["step_release"]
+    packages = _snippet(INSTALL, 'printf "%s\\n" "${PACKAGES[@]}"').stdout.split()
+    assert "build-essential" in packages
+
+
+def test_install_python_argument_errors_stop_before_the_first_step() -> None:
+    assert _bash(INSTALL.as_posix(), "--help").returncode == 0
+    cases = {
+        "--uv-version: not a version": ["--uv-version", "latest"],
+        "--python: a minor version": ["--python", "3"],
+        "--release: not a directory": ["--release", "/nonexistent/bf-webapp"],
+        "unknown argument": ["--yes"],
+        "needs a value": ["--release"],
+    }
+    for message, args in cases.items():
+        done = _bash(INSTALL.as_posix(), *args)
+        assert done.returncode == 2, (message, done.stdout, done.stderr)
+        assert message in done.stderr and "Usage:" in done.stderr and "==" not in done.stdout
+    code = 'parse_args "$@"; printf "%s|%s|%s|%s" "$UV_VERSION" "$PYTHON_MINOR" "$RELEASE_DIR" "$CHECK"'
+    assert _snippet(INSTALL, code).stdout == "0.7.13|3.12||1"
+    if _bash("-c", "echo $EUID").stdout.strip() != "0":
+        done = _bash(INSTALL.as_posix())
+        assert done.returncode == 1 and "run as root" in done.stderr and "==" not in done.stdout
+
+
+def test_install_python_version_and_platform_helpers() -> None:
+    assert _call(INSTALL, "version_of", stdin="uv 0.7.13 (62ed17b23 2025-06-12)\n") == "0.7.13\n"
+    assert _call(INSTALL, "version_of", stdin="Python 3.12.10\n") == "3.12.10\n"
+    assert _status(INSTALL, "version_of", stdin="error: no interpreter\n") == 1
+    assert _status(INSTALL, "same_minor", "3.12.10", "3.12") == 0
+    assert _status(INSTALL, "same_minor", "3.120.1", "3.12") == 1
+    assert _status(INSTALL, "same_minor", "3.13.0", "3.12") == 1
+    ldd = "ldd (Ubuntu GLIBC 2.35-0ubuntu3.8) 2.35\nCopyright (C) 2022 Free Software Foundation, Inc.\n"
+    assert _call(INSTALL, "glibc_version", stdin=ldd) == "2.35\n"
+    assert _call(INSTALL, "uv_asset", "aarch64") == "uv-aarch64-unknown-linux-gnu.tar.gz\n"
+    assert _status(INSTALL, "uv_asset", "riscv64") == 1
+    url = _call(INSTALL, "uv_release_url", "0.7.13", "uv-aarch64-unknown-linux-gnu.tar.gz")
+    assert url == "https://github.com/astral-sh/uv/releases/download/0.7.13/uv-aarch64-unknown-linux-gnu.tar.gz\n"
+    assert _status(INSTALL, "is_version", "0.7.13") == 0 and _status(INSTALL, "is_version", "0.7.x") == 1
+
+
+def test_uv_download_is_checked_against_its_sha256_file(tmp_path: Path) -> None:
+    tarball = tmp_path / "uv.tar.gz"
+    tarball.write_bytes(b"uv release")
+    real = _snippet(INSTALL, 'sha256sum "$1" | cut -d" " -f1', tarball.as_posix()).stdout.strip()
+    assert len(real) == 64
+    other = ("0" if real[0] != "0" else "1") + real[1:]
+    assert _status(INSTALL, "checksum_ok", tarball.as_posix(), stdin=f"{real.upper()} *uv.tar.gz\n") == 0
+    assert _status(INSTALL, "checksum_ok", tarball.as_posix(), stdin=f"{other}  uv.tar.gz\n") == 1
+    assert _status(INSTALL, "checksum_ok", tarball.as_posix(), stdin="") == 1
+
+
+def test_uv_env_pins_the_managed_python_and_the_frozen_lock() -> None:
+    env = _call(INSTALL, "render_uv_env", "/opt/bf-webapp/python", "/var/lib/bf-webapp/cache/uv", "3.12")
+    values = dict(line.split("=", 1) for line in env.splitlines() if line and not line.startswith("#"))
+    assert values == {
+        "UV_PYTHON_INSTALL_DIR": "/opt/bf-webapp/python",
+        "UV_PYTHON": "3.12",
+        "UV_PYTHON_PREFERENCE": "only-managed",
+        "UV_PYTHON_DOWNLOADS": "never",
+        "UV_CACHE_DIR": "/var/lib/bf-webapp/cache/uv",
+        "UV_LINK_MODE": "copy",
+        "UV_FROZEN": "1",
+        "UV_NO_PROGRESS": "1",
+    }
+    assert _snippet(INSTALL, 'printf "%s %s" "$UV_ENV_FILE" "$UV_ENV_FILE_MODE"').stdout == "/etc/bf-webapp/uv.env 640"
+    bfapp = _call(INSTALL, "uv_env_for", "bfapp", stdin=env).splitlines()
+    operator = _call(INSTALL, "uv_env_for", "operator", stdin=env).splitlines()
+    assert len(bfapp) == 8 and "UV_CACHE_DIR=/var/lib/bf-webapp/cache/uv" in bfapp
+    assert operator == [line for line in bfapp if not line.startswith("UV_CACHE_DIR=")]  # keeps their own cache
+
+
+def test_import_check_covers_the_audited_packages() -> None:
+    modules = _snippet(INSTALL, 'printf "%s\\n" "${AUDIT_MODULES[@]}"').stdout.split()
+    script = _call(INSTALL, "import_check_script")
+    compile(script, "import_check", "exec")
+    assert "modules = [" + ", ".join(f'"{m}"' for m in modules) + "]" in script
+    assert 'method="highs"' in script and "sys.exit(1 if failed else 0)" in script
+    for name in ("torch", "scipy", "psycopg2", "duckdb", "chromadb", "pyarrow", "sentence_transformers", "quickjs"):
+        assert name in modules  # docs/jetson_wheel_audit.md: highspy is scipy's HiGHS, checked by the LP
+    readme = (JETSON / "README.md").read_text(encoding="utf-8")
+    listed = re.search(r"then imports (.*?) in the synced", readme)
+    assert listed and set(re.split(r", | and ", listed.group(1))) == set(modules)
+
+
+# ---- benchmark.sh (SV-6.2) ------------------------------------------------------------------------------------------
+
+# real output of scripts/optimiser_bench.py (laptop, 29 Oct 2026)
+CASES = "cases built in 2.9 s: yard reference, calibration fallback (live, 2026-07-01 to 2026-10-07), cpus 8, solver "
+CASES += "processes 8\n"
+SOLVE_LOG = CASES + (
+    "one network solve: 1.64 s the first in this process (it builds the STRATA-Flow context), then 1.35-1.70 s\n"
+)
+JACOBIAN_LOG = CASES + (
+    "network Jacobian (17 solves): serial 28.3 s; 8 solver processes started in 12.2 s (0 with the STRATA-Flow "
+    "context from the forkserver), then the Jacobian 14.7 s\n"
+)
+STEP2_LOG = CASES + (
+    "network Jacobian: cache jacobian_6e45192249a45d30.json\n"
+    "[parallel] step2 strata:  179.5 s, 90 network solves (450.9 s solving); 2270 t/d, coke 300.31 kg/tHM, cost "
+    "29,834.6 Rs/tHM\n"
+    "[parallel] step2  fixed:    2.1 s, 0 network solves (0.0 s solving); 2270 t/d, coke 302.44 kg/tHM, cost "
+    "29,833.9 Rs/tHM\n"
+    "[parallel] wall time of the solves 181.4 s\n"
+    "above the limit or different\n"
+)
+MODES = ["solve", "jacobian", "step2", "max_production", "step1"]
+BENCH_DOC = ROOT / "docs" / "jetson_benchmark.md"
+START, END = "<!-- benchmark:start -->", "<!-- benchmark:end -->"
+
+
+def test_benchmark_targets_are_section_10_of_the_plan() -> None:
+    targets = {mode: _call(BENCH, "target_seconds", mode).strip() for mode in MODES}
+    assert targets == {"solve": "2.8", "jacobian": "6", "step2": "90", "max_production": "300", "step1": "600"}
+    assert _snippet(BENCH, 'printf "%s " "${MODES_ALL[@]}"').stdout.split() == MODES
+    assert _call(BENCH, "bench_args", "jacobian", "8") == "--mode jacobian --solvers 8 --limit-s 6\n"
+    assert _call(BENCH, "bench_args", "step1", "8") == "--mode step1 --limit-s 600\n"
+    assert _status(BENCH, "target_seconds", "step3") == 1
+
+
+def test_bench_output_parsers_read_the_real_output() -> None:
+    assert _call(BENCH, "bench_seconds", "solve", stdin=SOLVE_LOG) == "1.70\n"  # the slowest repeat
+    note = _call(BENCH, "bench_note", "solve", stdin=SOLVE_LOG)
+    assert note == "first solve 1.64 s (builds the context), then 1.35-1.70 s\n"
+    assert _call(BENCH, "bench_seconds", "jacobian", stdin=JACOBIAN_LOG) == "14.7\n"
+    assert (
+        _call(BENCH, "bench_note", "jacobian", stdin=JACOBIAN_LOG) == "serial 28.3 s; 8 processes started in 12.2 s\n"
+    )
+    assert _call(BENCH, "bench_seconds", "step2", stdin=STEP2_LOG) == "181.4\n"
+    assert _call(BENCH, "bench_note", "step2", stdin=STEP2_LOG) == "90 network solves in 2 case(s)\n"
+    crashed = "cases built in 2.3 s\nTraceback (most recent call last):\n"
+    for mode in MODES:
+        assert _status(BENCH, "bench_seconds", mode, stdin=crashed) == 1
+
+
+def test_results_block_and_its_place_in_the_document(tmp_path: Path) -> None:
+    assert _status(BENCH, "above_target", "14.7", "6") == 0 and _status(BENCH, "above_target", "6", "6") == 1
+    assert _call(BENCH, "fmt_seconds", "2.8") == "2.8 s\n"
+    assert _call(BENCH, "fmt_seconds", "1158.2") == "1158 s (19.3 min)\n"
+    text = BENCH_DOC.read_text(encoding="utf-8")
+    pending = "".join(f"{m}\t-\t{_call(BENCH, 'target_seconds', m).strip()}\tpending: device\t\n" for m in MODES)
+    assert _call(BENCH, "results_rows", stdin=pending) in text  # the document's pending table is the script's own
+    tsv = (
+        "solve\t1.70\t2.8\tPASS within target\tfirst solve 1.64 s (builds the context), then 1.35-1.70 s\n"
+        "step1\t-\t600\tFAIL no result (exit 1)\t\n"
+    )
+    block = _call(BENCH, "results_block", "2026-11-02 08:00Z on NVIDIA Jetson AGX Orin", stdin=tsv)
+    assert block.splitlines() == [
+        START,
+        "Measured 2026-11-02 08:00Z on NVIDIA Jetson AGX Orin",
+        "",
+        "| Operation | Target (AGX Orin) | Measured | Status | Notes |",
+        "|---|---|---|---|---|",
+        "| One STRATA-Flow network solve (worst of 3 repeats after the first) | 2.8 s | 1.7 s | PASS within target | "
+        "first solve 1.64 s (builds the context), then 1.35-1.70 s |",
+        "| Step 1, cheapest production level and frontier (STRATA-ω) | 600 s (10.0 min) | — | FAIL no result (exit 1) "
+        "| — |",
+        END,
+    ]
+    copy = tmp_path / "doc.md"
+    copy.write_bytes(text.encode())
+    replaced = _call(BENCH, "replace_between", copy.as_posix(), stdin=block)
+    head, tail = text[: text.index(START)], text[text.index(END) + len(END) + 1 :]
+    assert replaced == head + block + tail
+    copy.write_bytes(b"no markers\n")
+    assert _status(BENCH, "replace_between", copy.as_posix(), stdin=block) == 1
+
+
+def test_issue_for_a_runtime_above_target() -> None:
+    repo = _call(BENCH, "repo_of_url", "git@github.com:saikumar-voptimai/evonith_bf_webapp.git")
+    assert repo == "saikumar-voptimai/evonith_bf_webapp\n"
+    assert _call(BENCH, "repo_of_url", "https://github.com/owner/name") == "owner/name\n"
+    assert _call(BENCH, "repo_of_url", "https://gitlab.com/owner/name.git") == ""
+    title = _call(BENCH, "issue_title", "step1", "1158.2", "600")
+    assert title == "Jetson benchmark: step1 1158 s (19.3 min) above the 600 s (10.0 min) target (SV-6.2)\n"
+    body = _call(
+        BENCH, "issue_body", "step1", "1158.2", "600", "host", "1260 network solves in 1 case(s)", "/tmp/x.log"
+    )
+    assert "**1158 s (19.3 min)**" in body and "Refs #316" in body and "--mode step1 --compare" in body
+
+
+def test_benchmark_argument_errors_and_defaults() -> None:
+    assert _bash(BENCH.as_posix(), "--help").returncode == 0
+    cases = {
+        "--mode: one of": ["--mode", "step3"],
+        "--solvers: a number": ["--solvers", "eight"],
+        "--release: not a directory": ["--release", "/nonexistent/bf"],
+        "unknown argument": ["--fast"],
+        "needs a value": ["--doc"],
+    }
+    for message, args in cases.items():
+        done = _bash(BENCH.as_posix(), *args)
+        assert done.returncode == 2 and message in done.stderr and "==" not in done.stdout, (message, done.stderr)
+    code = 'parse_args "$@"; printf "%s|%s|%s|%s|%s" "${MODES[*]}" "$SOLVERS" "$DOC" "$LIVE_DAY" "$OPEN_ISSUE"'
+    assert _snippet(BENCH, code).stdout == f"{' '.join(MODES)}|8|docs/jetson_benchmark.md|0|0"
+
+
+# fake uv: canned optimiser_bench.py output per mode; the jacobian above its target, step1 crashes
+FAKE_UV = r"""#!/usr/bin/env bash
+case "$*" in
+--version) echo "uv 0.7.13 (62ed17b23 2025-06-12)"; exit 0 ;;
+"run --no-sync python --version") echo "Python 3.12.10"; exit 0 ;;
+esac
+printf '%s\n' "$*" >>"$BF_FAKE_CALLS"
+mode=$(sed -nE 's/.*--mode ([a-z_0-9]+).*/\1/p' <<<"$*")
+case $mode in
+solve) printf '%s' "$SOLVE_LOG" ;;
+jacobian) printf '%s' "$JACOBIAN_LOG"; exit 1 ;;
+step2) printf '[parallel] step2 strata:   61.0 s, 73 network solves (90.0 s solving); x\n'
+	printf '[parallel] wall time of the solves 61.5 s\n' ;;
+max_production) printf '[parallel] max_production strata:  250.0 s, 347 network solves (400.0 s solving); x\n'
+	printf '[parallel] wall time of the solves 251.0 s\n' ;;
+step1) echo "Traceback (most recent call last):"; exit 1 ;;
+esac
+"""
+
+
+def test_benchmark_end_to_end_on_a_fake_release(tmp_path: Path) -> None:
+    release = tmp_path / "release"
+    for path, content in {
+        "scripts/optimiser_bench.py": b"# fake\n",
+        "uv.lock": b"version = 1\n",
+        ".venv/bin/python": b"#!/bin/sh\n",
+        "docs/jetson_benchmark.md": BENCH_DOC.read_bytes(),
+    }.items():
+        (release / path).parent.mkdir(parents=True, exist_ok=True)
+        (release / path).write_bytes(content)
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "uv").write_bytes(FAKE_UV.encode())
+    calls = tmp_path / "calls.txt"
+    code = (
+        'chmod +x "$2/uv" "$1/.venv/bin/python"; bin=$(cygpath -u "$2" 2>/dev/null || printf %s "$2"); '
+        'export PATH="$bin:$PATH" BF_FAKE_CALLS="$3" SOLVE_LOG="$4" '
+        'JACOBIAN_LOG="$5"; "$6" --release "$1" --log-dir "$1/logs"'
+    )
+    args = [release.as_posix(), (tmp_path / "bin").as_posix(), calls.as_posix(), SOLVE_LOG, JACOBIAN_LOG]
+    done = _bash("-c", code, "bash", *args, BENCH.as_posix())
+    assert done.returncode == 1, done.stdout + done.stderr  # jacobian above target, step1 without result
+    made = calls.read_text(encoding="utf-8").splitlines()
+    assert [line.split("--mode ")[1].split()[0] for line in made] == MODES
+    assert made[1] == "run --no-sync python -u scripts/optimiser_bench.py --mode jacobian --solvers 8 --limit-s 6"
+    text = (release / "docs" / "jetson_benchmark.md").read_text(encoding="utf-8")
+    block = text[text.index(START) : text.index(END)]
+    assert "Measured " in block and "uv 0.7.13, Python 3.12.10" in block and "pending: device" not in block
+    assert "| 2.8 s | 1.7 s | PASS within target |" in block
+    assert "| 6.0 s | 14.7 s | FAIL above target | serial 28.3 s; 8 processes started in 12.2 s |" in block
+    assert "| 90.0 s | 61.5 s | PASS within target | 73 network solves in 1 case(s) |" in block
+    assert "| 300 s (5.0 min) | 251 s (4.2 min) | PASS within target |" in block
+    assert "| 600 s (10.0 min) | — | FAIL no result (exit 1) | — |" in block
+    original = BENCH_DOC.read_text(encoding="utf-8")
+    assert text.startswith(original[: original.index(START)]) and text.endswith(original[original.index(END) :])
+    # one issue command per runtime above target (a mode without result fails the run but has no runtime to report)
+    commands = [line for line in done.stdout.splitlines() if "gh issue create" in line]
+    assert len(commands) == 1 and "--repo saikumar-voptimai/evonith_bf_webapp" in commands[0]
+    assert "Jetson benchmark: jacobian 14.7 s above the 6.0 s target (SV-6.2)" in commands[0]
+    issue = (release / "logs" / "issue-jacobian.md").read_text(encoding="utf-8")
+    assert "Refs #316" in issue and "Bench: serial 28.3 s" in issue and "logs/jacobian.log`" in issue
