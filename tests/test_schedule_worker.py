@@ -79,7 +79,9 @@ def test_a_worker_started_after_a_slot_catches_it_up(redis_url, monkeypatch) -> 
     monkeypatch.setitem(CATALOG, kind.name, kind)
     monkeypatch.setitem(runtime.HANDLERS, kind.name, tick)
     monkeypatch.setenv("BF_WORKER_CATCH_UP", "1")
-    monkeypatch.setenv("BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.,system.")
+    monkeypatch.setenv(
+        "BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.,shift.,system."
+    )
     monkeypatch.setattr(runtime, "CATCH_UP_DELAY_S", 0.2)
 
     async def run():
@@ -117,7 +119,9 @@ def test_the_catch_up_can_be_turned_off(redis_url, monkeypatch) -> None:
     kind, _, _ = _tick_kind(now)
     monkeypatch.setitem(CATALOG, kind.name, kind)
     monkeypatch.setenv("BF_WORKER_CATCH_UP", "0")
-    monkeypatch.setenv("BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.,system.")
+    monkeypatch.setenv(
+        "BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.,shift.,system."
+    )
 
     async def run():
         pool, store = await connect(redis_url)

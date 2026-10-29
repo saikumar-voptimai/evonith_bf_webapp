@@ -1,14 +1,16 @@
 /**
  * State of the Shift Reports page (SV-2.4, #296): the list for the view's date and shift (`GET /api/reports`), the
  * selected report (`GET /api/reports/{id}`), the thresholds (`GET /api/reports/thresholds`), the twin window of the
- * report's shift (`GET /api/twin/series`), and the job that regenerates a report (`JobTracker`; `report.live` through
- * `POST /api/reports/live`, `report.shift` through `POST /api/jobs`).
+ * report's shift (`GET /api/twin/series`), the handover record the report links (`GET /api/shift-records/{key}`,
+ * SV-2.5), and the job that regenerates a report (`JobTracker`; `report.live` through `POST /api/reports/live`,
+ * `report.shift` through `POST /api/jobs`).
  *
- * `start()` subscribes to `job.done`: a finished report job reloads the list. The job followed here (started here, or
- * a queued or running report job of the shown shift: the schedule's or another user's) opens the report it wrote once
- * it is done: `jobFinished()` (called by the page whenever the tracker's record reads done, whether the stream or the
- * tracker's poll brought the end) passes its `report_id` to `onreport`, which updates the URL. The function `start()`
- * returns undoes every subscription and timer (the page calls it on destroy).
+ * `start()` subscribes to `job.done`: a finished report job reloads the list, a finished `shift.close` the shown report
+ * (its record link). The job followed here (started here, or a queued or running report job of the shown shift: the
+ * schedule's or another user's) opens the report it wrote once it is done: `jobFinished()` (called by the page whenever
+ * the tracker's record reads done, whether the stream or the tracker's poll brought the end) passes its `report_id` to
+ * `onreport`, which updates the URL. The function `start()` returns undoes every subscription and timer (the page calls
+ * it on destroy).
  */
 import { api } from '../api/client.ts';
 import { JobTracker, jobsApi, type JobRecord, type JobsApi } from '../live/jobs.svelte.ts';
@@ -18,12 +20,14 @@ import {
 	listKey,
 	pickTwinRow,
 	regenerateJob,
+	RECORD_JOB_KIND,
 	REPORT_JOB_KINDS,
 	twinQuery,
 	type ReportDetail,
 	type ReportsView,
 	type ReportSummary,
 	type ReportThresholds,
+	type ShiftRecord,
 	type TwinQuery,
 	type TwinSeriesRow
 } from './reports.ts';
@@ -33,6 +37,8 @@ export interface ReportsApi {
 	detail(id: string): Promise<ReportDetail>;
 	thresholds(): Promise<ReportThresholds>;
 	twin(q: TwinQuery): Promise<TwinSeriesRow[]>;
+	/** The handover record of a shift (`YYYY-MM-DD_A`). */
+	record(shiftKey: string): Promise<ShiftRecord>;
 	jobs(): Promise<JobRecord[]>;
 }
 
@@ -50,6 +56,10 @@ export const reportsApi: ReportsApi = {
 	async twin(q) {
 		const { data } = await api.GET('/api/twin/series', { params: { query: q } });
 		return data?.rows ?? [];
+	},
+	async record(shiftKey) {
+		const params = { path: { shift_key: shiftKey } };
+		return (await api.GET('/api/shift-records/{shift_key}', { params })).data!;
 	},
 	async jobs() {
 		return (await api.GET('/api/jobs', { params: { query: { limit: 50 } } })).data ?? [];
@@ -89,6 +99,9 @@ export class ShiftReports {
 	twin = $state.raw<TwinSeriesRow | null>(null);
 	twinQuery = $state.raw<TwinQuery | null>(null);
 	twinState = $state<LoadState>(idle());
+	/** The handover record the shown report links (null: none linked, or not loaded). */
+	record = $state.raw<ShiftRecord | null>(null);
+	recordState = $state<LoadState>(idle());
 
 	/** Regeneration (or the running shift's report) started here, or a report job of the shown shift. */
 	readonly tracker: JobTracker;
@@ -102,6 +115,7 @@ export class ShiftReports {
 	#listRequest = 0;
 	#detailRequest = 0;
 	#twinRequest = 0;
+	#recordRequest = 0;
 	/** Followed job whose report has been opened already. */
 	#opened: string | null = null;
 
@@ -128,6 +142,9 @@ export class ShiftReports {
 			this.#stream.start(),
 			this.#stream.on('job.done', (e) => {
 				if ((REPORT_JOB_KINDS as readonly string[]).includes(e.data.kind)) void this.loadList();
+				// A record frozen now: the shown report reads its link again (the record exists once per shift).
+				if (e.data.kind === RECORD_JOB_KIND && this.detail && !this.detail.record)
+					void this.loadDetail(this.#view?.id ?? this.detail.id);
 			})
 		);
 		void this.loadThresholds();
@@ -186,11 +203,14 @@ export class ShiftReports {
 			this.detail = detail;
 			this.detailState = { loading: false, error: null, at: Date.now() };
 			void this.loadTwin(detail);
+			void this.loadRecord(detail);
 			if (shiftChanged) void this.#followActive(detail);
 		} catch (e) {
 			if (id !== this.#detailRequest) return;
+			++this.#recordRequest;
 			this.detail = null;
 			this.twin = null;
+			this.record = null;
 			this.detailState = { ...this.detailState, loading: false, error: e };
 		}
 	}
@@ -215,6 +235,28 @@ export class ShiftReports {
 		}
 	}
 
+	/** The record the report links; a report without a link shows why (`recordLinkState`). */
+	async loadRecord(detail: ReportDetail): Promise<void> {
+		const id = ++this.#recordRequest;
+		const key = detail.record?.shift_key ?? null;
+		if (this.record?.shift_key !== key) this.record = null;
+		if (!key) {
+			this.recordState = idle();
+			return;
+		}
+		this.recordState = { ...this.recordState, loading: true };
+		try {
+			const record = await this.#api.record(key);
+			if (id !== this.#recordRequest) return;
+			this.record = record;
+			this.recordState = { loading: false, error: null, at: Date.now() };
+		} catch (e) {
+			if (id !== this.#recordRequest) return;
+			this.record = null;
+			this.recordState = { ...this.recordState, loading: false, error: e };
+		}
+	}
+
 	/** Regenerate the shown report: `report.shift` for an ended shift, `report.live` for the running shift. */
 	async regenerate(): Promise<void> {
 		const detail = this.detail;
@@ -231,11 +273,14 @@ export class ShiftReports {
 	#clearDetail(): void {
 		++this.#detailRequest;
 		++this.#twinRequest;
+		++this.#recordRequest;
 		this.detail = null;
 		this.twin = null;
 		this.twinQuery = null;
+		this.record = null;
 		this.detailState = idle();
 		this.twinState = idle();
+		this.recordState = idle();
 	}
 
 	/** Follow a queued or running report job of the shown shift (the schedule's, or another user's). */

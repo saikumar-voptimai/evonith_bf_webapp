@@ -8,7 +8,7 @@
 import type { Schemas } from '../api/client.ts';
 import type { StatusKind } from '../components/status.ts';
 import { RANGE_DASH, UNIT_SPACE } from '../format/number.ts';
-import { formatDay } from '../time/format.ts';
+import { formatDay, istDateTime } from '../time/format.ts';
 import { istClock, shiftAt, type ShiftLetter } from '../time/shift.ts';
 
 export type ReportSummary = Schemas['ShiftReportSummary'];
@@ -525,6 +525,96 @@ export function twinStatusChip(status: string): Chip {
 	if (status === 'partial')
 		return { kind: 'warning', label: 'Partial', title: 'Some inputs of the window were missing' };
 	return { kind: 'critical', label: 'Failed', title: 'The window could not be evaluated' };
+}
+
+// ------------------------------------------------------------------------------------------------ handover record
+export type ShiftRecord = Schemas['ShiftRecordDetail'];
+export type RecordLink = Schemas['ShiftRecordLink'];
+/** Job kind that freezes the handover record of a closed shift. */
+export const RECORD_JOB_KIND = 'shift.close';
+/** Schedule of `shift.close` (IST): the shift that closed 10 min earlier, retried to HH:30. */
+export const RECORD_SLOTS = '06:10, 14:10 and 22:10';
+/** Minutes after the shift end by which the record is frozen (last try of `shift.close`). */
+export const RECORD_DUE_MIN = 30;
+/** Fragment of the record panel in the report. */
+export const RECORD_ANCHOR = 'handover-record';
+
+/** Completeness of a frozen record: the shift's own window and the hourly windows stored at the close. */
+export function recordChip(
+	r: Pick<ShiftRecord, 'shift_window' | 'windows_stored' | 'windows_expected'>
+): Chip {
+	const hours = `${r.windows_stored} of ${r.windows_expected} hourly windows stored at the close`;
+	if (!r.shift_window)
+		return {
+			kind: 'warning',
+			label: 'No shift window',
+			title: `The twin had not stored the shift's window; ${hours}`
+		};
+	if (r.windows_stored < r.windows_expected) return { kind: 'warning', label: 'Partial', title: hours };
+	return { kind: 'ok', label: 'Complete', title: hours };
+}
+
+/** The report's record link, or why there is none: the shift is running, the record is due, or it is missing. */
+export function recordLinkState(
+	detail: Pick<ReportDetail, 'shift_end'> & { record?: RecordLink | null },
+	now: Date
+): Chip & { message: string } {
+	const end = Date.parse(detail.shift_end);
+	if (detail.record)
+		return {
+			kind: 'ok',
+			label: 'Frozen',
+			message: `Frozen ${istDateTime(new Date(detail.record.closed_at))} IST`
+		};
+	if (end > now.getTime())
+		return {
+			kind: 'info',
+			label: 'Shift running',
+			message: `The record is frozen after the shift ends (${RECORD_SLOTS} IST).`
+		};
+	if (end + RECORD_DUE_MIN * 60_000 > now.getTime())
+		return {
+			kind: 'info',
+			label: 'Due',
+			message: `shift.close freezes the record by ${istClock(new Date(end + RECORD_DUE_MIN * 60_000))} IST.`
+		};
+	return {
+		kind: 'warning',
+		label: 'No record',
+		message: `No handover record of this shift: shift.close did not freeze it (${RECORD_SLOTS} IST).`
+	};
+}
+
+/** The frozen readouts: the shift window's coke rates and implied ω as stored at the close. */
+export function recordCells(r: ShiftRecord): TwinCell[] {
+	const w = r.shift_window_snapshot;
+	return [
+		{ key: 'k_trace', label: 'Burnt coke', note: 'TRACE, oxygen balance', value: n(r.k_trace), sd: null, unit: 'kg/tHM', digits: 1, series: 'trace' },
+		{ key: 'k_forge', label: 'FORGE', note: 'Two-zone balance, 14-day medians', value: n(r.k_forge), sd: null, unit: 'kg/tHM', digits: 1, series: 'forge' },
+		{ key: 'k_strata', label: 'STRATA', note: 'Two-zone balance at ω STRATA', value: n(r.k_strata), sd: n(w?.k_strata_sd), unit: 'kg/tHM', digits: 1, series: 'strata' },
+		{ key: 'k_charged', label: 'Coke charged', note: 'Charge records', value: n(r.k_charged), sd: null, unit: 'kg/tHM', digits: 1, series: 'charged' },
+		{ key: 'omega_imp', label: 'ω implied', note: 'Shaft efficiency of the shift window', value: n(r.omega_imp), sd: null, unit: '', digits: 3 }
+	]; // prettier-ignore
+}
+
+/** The plan decision of the shift in one line, or why there is none. */
+export function decisionLine(r: Pick<ShiftRecord, 'plan'>): { chip: Chip; text: string } {
+	const p = r.plan;
+	if (!p)
+		return {
+			chip: { kind: 'info', label: 'No decision' },
+			text: 'No plan was accepted or rejected in the shift.'
+		};
+	const d = p.decision;
+	const chip: Chip =
+		d.decision === 'accepted'
+			? { kind: 'ok', label: 'Plan accepted' }
+			: { kind: 'warning', label: 'Plan rejected' };
+	const run = p.run;
+	const what = run
+		? `${run.mode === 'step1' ? 'Step 1' : run.mode === 'step2' ? 'Step 2' : 'Maximum production'}, ${run.omega_mode === 'strata' ? 'STRATA-ω' : 'Fixed-ω'}`
+		: 'Optimiser run';
+	return { chip, text: `${what}, decided by ${d.decided_by} ${istDateTime(new Date(d.decided_at))} IST` };
 }
 
 // ------------------------------------------------------------------------------------------------ narrative

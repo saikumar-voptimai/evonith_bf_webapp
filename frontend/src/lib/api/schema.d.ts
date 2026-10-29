@@ -1067,6 +1067,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shift-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shift handover records
+         * @description Newest shift first.
+         */
+        get: operations["shift records_list_records"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shift-records/{shift_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A shift handover record
+         * @description The frozen record with its hourly snapshots, plan decision and the shift's newest closed report.
+         */
+        get: operations["shift records_get_record"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status/settings": {
         parameters: {
             query?: never;
@@ -5944,6 +5984,122 @@ export interface components {
              */
             slag_kg_thm?: number | null;
         };
+        /** FrozenDecision */
+        FrozenDecision: {
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Decided At
+             * Format: date-time
+             * @description UTC
+             */
+            decided_at: string;
+            /** Decided By */
+            decided_by: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accepted" | "rejected";
+            /**
+             * Run Id
+             * @description Run id (UUID)
+             */
+            run_id: string;
+            /**
+             * Shift Key
+             * @description Shift of the decision (YYYY-MM-DD_A, IST date)
+             */
+            shift_key?: string | null;
+        };
+        /** FrozenPlan */
+        FrozenPlan: {
+            decision: components["schemas"]["FrozenDecision"];
+            /** @description Headline of the decided run at the close */
+            run?: components["schemas"]["FrozenRun"] | null;
+        };
+        /** FrozenRun */
+        FrozenRun: {
+            /**
+             * Certainty
+             * @description High, Medium, Low or Investigate (STRATA-ω)
+             */
+            certainty?: string | null;
+            /**
+             * Coke Kg Thm
+             * @description Coke rate of the plan, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Coke Sd Kg Thm
+             * @description 1 sigma of the coke rate, kg/tHM dry (STRATA-ω)
+             */
+            coke_sd_kg_thm?: number | null;
+            /**
+             * Cost Rs Thm
+             * @description Ore + flux + fuel − slag credit of the plan, Rs/tHM
+             */
+            cost_rs_thm?: number | null;
+            /**
+             * Finished At
+             * Format: date-time
+             * @description UTC
+             */
+            finished_at: string;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke (wet) + nut coke + PCI of the plan, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Id
+             * @description Run id (UUID)
+             */
+            id: string;
+            /**
+             * Job Id
+             * @description Job that produced the run
+             */
+            job_id?: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "step1" | "step2" | "max_production";
+            /**
+             * Omega Mode
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /**
+             * Production T D
+             * @description Hot metal of the plan, t/d
+             */
+            production_t_d?: number | null;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * Saving Rs Thm
+             * @description Cost of the charged blend minus the plan's, Rs/tHM
+             */
+            saving_rs_thm?: number | null;
+            /**
+             * Started At
+             * Format: date-time
+             * @description UTC
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "infeasible" | "failed";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "schedule" | "user";
+        };
         /** FuelEditorInputs */
         FuelEditorInputs: {
             /**
@@ -9319,6 +9475,251 @@ export interface components {
              */
             outside?: string[];
         };
+        /** ShiftRecordDetail */
+        ShiftRecordDetail: {
+            /**
+             * Closed At
+             * Format: date-time
+             * @description Time the record was frozen, UTC
+             */
+            closed_at: string;
+            /**
+             * Frozen By
+             * @description Who submitted the job that froze it (scheduler or a user)
+             */
+            frozen_by?: string | null;
+            /**
+             * Frozen By Job
+             * @description Job that froze the record
+             */
+            frozen_by_job?: string | null;
+            /**
+             * Hourly
+             * @description Hourly twin snapshots ending in the shift as stored at the close
+             */
+            hourly?: components["schemas"]["TwinSnapshotData"][];
+            /**
+             * Href
+             * @description This record, GET path
+             */
+            href: string;
+            /**
+             * K Charged
+             * @description Coke charged in the shift window, kg/tHM dry
+             */
+            k_charged?: number | null;
+            /**
+             * K Forge
+             * @description Two-zone balance at the 14-day medians (FORGE), kg/tHM dry
+             */
+            k_forge?: number | null;
+            /**
+             * K Strata
+             * @description Two-zone balance at omega_STRATA, kg/tHM dry
+             */
+            k_strata?: number | null;
+            /**
+             * K Trace
+             * @description Burnt coke of the shift window (TRACE), kg/tHM dry
+             */
+            k_trace?: number | null;
+            /**
+             * Missing Windows
+             * @description Ends of the hourly windows not stored at the close, UTC
+             */
+            missing_windows?: string[];
+            /**
+             * Omega Imp
+             * @description Implied shaft efficiency of the shift window, dimensionless
+             */
+            omega_imp?: number | null;
+            /** @description The latest plan decision of the shift and its run */
+            plan?: components["schemas"]["FrozenPlan"] | null;
+            /**
+             * Plan Decision
+             * @description The latest decision taken in the shift; null without one
+             */
+            plan_decision?: ("accepted" | "rejected") | null;
+            /**
+             * Plan Run Id
+             * @description Optimiser run of the latest decision in the shift (UUID)
+             */
+            plan_run_id?: string | null;
+            /**
+             * Report Id
+             * @description The shift's newest closed report now (UUID); null before report.shift has written it
+             */
+            report_id?: string | null;
+            /**
+             * Report Ref
+             * @description Shift Reports view of the shift (SPA path)
+             */
+            report_ref?: string | null;
+            /**
+             * Shift
+             * @enum {string}
+             */
+            shift: "A" | "B" | "C";
+            /**
+             * Shift Date
+             * Format: date
+             * @description IST date of the shift start
+             */
+            shift_date: string;
+            /**
+             * Shift End
+             * Format: date-time
+             * @description UTC
+             */
+            shift_end: string;
+            /**
+             * Shift Key
+             * @description YYYY-MM-DD_A|B|C, IST date of the shift start
+             */
+            shift_key: string;
+            /**
+             * Shift Start
+             * Format: date-time
+             * @description UTC
+             */
+            shift_start: string;
+            /**
+             * Shift Window
+             * @description Whether the snapshot of the shift's own window was stored
+             */
+            shift_window: boolean;
+            /** @description Snapshot of the shift's own window [shift_start, shift_end); null when it was missing */
+            shift_window_snapshot?: components["schemas"]["TwinSnapshotData"] | null;
+            /**
+             * Windows Expected
+             * @description Hourly twin windows ending in a shift, count (8)
+             */
+            windows_expected: number;
+            /**
+             * Windows Stored
+             * @description Hourly twin windows ending in the shift that were stored, count
+             */
+            windows_stored: number;
+        };
+        /**
+         * ShiftRecordLink
+         * @description A shift report's link to the handover record of its shift.
+         */
+        ShiftRecordLink: {
+            /**
+             * Closed At
+             * Format: date-time
+             * @description Time the record was frozen, UTC
+             */
+            closed_at: string;
+            /**
+             * Href
+             * @description GET path of the record
+             */
+            href: string;
+            /**
+             * Shift Key
+             * @description YYYY-MM-DD_A|B|C
+             */
+            shift_key: string;
+        };
+        /** ShiftRecordSummary */
+        ShiftRecordSummary: {
+            /**
+             * Closed At
+             * Format: date-time
+             * @description Time the record was frozen, UTC
+             */
+            closed_at: string;
+            /**
+             * Href
+             * @description This record, GET path
+             */
+            href: string;
+            /**
+             * K Charged
+             * @description Coke charged in the shift window, kg/tHM dry
+             */
+            k_charged?: number | null;
+            /**
+             * K Forge
+             * @description Two-zone balance at the 14-day medians (FORGE), kg/tHM dry
+             */
+            k_forge?: number | null;
+            /**
+             * K Strata
+             * @description Two-zone balance at omega_STRATA, kg/tHM dry
+             */
+            k_strata?: number | null;
+            /**
+             * K Trace
+             * @description Burnt coke of the shift window (TRACE), kg/tHM dry
+             */
+            k_trace?: number | null;
+            /**
+             * Omega Imp
+             * @description Implied shaft efficiency of the shift window, dimensionless
+             */
+            omega_imp?: number | null;
+            /**
+             * Plan Decision
+             * @description The latest decision taken in the shift; null without one
+             */
+            plan_decision?: ("accepted" | "rejected") | null;
+            /**
+             * Plan Run Id
+             * @description Optimiser run of the latest decision in the shift (UUID)
+             */
+            plan_run_id?: string | null;
+            /**
+             * Report Ref
+             * @description Shift Reports view of the shift (SPA path)
+             */
+            report_ref?: string | null;
+            /**
+             * Shift
+             * @enum {string}
+             */
+            shift: "A" | "B" | "C";
+            /**
+             * Shift Date
+             * Format: date
+             * @description IST date of the shift start
+             */
+            shift_date: string;
+            /**
+             * Shift End
+             * Format: date-time
+             * @description UTC
+             */
+            shift_end: string;
+            /**
+             * Shift Key
+             * @description YYYY-MM-DD_A|B|C, IST date of the shift start
+             */
+            shift_key: string;
+            /**
+             * Shift Start
+             * Format: date-time
+             * @description UTC
+             */
+            shift_start: string;
+            /**
+             * Shift Window
+             * @description Whether the snapshot of the shift's own window was stored
+             */
+            shift_window: boolean;
+            /**
+             * Windows Expected
+             * @description Hourly twin windows ending in a shift, count (8)
+             */
+            windows_expected: number;
+            /**
+             * Windows Stored
+             * @description Hourly twin windows ending in the shift that were stored, count
+             */
+            windows_stored: number;
+        };
         /**
          * ShiftReportDataView
          * @description The report's metrics (``reports.furnace_report.data.ShiftReportData``).
@@ -9640,6 +10041,8 @@ export interface components {
              * @description Hot-metal production rate, mean, t/h
              */
             production_rate_t_h?: number | null;
+            /** @description The handover record of the report's shift; null until shift.close has frozen it */
+            record?: components["schemas"]["ShiftRecordLink"] | null;
             /** Requested By */
             requested_by: string;
             /**
@@ -15174,6 +15577,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShiftReportDetail"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    "shift records_list_records": {
+        parameters: {
+            query?: {
+                /** @description IST date of the shift start */
+                date?: string | null;
+                /** @description Only this shift */
+                shift?: ("A" | "B" | "C") | null;
+                /** @description Records, count (42 = 14 days) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftRecordSummary"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    "shift records_get_record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description YYYY-MM-DD_A|B|C, IST date of the shift start */
+                shift_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftRecordDetail"];
                 };
             };
             /** @description Client error (problem+json) */

@@ -3,15 +3,19 @@
 One shift report as the Shift Reports page shows and prints it (SV-2.4, #296): header with the rule-based status and
 its flags, KPI tiles with their levels against the thresholds of `config/shift_report.yml`, fuel rates, material
 charged, burden ratio, IBRM and materials, the parameters, the quadrant and hearth temperatures, the twin window of the
-shift, and the LLM narrative with its job state and the regenerate action. Prints in one column on A4 (print theme;
-`print.ts` plans the pages).
+shift, the LLM narrative with its job state and the regenerate action, and the shift's handover record (SV-2.5: the
+twin values, plan decision and report link frozen by `shift.close`, linked from the header; not printed). Prints in one
+column on A4 (print theme; `print.ts` plans the pages).
 -->
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import Activity from '@lucide/svelte/icons/activity';
 	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Flame from '@lucide/svelte/icons/flame';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Gauge from '@lucide/svelte/icons/gauge';
+	import Lock from '@lucide/svelte/icons/lock';
 	import Printer from '@lucide/svelte/icons/printer';
 	import Thermometer from '@lucide/svelte/icons/thermometer';
 	import Button from '../components/Button.svelte';
@@ -35,6 +39,7 @@ shift, and the LLM narrative with its job state and the regenerate action. Print
 		burdenFacts,
 		burdenShares,
 		consumptionCells,
+		decisionLine,
 		fuelCells,
 		furnaceStatusChip,
 		hearthCells,
@@ -45,6 +50,10 @@ shift, and the LLM narrative with its job state and the regenerate action. Print
 		narrativeBlocks,
 		narrativeChip,
 		parameterGroups,
+		RECORD_ANCHOR,
+		recordCells,
+		recordChip,
+		recordLinkState,
 		regenerateJob,
 		reportTiles,
 		shiftWindow,
@@ -89,6 +98,15 @@ shift, and the LLM narrative with its job state and the regenerate action. Print
 	const record = $derived(ours ? reports.tracker.record : null);
 	const otherBusy = $derived(reports.tracker.active && !ours);
 	const toDate = (iso: string | null | undefined): Date | null => (iso ? new Date(iso) : null);
+	const recordLink = $derived(recordLinkState(detail, clock.now));
+	/** The record of this report's shift once loaded (a record of the shown report before is not shown). */
+	const handover = $derived(reports.record?.shift_key === detail.shift_key ? reports.record : null);
+	const missing = $derived(handover?.missing_windows ?? []);
+	const missingNote = $derived(
+		missing.length
+			? `; missing the windows ending ${missing.map((t) => istClock(new Date(t))).join(', ')} IST`
+			: ''
+	);
 
 	/** One-row table of quantities (the tab's Fuel Rate, Consumption and Hearth sections). */
 	function rowOf(cells: Cell[]): Record<string, number | null> {
@@ -194,6 +212,16 @@ shift, and the LLM narrative with its job state and the regenerate action. Print
 			<div>
 				<dt>Window</dt>
 				<dd>{formatQuantity(d.duration_h, 0, 'h')}, {d.window_id}</dd>
+			</div>
+			<div data-print="hide">
+				<dt>Handover record</dt>
+				<dd>
+					{#if detail.record}<a href="#{RECORD_ANCHOR}">{recordLink.message}</a>{:else}<StatusChip
+							kind={recordLink.kind}
+							label={recordLink.label}
+							title={recordLink.message}
+						/>{/if}
+				</dd>
 			</div>
 		</dl>
 	</Panel>
@@ -383,6 +411,92 @@ shift, and the LLM narrative with its job state and the regenerate action. Print
 		</Panel>
 	{/if}
 
+	<div id={RECORD_ANCHOR} class="record" data-print="hide">
+		{#if handover}
+			{@const chip = recordChip(handover)}
+			{@const decision = decisionLine(handover)}
+			<Panel
+				title="Handover record"
+				icon={Lock}
+				note="Frozen {istDateTime(new Date(handover.closed_at))} IST by {handover.frozen_by ??
+					'shift.close'}: the twin as stored at the close, coke in kg/tHM dry. Read-only."
+			>
+				{#snippet actions()}
+					<StatusChip kind={chip.kind} label={chip.label} title={chip.title} />
+				{/snippet}
+				<div class="tiles twin">
+					<KpiStrip min="11rem">
+						{#each recordCells(handover) as c (c.key)}
+							<KpiTile
+								label={c.label}
+								value={c.value}
+								unit={c.unit}
+								digits={c.digits}
+								spread={c.sd}
+								note={c.note}
+								series={c.series}
+							/>
+						{/each}
+					</KpiStrip>
+				</div>
+				<dl class="meta">
+					<div>
+						<dt>Hourly windows</dt>
+						<dd>{handover.windows_stored} of {handover.windows_expected} stored{missingNote}</dd>
+					</div>
+					<div>
+						<dt>Plan decision</dt>
+						<dd class="decision">
+							<StatusChip kind={decision.chip.kind} label={decision.chip.label} />
+							<span>{decision.text}</span>
+							{#if handover.plan?.decision.comment}<span class="muted"
+									>“{handover.plan.decision.comment}”</span
+								>{/if}
+							{#if handover.plan_run_id}
+								<a class="link" href="{resolve('/optimiser')}?run={encodeURIComponent(handover.plan_run_id)}"
+									><ExternalLink size={15} />Open the run</a
+								>
+							{/if}
+						</dd>
+					</div>
+					<div>
+						<dt>Record</dt>
+						<dd>
+							<a class="link" href={handover.href} rel="external" target="_blank"
+								><ExternalLink size={15} />JSON</a
+							>
+						</dd>
+					</div>
+				</dl>
+			</Panel>
+		{:else if reports.recordState.error}
+			<Panel title="Handover record" icon={Lock}>
+				<ErrorState
+					compact
+					title="Handover record not loaded"
+					error={reports.recordState.error}
+					onretry={() => void reports.loadRecord(detail)}
+					retrying={reports.recordState.loading}
+				/>
+			</Panel>
+		{:else if detail.record}
+			<Panel title="Handover record" icon={Lock} busy>
+				<Skeleton variant="block" height="120px" label={null} />
+			</Panel>
+		{:else}
+			<Panel title="Handover record" icon={Lock}>
+				{#snippet actions()}
+					<StatusChip kind={recordLink.kind} label={recordLink.label} />
+				{/snippet}
+				<EmptyState
+					compact
+					title={recordLink.kind === 'warning' ? 'No handover record' : 'Not frozen yet'}
+					message={recordLink.message}
+				/>
+			</Panel>
+		{/if}
+	</div>
+
 	<Panel
 		title="Narrative"
 		icon={FileText}
@@ -494,6 +608,20 @@ shift, and the LLM narrative with its job state and the regenerate action. Print
 	.print-plan {
 		font-size: var(--vo-fs-label);
 		color: var(--vo-text-muted);
+	}
+	.record {
+		scroll-margin-top: calc(84px + var(--vo-space-4));
+	}
+	.decision {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--vo-space-1) var(--vo-space-2);
+	}
+	.link {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
 	}
 	.rules {
 		display: block;

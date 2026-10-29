@@ -8937,6 +8937,254 @@
         "title": "FrontierPoint",
         "type": "object"
       },
+      "FrozenDecision": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "decided_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "run_id": {
+            "description": "Run id (UUID)",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "shift_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift of the decision (YYYY-MM-DD_A, IST date)",
+            "title": "Shift Key"
+          }
+        },
+        "required": [
+          "run_id",
+          "decision",
+          "decided_by",
+          "decided_at"
+        ],
+        "title": "FrozenDecision",
+        "type": "object"
+      },
+      "FrozenPlan": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/FrozenDecision"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FrozenRun"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Headline of the decided run at the close"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "FrozenPlan",
+        "type": "object"
+      },
+      "FrozenRun": {
+        "properties": {
+          "certainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "High, Medium, Low or Investigate (STRATA-\u03c9)",
+            "title": "Certainty"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate of the plan, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "coke_sd_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the coke rate, kg/tHM dry (STRATA-\u03c9)",
+            "title": "Coke Sd Kg Thm"
+          },
+          "cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + flux + fuel \u2212 slag credit of the plan, Rs/tHM",
+            "title": "Cost Rs Thm"
+          },
+          "finished_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke (wet) + nut coke + PCI of the plan, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "id": {
+            "description": "Run id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that produced the run",
+            "title": "Job Id"
+          },
+          "mode": {
+            "enum": [
+              "step1",
+              "step2",
+              "max_production"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "omega_mode": {
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot metal of the plan, t/d",
+            "title": "Production T D"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "saving_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cost of the charged blend minus the plan's, Rs/tHM",
+            "title": "Saving Rs Thm"
+          },
+          "started_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "infeasible",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "enum": [
+              "schedule",
+              "user"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "requested_by",
+          "mode",
+          "omega_mode",
+          "status",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "FrozenRun",
+        "type": "object"
+      },
       "FuelEditorInputs": {
         "additionalProperties": false,
         "properties": {
@@ -15974,6 +16222,461 @@
         "title": "ShaftEfficiency",
         "type": "object"
       },
+      "ShiftRecordDetail": {
+        "properties": {
+          "closed_at": {
+            "description": "Time the record was frozen, UTC",
+            "format": "date-time",
+            "title": "Closed At",
+            "type": "string"
+          },
+          "frozen_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who submitted the job that froze it (scheduler or a user)",
+            "title": "Frozen By"
+          },
+          "frozen_by_job": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that froze the record",
+            "title": "Frozen By Job"
+          },
+          "hourly": {
+            "description": "Hourly twin snapshots ending in the shift as stored at the close",
+            "items": {
+              "$ref": "#/components/schemas/TwinSnapshotData"
+            },
+            "title": "Hourly",
+            "type": "array"
+          },
+          "href": {
+            "description": "This record, GET path",
+            "title": "Href",
+            "type": "string"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged in the shift window, kg/tHM dry",
+            "title": "K Charged"
+          },
+          "k_forge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance at the 14-day medians (FORGE), kg/tHM dry",
+            "title": "K Forge"
+          },
+          "k_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance at omega_STRATA, kg/tHM dry",
+            "title": "K Strata"
+          },
+          "k_trace": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke of the shift window (TRACE), kg/tHM dry",
+            "title": "K Trace"
+          },
+          "missing_windows": {
+            "description": "Ends of the hourly windows not stored at the close, UTC",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Missing Windows",
+            "type": "array"
+          },
+          "omega_imp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Implied shaft efficiency of the shift window, dimensionless",
+            "title": "Omega Imp"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FrozenPlan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest plan decision of the shift and its run"
+          },
+          "plan_decision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "accepted",
+                  "rejected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest decision taken in the shift; null without one",
+            "title": "Plan Decision"
+          },
+          "plan_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optimiser run of the latest decision in the shift (UUID)",
+            "title": "Plan Run Id"
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The shift's newest closed report now (UUID); null before report.shift has written it",
+            "title": "Report Id"
+          },
+          "report_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift Reports view of the shift (SPA path)",
+            "title": "Report Ref"
+          },
+          "shift": {
+            "enum": [
+              "A",
+              "B",
+              "C"
+            ],
+            "title": "Shift",
+            "type": "string"
+          },
+          "shift_date": {
+            "description": "IST date of the shift start",
+            "format": "date",
+            "title": "Shift Date",
+            "type": "string"
+          },
+          "shift_end": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Shift End",
+            "type": "string"
+          },
+          "shift_key": {
+            "description": "YYYY-MM-DD_A|B|C, IST date of the shift start",
+            "title": "Shift Key",
+            "type": "string"
+          },
+          "shift_start": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Shift Start",
+            "type": "string"
+          },
+          "shift_window": {
+            "description": "Whether the snapshot of the shift's own window was stored",
+            "title": "Shift Window",
+            "type": "boolean"
+          },
+          "shift_window_snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TwinSnapshotData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Snapshot of the shift's own window [shift_start, shift_end); null when it was missing"
+          },
+          "windows_expected": {
+            "description": "Hourly twin windows ending in a shift, count (8)",
+            "title": "Windows Expected",
+            "type": "integer"
+          },
+          "windows_stored": {
+            "description": "Hourly twin windows ending in the shift that were stored, count",
+            "title": "Windows Stored",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shift_key",
+          "shift",
+          "shift_date",
+          "shift_start",
+          "shift_end",
+          "closed_at",
+          "windows_stored",
+          "windows_expected",
+          "shift_window",
+          "href"
+        ],
+        "title": "ShiftRecordDetail",
+        "type": "object"
+      },
+      "ShiftRecordLink": {
+        "description": "A shift report's link to the handover record of its shift.",
+        "properties": {
+          "closed_at": {
+            "description": "Time the record was frozen, UTC",
+            "format": "date-time",
+            "title": "Closed At",
+            "type": "string"
+          },
+          "href": {
+            "description": "GET path of the record",
+            "title": "Href",
+            "type": "string"
+          },
+          "shift_key": {
+            "description": "YYYY-MM-DD_A|B|C",
+            "title": "Shift Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shift_key",
+          "closed_at",
+          "href"
+        ],
+        "title": "ShiftRecordLink",
+        "type": "object"
+      },
+      "ShiftRecordSummary": {
+        "properties": {
+          "closed_at": {
+            "description": "Time the record was frozen, UTC",
+            "format": "date-time",
+            "title": "Closed At",
+            "type": "string"
+          },
+          "href": {
+            "description": "This record, GET path",
+            "title": "Href",
+            "type": "string"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged in the shift window, kg/tHM dry",
+            "title": "K Charged"
+          },
+          "k_forge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance at the 14-day medians (FORGE), kg/tHM dry",
+            "title": "K Forge"
+          },
+          "k_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance at omega_STRATA, kg/tHM dry",
+            "title": "K Strata"
+          },
+          "k_trace": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke of the shift window (TRACE), kg/tHM dry",
+            "title": "K Trace"
+          },
+          "omega_imp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Implied shaft efficiency of the shift window, dimensionless",
+            "title": "Omega Imp"
+          },
+          "plan_decision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "accepted",
+                  "rejected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest decision taken in the shift; null without one",
+            "title": "Plan Decision"
+          },
+          "plan_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optimiser run of the latest decision in the shift (UUID)",
+            "title": "Plan Run Id"
+          },
+          "report_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift Reports view of the shift (SPA path)",
+            "title": "Report Ref"
+          },
+          "shift": {
+            "enum": [
+              "A",
+              "B",
+              "C"
+            ],
+            "title": "Shift",
+            "type": "string"
+          },
+          "shift_date": {
+            "description": "IST date of the shift start",
+            "format": "date",
+            "title": "Shift Date",
+            "type": "string"
+          },
+          "shift_end": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Shift End",
+            "type": "string"
+          },
+          "shift_key": {
+            "description": "YYYY-MM-DD_A|B|C, IST date of the shift start",
+            "title": "Shift Key",
+            "type": "string"
+          },
+          "shift_start": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Shift Start",
+            "type": "string"
+          },
+          "shift_window": {
+            "description": "Whether the snapshot of the shift's own window was stored",
+            "title": "Shift Window",
+            "type": "boolean"
+          },
+          "windows_expected": {
+            "description": "Hourly twin windows ending in a shift, count (8)",
+            "title": "Windows Expected",
+            "type": "integer"
+          },
+          "windows_stored": {
+            "description": "Hourly twin windows ending in the shift that were stored, count",
+            "title": "Windows Stored",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shift_key",
+          "shift",
+          "shift_date",
+          "shift_start",
+          "shift_end",
+          "closed_at",
+          "windows_stored",
+          "windows_expected",
+          "shift_window",
+          "href"
+        ],
+        "title": "ShiftRecordSummary",
+        "type": "object"
+      },
       "ShiftReportDataView": {
         "description": "The report's metrics (``reports.furnace_report.data.ShiftReportData``).",
         "properties": {
@@ -16652,6 +17355,17 @@
             ],
             "description": "Hot-metal production rate, mean, t/h",
             "title": "Production Rate T H"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShiftRecordLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The handover record of the report's shift; null until shift.close has frozen it"
           },
           "requested_by": {
             "title": "Requested By",
@@ -26337,6 +27051,166 @@
         "summary": "A shift report",
         "tags": [
           "reports"
+        ]
+      }
+    },
+    "/api/shift-records": {
+      "get": {
+        "description": "Newest shift first.",
+        "operationId": "shift records_list_records",
+        "parameters": [
+          {
+            "description": "IST date of the shift start",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "IST date of the shift start",
+              "title": "Date"
+            }
+          },
+          {
+            "description": "Only this shift",
+            "in": "query",
+            "name": "shift",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "A",
+                    "B",
+                    "C"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this shift",
+              "title": "Shift"
+            }
+          },
+          {
+            "description": "Records, count (42 = 14 days)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 42,
+              "description": "Records, count (42 = 14 days)",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShiftRecordSummary"
+                  },
+                  "title": "Response Shift Records List Records",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Shift handover records",
+        "tags": [
+          "shift records"
+        ]
+      }
+    },
+    "/api/shift-records/{shift_key}": {
+      "get": {
+        "description": "The frozen record with its hourly snapshots, plan decision and the shift's newest closed report.",
+        "operationId": "shift records_get_record",
+        "parameters": [
+          {
+            "description": "YYYY-MM-DD_A|B|C, IST date of the shift start",
+            "in": "path",
+            "name": "shift_key",
+            "required": true,
+            "schema": {
+              "description": "YYYY-MM-DD_A|B|C, IST date of the shift start",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}_[ABC]$",
+              "title": "Shift Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftRecordDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "A shift handover record",
+        "tags": [
+          "shift records"
         ]
       }
     },
