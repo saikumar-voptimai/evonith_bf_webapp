@@ -4,7 +4,8 @@
 ``<directory>/evidence.csv`` (created from the shipped seed on the first run: 191 days to 7 Oct 2026) against the
 deployed asset (STRATA 1.5) and the fact register, and writes the run's outputs next to it: ``strata_learn_state.json``,
 ``strata_learn_history.csv``, ``register_proposal.json`` and ``strata_learn_report.md`` (overwritten), plus
-``runs/<date>.json`` with the day's summary (kept). Nothing in the asset, the register or the pages is changed.
+``runs/<date>.json`` with the day's summary (kept). Nothing in the asset, the register or the pages is changed. The
+validation console (``services.learn_console``, SV-4.5) reads these files; the history is written at full precision.
 
 The store receives no new days here: the evidence rows (q channels from STRATA-Flow runs of each day, the day's
 calibrated omega against its 14-day anchor; GAS-20) are built offline, and ``append_csv`` adds them.
@@ -58,7 +59,7 @@ def shadow(
     if register is None:
         register = json.loads(Path(REGISTER_PATH).read_text(encoding="utf-8"))
     res = shadow_run(store, dict(spec), dict(register))
-    res["history"].to_csv(out / "strata_learn_history.csv", index=False, float_format="%.6g")
+    res["history"].to_csv(out / "strata_learn_history.csv", index=False)  # full precision: the console reads it
     state = {k: v for k, v in res.items() if k != "history"}
     (out / "strata_learn_state.json").write_text(json.dumps(state, indent=1, default=_plain), encoding="utf-8")
     (out / "register_proposal.json").write_text(json.dumps(res["proposal"], indent=1, default=str), encoding="utf-8")

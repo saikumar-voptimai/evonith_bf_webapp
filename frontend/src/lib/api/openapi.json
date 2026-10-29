@@ -839,6 +839,139 @@
         "title": "BlendChangeView",
         "type": "object"
       },
+      "BlendFamily": {
+        "properties": {
+          "bias_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean of realised - STRATA, kg/tHM",
+            "title": "Bias Kg Thm"
+          },
+          "fact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FamilyFact"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The family's VAL fact in force; null: no fact"
+          },
+          "family": {
+            "description": "Blend family (or a cross-family group)",
+            "title": "Family",
+            "type": "string"
+          },
+          "fixed_omega_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fixed-omega prediction, mean, kg/tHM dry",
+            "title": "Fixed Omega Kg Thm"
+          },
+          "n": {
+            "description": "Evidence days since the evaluation start, count",
+            "title": "N",
+            "type": "integer"
+          },
+          "realised_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke (oxygen balance), mean, kg/tHM dry",
+            "title": "Realised Kg Thm"
+          },
+          "rmse_fixed_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of Fixed-omega, kg/tHM",
+            "title": "Rmse Fixed Kg Thm"
+          },
+          "rmse_strata_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of STRATA, kg/tHM",
+            "title": "Rmse Strata Kg Thm"
+          },
+          "se_bias_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard error of the bias (AR-adjusted n), kg/tHM",
+            "title": "Se Bias Kg Thm"
+          },
+          "skill": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 - MSE(STRATA) / MSE(Fixed-omega), dimensionless",
+            "title": "Skill"
+          },
+          "strata_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA one-step prediction (challenger), mean, kg/tHM dry",
+            "title": "Strata Kg Thm"
+          },
+          "verdict": {
+            "description": "Verdict by the rule: Supported, Neutral, Disputed or Modelled only",
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "n",
+          "verdict"
+        ],
+        "title": "BlendFamily",
+        "type": "object"
+      },
       "BlendRow": {
         "properties": {
           "dry_kg_thm": {
@@ -6693,6 +6826,98 @@
         "title": "FactsVersionView",
         "type": "object"
       },
+      "FamilyFact": {
+        "properties": {
+          "bias_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bias of the fact, kg/tHM",
+            "title": "Bias Kg Thm"
+          },
+          "id": {
+            "description": "VAL fact id",
+            "title": "Id",
+            "type": "string"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days of the fact, count",
+            "title": "N"
+          },
+          "se_bias_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard error of the bias, kg/tHM",
+            "title": "Se Bias Kg Thm"
+          },
+          "se_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard error in force, kg/tHM",
+            "title": "Se Kg Thm"
+          },
+          "skill": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill of the fact, dimensionless",
+            "title": "Skill"
+          },
+          "status": {
+            "description": "Status in force (Supported, Neutral, Disputed, Modelled only)",
+            "title": "Status",
+            "type": "string"
+          },
+          "value_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Value in force: STRATA burnt coke (mean), kg/tHM dry",
+            "title": "Value Kg Thm"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "FamilyFact",
+        "type": "object"
+      },
       "FamilyRow": {
         "properties": {
           "bias": {
@@ -10434,6 +10659,77 @@
         "title": "HotMetalSamples",
         "type": "object"
       },
+      "ItemDecision": {
+        "properties": {
+          "at": {
+            "description": "Time of the decision (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "audit_id": {
+            "description": "Audit-log entry of the decision",
+            "title": "Audit Id",
+            "type": "integer"
+          },
+          "by": {
+            "description": "Administrator",
+            "title": "By",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "facts_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Facts version the approval proposed, count",
+            "title": "Facts Version"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "version_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Status of that version: pending, approved or rejected",
+            "title": "Version Status"
+          }
+        },
+        "required": [
+          "decision",
+          "by",
+          "at",
+          "audit_id"
+        ],
+        "title": "ItemDecision",
+        "type": "object"
+      },
       "JacobianCache": {
         "properties": {
           "day_file": {
@@ -12141,6 +12437,1040 @@
           "n_baseline"
         ],
         "title": "LeakStep",
+        "type": "object"
+      },
+      "LearnAsset": {
+        "properties": {
+          "deployed": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deployment day: the gate counts the days after it",
+            "title": "Deployed"
+          },
+          "label": {
+            "description": "Deployed STRATA asset, e.g. STRATA 1.5 (2026-10-25)",
+            "title": "Label",
+            "type": "string"
+          },
+          "n_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days the asset's posterior was fitted on, count",
+            "title": "N Days"
+          },
+          "rho": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AR(1) coefficient of the day errors, dimensionless",
+            "title": "Rho"
+          },
+          "sigma_e": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Innovation sd of the day's omega deviation, dimensionless",
+            "title": "Sigma E"
+          },
+          "version": {
+            "description": "The asset's full version text",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "version"
+        ],
+        "title": "LearnAsset",
+        "type": "object"
+      },
+      "LearnConsole": {
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/LearnAsset"
+          },
+          "cusum": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearnCusum"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decisions_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why decisions are not shown",
+            "title": "Decisions Reason"
+          },
+          "facts_register": {
+            "$ref": "#/components/schemas/RegisterInForce",
+            "description": "Fact register in force"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/BlendFamily"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearnGate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job": {
+            "$ref": "#/components/schemas/LearnJob"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearnProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearnRunInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stored run; null: none yet"
+          },
+          "runs": {
+            "description": "Stored runs, newest first (at most 30)",
+            "items": {
+              "$ref": "#/components/schemas/LearnRunDay"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "skill": {
+            "items": {
+              "$ref": "#/components/schemas/LearnSkill"
+            },
+            "title": "Skill",
+            "type": "array"
+          },
+          "skill_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First day of the run's skill and family table",
+            "title": "Skill From"
+          },
+          "today": {
+            "description": "Today (IST)",
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          },
+          "trajectory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearnTrajectory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validation": {
+            "$ref": "#/components/schemas/Validation",
+            "description": "Out-of-sample results of the deployed asset (as on /strata)"
+          }
+        },
+        "required": [
+          "today",
+          "asset",
+          "validation",
+          "facts_register",
+          "skill",
+          "families",
+          "runs",
+          "job"
+        ],
+        "title": "LearnConsole",
+        "type": "object"
+      },
+      "LearnCusum": {
+        "properties": {
+          "alarm": {
+            "description": "S+ or S- above h at the last day",
+            "title": "Alarm",
+            "type": "boolean"
+          },
+          "basis": {
+            "description": "Errors the CUSUM runs on",
+            "title": "Basis",
+            "type": "string"
+          },
+          "ever_alarm": {
+            "description": "S+ or S- exceeded h on some day",
+            "title": "Ever Alarm",
+            "type": "boolean"
+          },
+          "first_alarm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Index of the first excursion, days",
+            "title": "First Alarm"
+          },
+          "first_alarm_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Day of the first excursion",
+            "title": "First Alarm Date"
+          },
+          "h": {
+            "description": "Alarm threshold, standardised innovations",
+            "title": "H",
+            "type": "number"
+          },
+          "k": {
+            "description": "Reference value, standardised innovations",
+            "title": "K",
+            "type": "number"
+          },
+          "rho": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AR(1) coefficient of the errors, dimensionless",
+            "title": "Rho"
+          },
+          "s_minus": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower CUSUM, standardised innovations",
+            "title": "S Minus"
+          },
+          "s_plus": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper CUSUM, standardised innovations",
+            "title": "S Plus"
+          },
+          "sigma_e": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Innovation sd, dimensionless",
+            "title": "Sigma E"
+          }
+        },
+        "required": [
+          "alarm",
+          "ever_alarm",
+          "k",
+          "h",
+          "basis"
+        ],
+        "title": "LearnCusum",
+        "type": "object"
+      },
+      "LearnDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approve": {
+            "description": "true proposes the items through the register editor, false rejects them",
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "Item keys to decide",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason, recorded in the audit log",
+            "title": "Note"
+          },
+          "proposal": {
+            "description": "Hash of the proposal (GET proposal.hash)",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Proposal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal",
+          "items",
+          "approve"
+        ],
+        "title": "LearnDecisionRequest",
+        "type": "object"
+      },
+      "LearnDecisionResult": {
+        "properties": {
+          "audit_id": {
+            "description": "Audit-log entry of the decision",
+            "title": "Audit Id",
+            "type": "integer"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "facts_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactsVersionView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pending facts version an approval made"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "proposal_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Date"
+          },
+          "proposal_hash": {
+            "title": "Proposal Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "proposal_hash",
+          "items",
+          "audit_id"
+        ],
+        "title": "LearnDecisionResult",
+        "type": "object"
+      },
+      "LearnGate": {
+        "properties": {
+          "deployed": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deployment day of the champion",
+            "title": "Deployed"
+          },
+          "dm_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diebold-Mariano t (positive: challenger better), dimensionless",
+            "title": "Dm T"
+          },
+          "gain": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 - MSE(challenger) / MSE(champion), fraction",
+            "title": "Gain"
+          },
+          "lags": {
+            "description": "Newey-West lags of the Diebold-Mariano variance, days",
+            "title": "Lags",
+            "type": "integer"
+          },
+          "min_gain": {
+            "description": "MSE gain the challenger needs, fraction",
+            "title": "Min Gain",
+            "type": "number"
+          },
+          "mse_challenger": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MSE of the challenger's omega errors, dimensionless",
+            "title": "Mse Challenger"
+          },
+          "mse_champion": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MSE of the champion's omega errors, dimensionless",
+            "title": "Mse Champion"
+          },
+          "n": {
+            "description": "Days after deployment, count",
+            "title": "N",
+            "type": "integer"
+          },
+          "promote": {
+            "description": "Promotion proposed (never applied by the run)",
+            "title": "Promote",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "description": "collecting (fewer than window days after deployment) or evaluated",
+            "title": "Status",
+            "type": "string"
+          },
+          "t_min": {
+            "description": "Diebold-Mariano t the challenger needs, dimensionless",
+            "title": "T Min",
+            "type": "number"
+          },
+          "window": {
+            "description": "Days the gate compares, count",
+            "title": "Window",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "n",
+          "window",
+          "min_gain",
+          "t_min",
+          "lags",
+          "promote",
+          "reason"
+        ],
+        "title": "LearnGate",
+        "type": "object"
+      },
+      "LearnJob": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "next_slot": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next scheduled run (UTC)",
+            "title": "Next Slot"
+          },
+          "role": {
+            "description": "Lowest role that may start it",
+            "title": "Role",
+            "type": "string"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scheduled times (IST)",
+            "title": "Schedule"
+          },
+          "timeout_s": {
+            "description": "Time limit, s",
+            "title": "Timeout S",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "role",
+          "timeout_s"
+        ],
+        "title": "LearnJob",
+        "type": "object"
+      },
+      "LearnProposal": {
+        "properties": {
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST day of the run that made it",
+            "title": "Day"
+          },
+          "hash": {
+            "description": "Hash of the items: names the proposal in a decision",
+            "title": "Hash",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "n_approval": {
+            "description": "Items for approval (the run's rule), count",
+            "title": "N Approval",
+            "type": "integer"
+          },
+          "n_auto": {
+            "description": "Automatic items (the run's rule), count",
+            "title": "N Auto",
+            "type": "integer"
+          },
+          "object_id": {
+            "description": "Audit-log object id of its decisions, <date>/<hash>",
+            "title": "Object Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hash",
+          "object_id",
+          "n_auto",
+          "n_approval",
+          "items"
+        ],
+        "title": "LearnProposal",
+        "type": "object"
+      },
+      "LearnRunDay": {
+        "properties": {
+          "appended_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days appended, count",
+            "title": "Appended Days"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Items for approval, count",
+            "title": "Approval"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it finished (UTC)",
+            "title": "At"
+          },
+          "automatic": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Automatic items, count",
+            "title": "Automatic"
+          },
+          "coke_skill_challenger": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke skill of the challenger, dimensionless",
+            "title": "Coke Skill Challenger"
+          },
+          "coke_skill_champion": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke skill of the champion, dimensionless",
+            "title": "Coke Skill Champion"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST day of the run",
+            "title": "Day"
+          },
+          "drift_alarm": {
+            "title": "Drift Alarm",
+            "type": "boolean"
+          },
+          "evidence_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Evidence days, count",
+            "title": "Evidence Days"
+          },
+          "evidence_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last evidence day",
+            "title": "Evidence To"
+          },
+          "gate_status": {
+            "title": "Gate Status",
+            "type": "string"
+          },
+          "promote": {
+            "title": "Promote",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "gate_status",
+          "promote",
+          "drift_alarm"
+        ],
+        "title": "LearnRunDay",
+        "type": "object"
+      },
+      "LearnRunInfo": {
+        "properties": {
+          "appended_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days the run appended, count",
+            "title": "Appended Days"
+          },
+          "at": {
+            "description": "When the run finished (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST day of the run",
+            "title": "Day"
+          },
+          "evidence_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows of the evidence store, count",
+            "title": "Evidence Days"
+          },
+          "evidence_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last evidence day",
+            "title": "Evidence To"
+          },
+          "n_days": {
+            "description": "Evidence days with all regressors, count",
+            "title": "N Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at",
+          "n_days"
+        ],
+        "title": "LearnRunInfo",
+        "type": "object"
+      },
+      "LearnRunStarted": {
+        "properties": {
+          "audit_id": {
+            "description": "Audit-log entry of the start",
+            "title": "Audit Id",
+            "type": "integer"
+          },
+          "duplicate": {
+            "description": "True when a shadow run was already queued or running",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          }
+        },
+        "required": [
+          "job",
+          "duplicate",
+          "audit_id"
+        ],
+        "title": "LearnRunStarted",
+        "type": "object"
+      },
+      "LearnSkill": {
+        "properties": {
+          "coke_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill of the day's burnt coke against Fixed-omega, dimensionless",
+            "title": "Coke Day"
+          },
+          "label": {
+            "description": "The run's label of the predictor",
+            "title": "Label",
+            "type": "string"
+          },
+          "omega_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill of the day's omega against Fixed-omega, dimensionless",
+            "title": "Omega Day"
+          },
+          "predictor": {
+            "enum": [
+              "challenger",
+              "champion"
+            ],
+            "title": "Predictor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "predictor",
+          "label"
+        ],
+        "title": "LearnSkill",
+        "type": "object"
+      },
+      "LearnTrajectory": {
+        "properties": {
+          "challenger": {
+            "description": "One-step prediction of the challenger, dimensionless",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Challenger",
+            "type": "array"
+          },
+          "challenger_sd": {
+            "description": "1-sigma of its parameter part, dimensionless",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Challenger Sd",
+            "type": "array"
+          },
+          "champion": {
+            "description": "Prediction of the champion (deployed asset), dimensionless",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Champion",
+            "type": "array"
+          },
+          "dates": {
+            "description": "Evidence days (IST, YYYY-MM-DD), oldest first",
+            "items": {
+              "type": "string"
+            },
+            "title": "Dates",
+            "type": "array"
+          },
+          "last_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last evidence day",
+            "title": "Last Date"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days the filter has seen, count",
+            "title": "N"
+          },
+          "observed": {
+            "description": "Day's omega minus its 14-day anchor, dimensionless",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Observed",
+            "type": "array"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/ScaleTrajectory"
+            },
+            "title": "Params",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dates",
+          "params",
+          "observed",
+          "challenger",
+          "challenger_sd",
+          "champion"
+        ],
+        "title": "LearnTrajectory",
         "type": "object"
       },
       "LiveCalibration": {
@@ -16078,6 +17408,132 @@
         "title": "ProcessView",
         "type": "object"
       },
+      "ProposalItem": {
+        "properties": {
+          "approvable": {
+            "description": "An approval changes the register",
+            "title": "Approvable",
+            "type": "boolean"
+          },
+          "automatic": {
+            "description": "Within 2 se and no status change (the run's rule)",
+            "title": "Automatic",
+            "type": "boolean"
+          },
+          "change": {
+            "description": "The run's proposed change (value, se, params, status)",
+            "title": "Change",
+            "type": "object"
+          },
+          "decidable": {
+            "description": "Open or not taken: it can be approved or rejected",
+            "title": "Decidable",
+            "type": "boolean"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fact of the register the item changes",
+            "title": "Fact Id"
+          },
+          "key": {
+            "description": "Item key: the fact id, new:<family> for a family without a VAL fact",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "description": "value, status, support, new, promotion or drift",
+            "title": "Kind",
+            "type": "string"
+          },
+          "not_carried": {
+            "description": "Proposed fields an overlay does not carry (se, params)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Carried",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "register_changes": {
+            "description": "What an approval writes through the overlay",
+            "items": {
+              "$ref": "#/components/schemas/RegisterChange"
+            },
+            "title": "Register Changes",
+            "type": "array"
+          },
+          "state": {
+            "description": "open; proposed (facts version pending); approved (version approved); not_taken (the editor rejected the version: open again); rejected (here)",
+            "enum": [
+              "open",
+              "proposed",
+              "approved",
+              "not_taken",
+              "rejected"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "statement": {
+            "description": "The fact's statement, or the family",
+            "title": "Statement",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of the fact's value",
+            "title": "Unit",
+            "type": "string"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the item cannot be approved through the register",
+            "title": "Why"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "automatic",
+          "reason",
+          "statement",
+          "unit",
+          "change",
+          "register_changes",
+          "not_carried",
+          "approvable",
+          "state",
+          "decidable"
+        ],
+        "title": "ProposalItem",
+        "type": "object"
+      },
       "ReferencePoint": {
         "properties": {
           "blend_wet_pct": {
@@ -16243,6 +17699,84 @@
           "hi"
         ],
         "title": "RegisterBand",
+        "type": "object"
+      },
+      "RegisterChange": {
+        "properties": {
+          "field": {
+            "enum": [
+              "value",
+              "status"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "in_force": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Value in force or status, unit of the fact's value",
+            "title": "In Force"
+          },
+          "proposed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Proposed value or status, unit of the fact's value",
+            "title": "Proposed"
+          }
+        },
+        "required": [
+          "field",
+          "in_force",
+          "proposed"
+        ],
+        "title": "RegisterChange",
+        "type": "object"
+      },
+      "RegisterInForce": {
+        "properties": {
+          "in_force_version": {
+            "description": "Approved facts version in force (0: the repository file), count",
+            "title": "In Force Version",
+            "type": "integer"
+          },
+          "label": {
+            "description": "Register in force, e.g. 1.8 + overlay 3",
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the repository file is shown",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "in_force_version",
+          "label"
+        ],
+        "title": "RegisterInForce",
         "type": "object"
       },
       "ReportDocumentView": {
@@ -17114,6 +18648,105 @@
           }
         },
         "title": "RunYard",
+        "type": "object"
+      },
+      "ScaleTrajectory": {
+        "properties": {
+          "champion": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deployed asset's value, unit of the parameter",
+            "title": "Champion"
+          },
+          "fixed": {
+            "description": "Held at 0 by the asset (no random walk)",
+            "title": "Fixed",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Kalman mean after the last evidence day, unit of the parameter",
+            "title": "Latest"
+          },
+          "latest_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Kalman sd after the last evidence day, unit of the parameter",
+            "title": "Latest Sd"
+          },
+          "mean": {
+            "description": "Kalman mean after each day of dates, unit of the parameter",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Mean",
+            "type": "array"
+          },
+          "name": {
+            "description": "Parameter, e.g. lam_pellet",
+            "title": "Name",
+            "type": "string"
+          },
+          "sd": {
+            "description": "Kalman sd after each day of dates, unit of the parameter",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Sd",
+            "type": "array"
+          },
+          "unit": {
+            "description": "Unit (empty: dimensionless scale on the model channel)",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "unit",
+          "fixed",
+          "mean",
+          "sd"
+        ],
+        "title": "ScaleTrajectory",
         "type": "object"
       },
       "ScheduleAuditResponse": {
@@ -26363,6 +27996,142 @@
           }
         },
         "summary": "Retry a job (audited)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/learn": {
+      "get": {
+        "description": "The stored shadow run with its decisions, the asset's out-of-sample results, the runs and the job. Without a\nstored run the asset's results only (``run`` null).",
+        "operationId": "admin_learn_view",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnConsole"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Validation and STRATA-Learn console",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/learn/decisions": {
+      "post": {
+        "description": "Approve: the items' value and status become the next pending facts version (``facts.propose``) with the\ndecision's audit row (``learn.approve``), for review in the fact-register editor. Reject: ``learn.reject``.\n404 without a stored run; 409 when a new run replaced the proposal, an item is decided or another facts version\nis in force; 422 for an unknown item or one an approval cannot write.",
+        "operationId": "admin_decide_proposal_items",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearnDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnDecisionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Approve or reject proposal items",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/learn/run": {
+      "post": {
+        "description": "Queue ``learn.shadow`` now and record the start in the audit log (``job.start``); a run already queued or\nrunning is returned instead (``duplicate``). The run replaces the stored outputs: a proposal with other items\nis a new proposal.",
+        "operationId": "admin_start_shadow_run",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnRunStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Run the shadow run now",
         "tags": [
           "admin"
         ]

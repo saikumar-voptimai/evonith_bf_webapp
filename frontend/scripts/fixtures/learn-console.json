@@ -1,0 +1,1299 @@
+{
+	"today": "2026-10-16",
+	"asset": {
+		"label": "STRATA 1.5 (2026-10-25)",
+		"version": "STRATA 1.5 (2026-10-25): STRATA-omega on STRATA-Flow network solves; blast moisture = Open-Meteo daily RH at Wardha (in the balance, no moisture data term); RI and RDI from the Evonith laboratory tests (set T26), beta 0, n 1, ore RDI as shaft fines, Lloyds fines oversize without size credit, Donimalai oversize return as Donimalai; blend scales per group, other-operation channel and nut coke from the AR(1) posterior (Dec 2025 - Oct 2026); no production channel (strict 2023-24 test)",
+		"deployed": "2026-06-01",
+		"rho": 0.681999,
+		"sigma_e": 0.0172389,
+		"n_days": 191
+	},
+	"validation": {
+		"method": "day minus its 14-day anchor (the Coke Energy pipeline rolling calibration); channels from network runs of each day (window blend and operation, day blend, day production, day operation; window charging matrix and top gas); parameters estimated on days before the predicted month only (expanding window, refit monthly) or on the other half of the record (time split); skill = 1 - MSE / MSE(Fixed-omega). Coke target: oxygen-balance burnt coke. 175 days, 1 Jan - 7 Oct 2026; blast moisture from the RH estimate.",
+		"note": "STRATA 1.5 on the Open-Meteo daily moisture: 2026 expanding test RMSE 5.99 against Fixed-omega 6.39 kg/tHM (STRATA 1.4 on the RH-scaled record: 6.44 against 6.94); both 2026 time splits and the strict 2023-24 test better than Fixed-omega. Pellet + oversize (6 days, June 2026, first month of pellet) remains biased; families with fewer than 10 days are modelled only.",
+		"verdict_rule": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
+		"expanding": {
+			"rmse_strata": 5.99,
+			"rmse_fixed": 6.39,
+			"skill_coke_day": 0.12,
+			"skill_coke_7d": 0.221,
+			"skill_omega_day": 0.144
+		},
+		"time_splits": [
+			{
+				"split": "train Dec-May, test Jun-Oct",
+				"skill_coke_day": 0.095,
+				"skill_omega_day": 0.178
+			},
+			{
+				"split": "train Jun-Oct, test Jan-May",
+				"skill_coke_day": 0.111,
+				"skill_omega_day": 0.072
+			}
+		],
+		"strict": {
+			"method": "parameters frozen as fitted on Dec 2025 - Oct 2026; 411 stable days, 2023-03-05 - 2024-07-11 (July 2023 missing); omega anchor and zone losses = 14 previous days; network solves per day (T26 catalogue); blast moisture = Open-Meteo daily ambient + measured steam injection; K = K_held + dK/domega x domega_model",
+			"rmse_fixed": 8.23,
+			"rmse_strata": 8.0,
+			"periods": [
+				{
+					"period": "All days",
+					"rmse_fixed": 8.23,
+					"rmse_strata": 8.0
+				},
+				{
+					"period": "Pellet era (Feb - Oct 2023)",
+					"rmse_fixed": 7.88,
+					"rmse_strata": 7.69
+				},
+				{
+					"period": "Lump era (Nov 2023 - Jul 2024)",
+					"rmse_fixed": 8.5,
+					"rmse_strata": 8.24
+				}
+			],
+			"weekly_rmse_fixed": 6.34,
+			"weekly_rmse_strata": 6.15,
+			"skill_coke_day": 0.055,
+			"skill_coke_7d": 0.061,
+			"skill_omega_day": 0.081
+		}
+	},
+	"skill_from": "2026-01-01",
+	"facts_register": {
+		"in_force_version": 1,
+		"label": "1.8 + overlay 1",
+		"reason": null
+	},
+	"run": {
+		"at": "2026-10-15T21:30:00Z",
+		"day": "2026-10-16",
+		"n_days": 191,
+		"evidence_days": 191,
+		"evidence_to": "2026-10-07",
+		"appended_days": 0
+	},
+	"skill": [
+		{
+			"predictor": "challenger",
+			"label": "challenger (one-step, out of sample)",
+			"omega_day": 0.152398,
+			"coke_day": 0.105579
+		},
+		{
+			"predictor": "champion",
+			"label": "champion (deployed asset; in sample before deployment)",
+			"omega_day": 0.170431,
+			"coke_day": 0.10337
+		}
+	],
+	"families": [
+		{
+			"family": "N1 No pellet, sinter + CLO",
+			"n": 21,
+			"realised_kg_thm": 296.802,
+			"fixed_omega_kg_thm": 296.558,
+			"strata_kg_thm": 295.934,
+			"rmse_fixed_kg_thm": 3.96242,
+			"rmse_strata_kg_thm": 4.18715,
+			"skill": -0.116649,
+			"bias_kg_thm": 0.868544,
+			"se_bias_kg_thm": 1.17708,
+			"verdict": "Disputed",
+			"fact": {
+				"id": "VAL-01",
+				"status": "Neutral",
+				"value_kg_thm": 296.0,
+				"se_kg_thm": 1.06,
+				"n": 21,
+				"skill": -0.028,
+				"bias_kg_thm": 0.8,
+				"se_bias_kg_thm": 1.06
+			}
+		},
+		{
+			"family": "N2 No pellet, with Gomti",
+			"n": 9,
+			"realised_kg_thm": 304.263,
+			"fixed_omega_kg_thm": 301.43,
+			"strata_kg_thm": 301.629,
+			"rmse_fixed_kg_thm": 7.71949,
+			"rmse_strata_kg_thm": 7.64257,
+			"skill": 0.0198298,
+			"bias_kg_thm": 2.63443,
+			"se_bias_kg_thm": 2.58338,
+			"verdict": "Modelled only",
+			"fact": {
+				"id": "VAL-02",
+				"status": "Modelled only",
+				"value_kg_thm": 301.8,
+				"se_kg_thm": 2.51,
+				"n": 9,
+				"skill": 0.058,
+				"bias_kg_thm": 2.48,
+				"se_bias_kg_thm": 2.51
+			}
+		},
+		{
+			"family": "N3 No pellet, with oversize",
+			"n": 30,
+			"realised_kg_thm": 307.783,
+			"fixed_omega_kg_thm": 306.534,
+			"strata_kg_thm": 306.963,
+			"rmse_fixed_kg_thm": 6.39348,
+			"rmse_strata_kg_thm": 6.05164,
+			"skill": 0.104078,
+			"bias_kg_thm": 0.819708,
+			"se_bias_kg_thm": 1.39277,
+			"verdict": "Supported",
+			"fact": {
+				"id": "VAL-03",
+				"status": "Supported",
+				"value_kg_thm": 306.8,
+				"se_kg_thm": 1.39,
+				"n": 30,
+				"skill": 0.125,
+				"bias_kg_thm": 0.99,
+				"se_bias_kg_thm": 1.39
+			}
+		},
+		{
+			"family": "N4 No pellet, with ROM",
+			"n": 30,
+			"realised_kg_thm": 304.559,
+			"fixed_omega_kg_thm": 303.461,
+			"strata_kg_thm": 303.441,
+			"rmse_fixed_kg_thm": 9.30456,
+			"rmse_strata_kg_thm": 8.31163,
+			"skill": 0.20204,
+			"bias_kg_thm": 1.11862,
+			"se_bias_kg_thm": 2.76733,
+			"verdict": "Supported",
+			"fact": {
+				"id": "VAL-04",
+				"status": "Supported",
+				"value_kg_thm": 303.4,
+				"se_kg_thm": 2.9,
+				"n": 30,
+				"skill": 0.193,
+				"bias_kg_thm": 1.05,
+				"se_bias_kg_thm": 2.9
+			}
+		},
+		{
+			"family": "N5 No pellet, ROM + oversize",
+			"n": 1,
+			"realised_kg_thm": 293.628,
+			"fixed_omega_kg_thm": 292.042,
+			"strata_kg_thm": 291.563,
+			"rmse_fixed_kg_thm": 1.58572,
+			"rmse_strata_kg_thm": 2.06459,
+			"skill": -0.695179,
+			"bias_kg_thm": 2.06459,
+			"se_bias_kg_thm": null,
+			"verdict": "Modelled only",
+			"fact": {
+				"id": "VAL-05",
+				"status": "Modelled only",
+				"value_kg_thm": 291.4,
+				"se_kg_thm": null,
+				"n": 1,
+				"skill": -0.902,
+				"bias_kg_thm": 2.19,
+				"se_bias_kg_thm": null
+			}
+		},
+		{
+			"family": "P1 Pellet, sinter + CLO",
+			"n": 43,
+			"realised_kg_thm": 313.866,
+			"fixed_omega_kg_thm": 314.831,
+			"strata_kg_thm": 314.885,
+			"rmse_fixed_kg_thm": 5.431,
+			"rmse_strata_kg_thm": 5.33979,
+			"skill": 0.0333066,
+			"bias_kg_thm": -1.01884,
+			"se_bias_kg_thm": 1.5332,
+			"verdict": "Supported",
+			"fact": {
+				"id": "VAL-06",
+				"status": "Supported",
+				"value_kg_thm": 314.9,
+				"se_kg_thm": 1.54,
+				"n": 43,
+				"skill": 0.034,
+				"bias_kg_thm": -1.08,
+				"se_bias_kg_thm": 1.54
+			}
+		},
+		{
+			"family": "P2 Pellet, with oversize",
+			"n": 6,
+			"realised_kg_thm": 315.464,
+			"fixed_omega_kg_thm": 311.535,
+			"strata_kg_thm": 311.276,
+			"rmse_fixed_kg_thm": 5.87471,
+			"rmse_strata_kg_thm": 5.87358,
+			"skill": 0.000384437,
+			"bias_kg_thm": 4.18814,
+			"se_bias_kg_thm": 1.94343,
+			"verdict": "Modelled only",
+			"fact": {
+				"id": "VAL-07",
+				"status": "Modelled only",
+				"value_kg_thm": 311.5,
+				"se_kg_thm": 1.9,
+				"n": 6,
+				"skill": 0.064,
+				"bias_kg_thm": 3.95,
+				"se_bias_kg_thm": 1.9
+			}
+		},
+		{
+			"family": "P3 Pellet, with ROM",
+			"n": 27,
+			"realised_kg_thm": 306.171,
+			"fixed_omega_kg_thm": 306.434,
+			"strata_kg_thm": 307.194,
+			"rmse_fixed_kg_thm": 4.40167,
+			"rmse_strata_kg_thm": 4.48228,
+			"skill": -0.0369632,
+			"bias_kg_thm": -1.0232,
+			"se_bias_kg_thm": 1.44449,
+			"verdict": "Neutral",
+			"fact": {
+				"id": "VAL-08",
+				"status": "Supported",
+				"value_kg_thm": 307.1,
+				"se_kg_thm": 1.37,
+				"n": 27,
+				"skill": 0.014,
+				"bias_kg_thm": -0.9,
+				"se_bias_kg_thm": 1.37
+			}
+		},
+		{
+			"family": "P4 Pellet, ROM + oversize",
+			"n": 8,
+			"realised_kg_thm": 297.503,
+			"fixed_omega_kg_thm": 299.855,
+			"strata_kg_thm": 296.224,
+			"rmse_fixed_kg_thm": 7.57077,
+			"rmse_strata_kg_thm": 6.60987,
+			"skill": 0.237736,
+			"bias_kg_thm": 1.27906,
+			"se_bias_kg_thm": 2.45107,
+			"verdict": "Modelled only",
+			"fact": {
+				"id": "VAL-09",
+				"status": "Modelled only",
+				"value_kg_thm": 297.0,
+				"se_kg_thm": 2.44,
+				"n": 8,
+				"skill": 0.27,
+				"bias_kg_thm": 0.54,
+				"se_bias_kg_thm": 2.44
+			}
+		},
+		{
+			"family": "All days",
+			"n": 175,
+			"realised_kg_thm": 306.69,
+			"fixed_omega_kg_thm": 306.354,
+			"strata_kg_thm": 306.312,
+			"rmse_fixed_kg_thm": 6.39157,
+			"rmse_strata_kg_thm": 6.04475,
+			"skill": 0.105579,
+			"bias_kg_thm": 0.377648,
+			"se_bias_kg_thm": 0.745649,
+			"verdict": "Supported",
+			"fact": {
+				"id": "VAL-10",
+				"status": "Supported",
+				"value_kg_thm": 306.4,
+				"se_kg_thm": 0.74,
+				"n": 175,
+				"skill": 0.12,
+				"bias_kg_thm": 0.34,
+				"se_bias_kg_thm": 0.74
+			}
+		},
+		{
+			"family": "ROM >= 10 % (any family)",
+			"n": 26,
+			"realised_kg_thm": 305.746,
+			"fixed_omega_kg_thm": 307.127,
+			"strata_kg_thm": 307.401,
+			"rmse_fixed_kg_thm": 6.97125,
+			"rmse_strata_kg_thm": 5.70221,
+			"skill": 0.33094,
+			"bias_kg_thm": -1.65492,
+			"se_bias_kg_thm": 1.59451,
+			"verdict": "Supported",
+			"fact": {
+				"id": "VAL-11",
+				"status": "Supported",
+				"value_kg_thm": 307.5,
+				"se_kg_thm": 1.7,
+				"n": 26,
+				"skill": 0.285,
+				"bias_kg_thm": -1.72,
+				"se_bias_kg_thm": 1.7
+			}
+		},
+		{
+			"family": "Pellet >= 12 % (any family)",
+			"n": 35,
+			"realised_kg_thm": 308.927,
+			"fixed_omega_kg_thm": 310.009,
+			"strata_kg_thm": 309.197,
+			"rmse_fixed_kg_thm": 6.9452,
+			"rmse_strata_kg_thm": 6.59971,
+			"skill": 0.0970159,
+			"bias_kg_thm": -0.2697,
+			"se_bias_kg_thm": 1.8803,
+			"verdict": "Supported",
+			"fact": {
+				"id": "VAL-12",
+				"status": "Supported",
+				"value_kg_thm": 309.4,
+				"se_kg_thm": 1.84,
+				"n": 35,
+				"skill": 0.117,
+				"bias_kg_thm": -0.48,
+				"se_bias_kg_thm": 1.84
+			}
+		}
+	],
+	"trajectory": {
+		"dates": [
+			"2026-06-28",
+			"2026-06-29",
+			"2026-06-30",
+			"2026-07-04",
+			"2026-07-10",
+			"2026-07-11",
+			"2026-07-12",
+			"2026-07-13",
+			"2026-07-14",
+			"2026-07-15",
+			"2026-07-16",
+			"2026-07-17",
+			"2026-07-18",
+			"2026-07-19",
+			"2026-07-20",
+			"2026-07-21",
+			"2026-07-25",
+			"2026-07-26",
+			"2026-07-27",
+			"2026-07-28",
+			"2026-07-29",
+			"2026-07-30",
+			"2026-08-01",
+			"2026-08-02",
+			"2026-08-03",
+			"2026-08-04",
+			"2026-08-05",
+			"2026-08-07",
+			"2026-08-08",
+			"2026-08-09",
+			"2026-08-10",
+			"2026-08-11",
+			"2026-08-12",
+			"2026-08-13",
+			"2026-08-17",
+			"2026-08-19",
+			"2026-08-20",
+			"2026-08-21",
+			"2026-08-22",
+			"2026-08-23",
+			"2026-09-13",
+			"2026-09-14",
+			"2026-09-17",
+			"2026-09-18",
+			"2026-09-21",
+			"2026-09-22",
+			"2026-09-23",
+			"2026-09-24",
+			"2026-09-25",
+			"2026-09-26",
+			"2026-09-27",
+			"2026-09-28",
+			"2026-09-29",
+			"2026-10-01",
+			"2026-10-02",
+			"2026-10-03",
+			"2026-10-04",
+			"2026-10-05",
+			"2026-10-06",
+			"2026-10-07"
+		],
+		"n": 191,
+		"last_date": "2026-10-07",
+		"params": [
+			{
+				"name": "lam_pellet",
+				"label": "Pellet scale",
+				"unit": "",
+				"fixed": false,
+				"champion": 1.4214,
+				"latest": 1.43851,
+				"latest_sd": 0.46418,
+				"mean": [
+					1.29043, 1.28881, 1.28805, 1.37969, 1.39159, 1.39218, 1.38706, 1.36493, 1.37764, 1.376, 1.36975,
+					1.36081, 1.36244, 1.36633, 1.36682, 1.36596, 1.36529, 1.36434, 1.36407, 1.36396, 1.38497, 1.37721,
+					1.37676, 1.3765, 1.37529, 1.37535, 1.3753, 1.37573, 1.37566, 1.37577, 1.37576, 1.37665, 1.37561,
+					1.3756, 1.37607, 1.37558, 1.41289, 1.41467, 1.41651, 1.41845, 1.41716, 1.41743, 1.41897, 1.41833,
+					1.4182, 1.41825, 1.40428, 1.40591, 1.40503, 1.40241, 1.42562, 1.431, 1.43309, 1.44037, 1.43768,
+					1.44106, 1.45377, 1.44723, 1.44169, 1.43851
+				],
+				"sd": [
+					0.468118, 0.468223, 0.468329, 0.463283, 0.463359, 0.46346, 0.463408, 0.463181, 0.463253, 0.46336,
+					0.463447, 0.463517, 0.463605, 0.463707, 0.463813, 0.463915, 0.463987, 0.464093, 0.464201, 0.464309,
+					0.464159, 0.464135, 0.464241, 0.464348, 0.464453, 0.464561, 0.464668, 0.464772, 0.464879, 0.464987,
+					0.465094, 0.465188, 0.465294, 0.465401, 0.465508, 0.465615, 0.46534, 0.465373, 0.46547, 0.465575,
+					0.465681, 0.465786, 0.465885, 0.465992, 0.466097, 0.466205, 0.466133, 0.466226, 0.466328, 0.464601,
+					0.464184, 0.464229, 0.464274, 0.463835, 0.463933, 0.463934, 0.46396, 0.464012, 0.464095, 0.46418
+				]
+			},
+			{
+				"name": "lam_lump",
+				"label": "Lump-ore scale",
+				"unit": "",
+				"fixed": false,
+				"champion": 0.919649,
+				"latest": 0.919915,
+				"latest_sd": 0.475337,
+				"mean": [
+					0.797961, 0.801021, 0.806834, 0.855467, 0.855996, 0.855738, 0.854208, 0.843544, 0.840626, 0.827995,
+					0.815465, 0.83365, 0.835976, 0.844397, 0.842946, 0.839698, 0.839185, 0.842836, 0.842979, 0.845378,
+					0.850925, 0.846158, 0.846506, 0.848583, 0.850161, 0.844878, 0.844608, 0.844464, 0.843769, 0.841019,
+					0.840572, 0.840741, 0.842644, 0.842663, 0.842615, 0.843011, 0.814907, 0.81452, 0.815137, 0.813809,
+					0.813161, 0.812901, 0.814879, 0.81397, 0.813294, 0.814606, 0.817064, 0.818927, 0.819792, 0.816263,
+					0.852512, 0.861408, 0.865927, 0.875259, 0.865666, 0.868859, 0.879099, 0.896462, 0.91544, 0.919915
+				],
+				"sd": [
+					0.478621, 0.478718, 0.478771, 0.477461, 0.477566, 0.477669, 0.47776, 0.477789, 0.477892, 0.477948,
+					0.477969, 0.477925, 0.47799, 0.478066, 0.478158, 0.478187, 0.478271, 0.478361, 0.478465, 0.478527,
+					0.478614, 0.478671, 0.478774, 0.478864, 0.478963, 0.478985, 0.479072, 0.479176, 0.47926, 0.479355,
+					0.479438, 0.479542, 0.479641, 0.479743, 0.479847, 0.479951, 0.479845, 0.479946, 0.480049, 0.480152,
+					0.480255, 0.480358, 0.480448, 0.480551, 0.480606, 0.480704, 0.480803, 0.480889, 0.480987, 0.47785,
+					0.476709, 0.476648, 0.476464, 0.475695, 0.475672, 0.475685, 0.475739, 0.475459, 0.475276, 0.475337
+				]
+			},
+			{
+				"name": "lam_production",
+				"label": "Production scale",
+				"unit": "",
+				"fixed": true,
+				"champion": 0.0,
+				"latest": 0.0,
+				"latest_sd": 0.0,
+				"mean": [
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+				],
+				"sd": [
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+				]
+			},
+			{
+				"name": "lam_other",
+				"label": "Other-operation scale",
+				"unit": "",
+				"fixed": false,
+				"champion": 0.802068,
+				"latest": 0.80602,
+				"latest_sd": 0.296597,
+				"mean": [
+					0.986947, 0.988345, 0.978908, 0.986175, 0.782763, 0.751621, 0.754364, 0.713657, 0.695386, 0.69317,
+					0.697869, 0.71066, 0.713619, 0.722728, 0.719945, 0.729939, 0.7325, 0.716224, 0.712089, 0.714214,
+					0.718895, 0.729924, 0.735953, 0.732205, 0.717104, 0.725988, 0.726384, 0.72738, 0.734117, 0.760213,
+					0.765772, 0.769513, 0.779736, 0.779452, 0.784986, 0.788621, 0.838231, 0.840386, 0.841313, 0.845541,
+					0.843969, 0.843392, 0.836206, 0.837869, 0.840427, 0.841077, 0.849079, 0.842534, 0.841725, 0.842428,
+					0.837833, 0.842148, 0.838758, 0.844071, 0.844598, 0.839815, 0.8122, 0.799558, 0.803871, 0.80602
+				],
+				"sd": [
+					0.349411, 0.349552, 0.349507, 0.349607, 0.337049, 0.310842, 0.310935, 0.309401, 0.309452, 0.309611,
+					0.309754, 0.309802, 0.309865, 0.309974, 0.310063, 0.309124, 0.308481, 0.308197, 0.308298, 0.308408,
+					0.308551, 0.308313, 0.308103, 0.308188, 0.307667, 0.307466, 0.307569, 0.307701, 0.304878, 0.303764,
+					0.298757, 0.29855, 0.298469, 0.297817, 0.297929, 0.298045, 0.297155, 0.297154, 0.297318, 0.297469,
+					0.297632, 0.297787, 0.29767, 0.29783, 0.296854, 0.29702, 0.297096, 0.296905, 0.297066, 0.297026,
+					0.297162, 0.297268, 0.297175, 0.296889, 0.297057, 0.296894, 0.296458, 0.2963, 0.296445, 0.296597
+				]
+			},
+			{
+				"name": "a_moisture",
+				"label": "Blast-moisture term",
+				"unit": "omega per g/Nm3",
+				"fixed": true,
+				"champion": 0.0,
+				"latest": 0.0,
+				"latest_sd": 0.0,
+				"mean": [
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+				],
+				"sd": [
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+				]
+			},
+			{
+				"name": "a_nut",
+				"label": "Nut-coke term",
+				"unit": "omega per kg/tHM",
+				"fixed": false,
+				"champion": 0.000995012,
+				"latest": 0.000995453,
+				"latest_sd": 0.000336797,
+				"mean": [
+					0.00103384, 0.00102624, 0.00101877, 0.00103008, 0.000955401, 0.00094803, 0.000954277, 0.000991276,
+					0.00101358, 0.00100879, 0.00100677, 0.000997986, 0.0009979, 0.000988808, 0.000986505, 0.000999007,
+					0.00100468, 0.000992384, 0.00100736, 0.00100584, 0.000936283, 0.000923088, 0.000915348, 0.000930326,
+					0.000929975, 0.000930032, 0.000928909, 0.000932381, 0.000926932, 0.000927354, 0.000927601,
+					0.000930223, 0.000937084, 0.000937091, 0.000951179, 0.000957562, 0.000929758, 0.000931489,
+					0.000938685, 0.000941442, 0.000944907, 0.000944619, 0.000947708, 0.000959591, 0.000959364,
+					0.000966468, 0.000952227, 0.000961475, 0.000961073, 0.000960658, 0.000965727, 0.000967309,
+					0.00096855, 0.000970829, 0.000970594, 0.000972685, 0.000985242, 0.000992774, 0.000986743,
+					0.000995453
+				],
+				"sd": [
+					0.000359561, 0.000359512, 0.000359403, 0.000359307, 0.000357672, 0.000356338, 0.000356034,
+					0.000354818, 0.000354679, 0.000354675, 0.000354678, 0.000354637, 0.000354642, 0.000354603,
+					0.000354565, 0.000353065, 0.000349593, 0.000349374, 0.000348671, 0.000348653, 0.000344878,
+					0.000344371, 0.000343826, 0.000342735, 0.000342741, 0.000342747, 0.000342324, 0.000341994,
+					0.000340245, 0.000340251, 0.000340248, 0.000340092, 0.00034, 0.000340005, 0.000339691, 0.000339557,
+					0.000339272, 0.000339182, 0.000338974, 0.000338973, 0.000338958, 0.000338961, 0.00033892,
+					0.00033859, 0.000338588, 0.000338357, 0.000338107, 0.000337482, 0.000337486, 0.000337428, 0.0003374,
+					0.000337398, 0.000337374, 0.000337306, 0.000337312, 0.000337262, 0.000337158, 0.000337062,
+					0.000337027, 0.000336797
+				]
+			}
+		],
+		"observed": [
+			-0.005534, 0.016444, -0.000591, -0.048324, 0.029484, 0.037037, 0.033651, 0.004652, 0.042038, -0.001972,
+			-0.02463, -0.043655, -0.038296, -0.05443, -0.031788, -0.035499, -0.015232, 0.002541, -0.012176,
+			-0.001164, -0.019616, -0.023324, -0.00865, 0.006489, -0.005274, 0.008091, 0.00629, 0.009327, 0.002707,
+			0.021901, 0.00474, 0.011785, 0.025578, 0.020595, 0.026705, 0.018481, 0.050067, 0.041559, 0.041039,
+			0.004258, -0.021526, -0.011728, 0.011863, -0.007811, -0.007057, -0.016699, -0.028046, -0.028043,
+			-0.013038, -0.015966, -0.034333, -0.038909, -0.032069, -0.019928, 0.000202, -0.006267, -0.029202,
+			-0.004617, 0.017217, 0.026041
+		],
+		"challenger": [
+			-0.00384395, -0.00333121, 0.000111009, -0.0166597, -0.0239945, 0.00790222, 0.00633143, 0.00790323,
+			0.00583431, 0.00506328, 0.00439468, 0.00247252, -0.000333991, -0.000912841, -0.00246066, -0.00883591,
+			-0.012491, -0.0125932, -0.0107232, -0.00673638, 0.00028054, 0.00223313, 0.000746388, 0.00342066,
+			0.00542676, 0.00512807, 0.00542462, 0.00392254, 0.00178473, 0.00501594, -0.00502022, 0.00077013,
+			0.00358377, 0.00583109, 0.00414681, 0.00305538, 0.00527785, 0.00757842, 0.00757241, 0.00423396,
+			-2.0632e-5, -0.000632958, -0.00115665, -0.00308831, -0.0047365, -0.00544188, -0.00169095, -0.00237008,
+			-0.00224448, -0.00970891, -0.0118434, -0.0116027, -0.00879189, -0.0122651, -0.00965141, -0.00707105,
+			-0.00456252, -0.00363649, -0.00188567, 0.00110322
+		],
+		"challenger_sd": [
+			0.00195182, 0.0013505, 0.00133221, 0.00419147, 0.00688075, 0.00300551, 0.00240823, 0.00350539,
+			0.00188631, 0.0014098, 0.00102121, 0.000606708, 0.000584905, 0.000846622, 0.000886866, 0.00256018,
+			0.00380298, 0.00359596, 0.00326876, 0.00235532, 0.00123018, 0.00201115, 0.00175223, 0.00255086,
+			0.00162562, 0.00157129, 0.00165909, 0.00110726, 0.00328744, 0.00169188, 0.00329929, 0.00175298,
+			0.001275, 0.00145335, 0.00112533, 0.000813247, 0.00194675, 0.00198381, 0.00166206, 0.000913241,
+			0.000309321, 0.000277938, 0.00111763, 0.000989061, 0.00209744, 0.00157772, 0.00154201, 0.000893049,
+			0.000668583, 0.00278341, 0.00347147, 0.00290694, 0.00279383, 0.00241781, 0.00197478, 0.00179415,
+			0.00215919, 0.000967421, 0.00103893, 0.00105183
+		],
+		"champion": [
+			-0.00495883, -0.00401151, -0.000734615, -0.0179501, -0.0203905, 0.00811296, 0.00676935, 0.00840562,
+			0.00645104, 0.00562012, 0.00480968, 0.00252, -0.000492149, -0.00116335, -0.00272703, -0.00939641,
+			-0.0127952, -0.0129352, -0.0110212, -0.00671933, 5.63281e-5, 0.00223449, 0.00074397, 0.00371183,
+			0.00582005, 0.00559997, 0.0058306, 0.00421868, 0.00172265, 0.00538397, -0.00524315, 0.000892931,
+			0.00384192, 0.00608666, 0.00436104, 0.00317156, 0.00533552, 0.00736123, 0.00752639, 0.00419895,
+			-7.1536e-5, -0.000662674, -0.000921564, -0.00303084, -0.00440879, -0.00528273, -0.00147024, -0.00247436,
+			-0.00227867, -0.010351, -0.0126825, -0.0119775, -0.00918393, -0.0122832, -0.009646, -0.00725609,
+			-0.00485471, -0.00358905, -0.00182028, 0.00114502
+		]
+	},
+	"gate": {
+		"status": "evaluated",
+		"n": 84,
+		"window": 60,
+		"min_gain": 0.05,
+		"t_min": 2.0,
+		"lags": 5,
+		"mse_champion": 0.000485882,
+		"mse_challenger": 0.000497239,
+		"gain": -0.0233736,
+		"dm_t": -1.59118,
+		"promote": false,
+		"reason": "gain -2.3 % (need 5 %), DM t -1.59 (need 2.0)",
+		"deployed": "2026-06-01"
+	},
+	"cusum": {
+		"alarm": false,
+		"ever_alarm": false,
+		"s_plus": 1.2396,
+		"s_minus": 0.0,
+		"k": 0.5,
+		"h": 5.0,
+		"first_alarm": null,
+		"first_alarm_date": null,
+		"basis": "champion errors after deployment",
+		"rho": 0.681999,
+		"sigma_e": 0.0172389
+	},
+	"proposal": {
+		"day": "2026-10-29",
+		"hash": "9e683675f88d50b4",
+		"object_id": "2026-10-29/9e683675f88d50b4",
+		"n_auto": 12,
+		"n_approval": 2,
+		"items": [
+			{
+				"key": "GAS-14",
+				"fact_id": "GAS-14",
+				"kind": "value",
+				"automatic": true,
+				"reason": "Kalman state of the plant-data scales",
+				"statement": "Plant-data scales on the model channels of shaft efficiency (STRATA 1.5)",
+				"unit": "lam_pellet",
+				"change": {
+					"value": 1.439,
+					"se": 0.464,
+					"params": {
+						"lam_pellet": 1.439,
+						"lam_lump": 0.92,
+						"lam_other": 0.806,
+						"sd_pellet": 0.464,
+						"sd_lump": 0.475,
+						"sd_other": 0.297,
+						"lam_production": 0.0,
+						"sd_production": 0.0,
+						"production_channel": false,
+						"moisture_term": false
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 1.421,
+						"proposed": 1.439
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "GAS-23",
+				"fact_id": "GAS-23",
+				"kind": "value",
+				"automatic": true,
+				"reason": "Kalman state of the nut-coke coefficient",
+				"statement": "Nut coke +1 kg/tHM -> shaft efficiency (data term, STRATA 1.3+)",
+				"unit": "omega per kg/tHM",
+				"change": {
+					"value": 0.000995,
+					"se": 0.000337
+				},
+				"register_changes": [],
+				"not_carried": ["se"],
+				"approvable": false,
+				"why": "Nothing an overlay carries (value, status) changes; the change of se comes with a release of the register file.",
+				"state": "rejected",
+				"decidable": false,
+				"decision": {
+					"decision": "rejected",
+					"by": "ravi",
+					"at": "2026-10-16T08:00:00Z",
+					"note": "se only",
+					"facts_version": null,
+					"version_status": null,
+					"audit_id": 6
+				}
+			},
+			{
+				"key": "VAL-01",
+				"fact_id": "VAL-01",
+				"kind": "status",
+				"automatic": false,
+				"reason": "Neutral -> Disputed (n 21, skill -0.12, bias +0.9 +/- 1.2)",
+				"statement": "Out-of-sample burnt coke, N1 No pellet, sinter + CLO: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 295.9,
+					"se": 1.18,
+					"params": {
+						"n": 21,
+						"realised": 296.8,
+						"fixed_omega": 296.6,
+						"strata_omega": 295.9,
+						"rmse_fixed": 3.96,
+						"rmse_strata": 4.19,
+						"skill": -0.117,
+						"bias": 0.87,
+						"se_bias": 1.18,
+						"composition": {
+							"pellet": 0.0,
+							"clo": 32.0,
+							"rom": 0.1,
+							"gomti": 0.0,
+							"oversize": 0.1
+						}
+					},
+					"status": "Disputed"
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 296.0,
+						"proposed": 295.9
+					},
+					{
+						"field": "status",
+						"in_force": "Neutral",
+						"proposed": "Disputed"
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "VAL-02",
+				"fact_id": "VAL-02",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 9 -> 9",
+				"statement": "Out-of-sample burnt coke, N2 No pellet, with Gomti: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 301.6,
+					"se": 2.58,
+					"params": {
+						"n": 9,
+						"realised": 304.3,
+						"fixed_omega": 301.4,
+						"strata_omega": 301.6,
+						"rmse_fixed": 7.72,
+						"rmse_strata": 7.64,
+						"skill": 0.02,
+						"bias": 2.63,
+						"se_bias": 2.58,
+						"composition": {
+							"pellet": 0.0,
+							"clo": 26.5,
+							"rom": 0.5,
+							"gomti": 6.9,
+							"oversize": 0.0
+						}
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 301.8,
+						"proposed": 301.6
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "proposed",
+				"decidable": false,
+				"decision": {
+					"decision": "approved",
+					"by": "asha",
+					"at": "2026-10-16T07:00:00Z",
+					"note": "Monthly refit",
+					"facts_version": 2,
+					"version_status": "pending",
+					"audit_id": 4
+				}
+			},
+			{
+				"key": "VAL-03",
+				"fact_id": "VAL-03",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 30 -> 30",
+				"statement": "Out-of-sample burnt coke, N3 No pellet, with oversize: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 307.0,
+					"se": 1.39,
+					"params": {
+						"n": 30,
+						"realised": 307.8,
+						"fixed_omega": 306.5,
+						"strata_omega": 307.0,
+						"rmse_fixed": 6.39,
+						"rmse_strata": 6.05,
+						"skill": 0.104,
+						"bias": 0.82,
+						"se_bias": 1.39,
+						"composition": {
+							"pellet": 0.0,
+							"clo": 25.4,
+							"rom": 0.1,
+							"gomti": 0.0,
+							"oversize": 9.9
+						}
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 306.8,
+						"proposed": 307.0
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "not_taken",
+				"decidable": true,
+				"decision": {
+					"decision": "approved",
+					"by": "asha",
+					"at": "2026-10-16T09:00:00Z",
+					"note": null,
+					"facts_version": 3,
+					"version_status": "rejected",
+					"audit_id": 7
+				}
+			},
+			{
+				"key": "VAL-04",
+				"fact_id": "VAL-04",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 30 -> 30",
+				"statement": "Out-of-sample burnt coke, N4 No pellet, with ROM: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 303.4,
+					"se": 2.77,
+					"params": {
+						"n": 30,
+						"realised": 304.6,
+						"fixed_omega": 303.5,
+						"strata_omega": 303.4,
+						"rmse_fixed": 9.3,
+						"rmse_strata": 8.31,
+						"skill": 0.202,
+						"bias": 1.12,
+						"se_bias": 2.77,
+						"composition": {
+							"pellet": 0.2,
+							"clo": 22.4,
+							"rom": 12.3,
+							"gomti": 0.0,
+							"oversize": 0.0
+						}
+					}
+				},
+				"register_changes": [],
+				"not_carried": ["se", "params"],
+				"approvable": false,
+				"why": "Nothing an overlay carries (value, status) changes; the change of se, params comes with a release of the register file.",
+				"state": "approved",
+				"decidable": false,
+				"decision": {
+					"decision": "approved",
+					"by": "asha",
+					"at": "2026-10-16T05:00:00Z",
+					"note": null,
+					"facts_version": 1,
+					"version_status": "approved",
+					"audit_id": 1
+				}
+			},
+			{
+				"key": "VAL-05",
+				"fact_id": "VAL-05",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 1 -> 1",
+				"statement": "Out-of-sample burnt coke, N5 No pellet, ROM + oversize: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 291.6,
+					"se": null,
+					"params": {
+						"n": 1,
+						"realised": 293.6,
+						"fixed_omega": 292.0,
+						"strata_omega": 291.6,
+						"rmse_fixed": 1.59,
+						"rmse_strata": 2.06,
+						"skill": -0.695,
+						"bias": 2.06,
+						"se_bias": null,
+						"composition": {
+							"pellet": 0.0,
+							"clo": 27.0,
+							"rom": 4.0,
+							"gomti": 0.0,
+							"oversize": 5.1
+						}
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 291.4,
+						"proposed": 291.6
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "VAL-06",
+				"fact_id": "VAL-06",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 43 -> 43",
+				"statement": "Out-of-sample burnt coke, P1 Pellet, sinter + CLO: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 314.9,
+					"se": 1.53,
+					"params": {
+						"n": 43,
+						"realised": 313.9,
+						"fixed_omega": 314.8,
+						"strata_omega": 314.9,
+						"rmse_fixed": 5.43,
+						"rmse_strata": 5.34,
+						"skill": 0.033,
+						"bias": -1.02,
+						"se_bias": 1.53,
+						"composition": {
+							"pellet": 12.2,
+							"clo": 23.6,
+							"rom": 0.2,
+							"gomti": 0.0,
+							"oversize": 0.0
+						}
+					}
+				},
+				"register_changes": [],
+				"not_carried": ["se", "params"],
+				"approvable": false,
+				"why": "Nothing an overlay carries (value, status) changes; the change of se, params comes with a release of the register file.",
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "VAL-07",
+				"fact_id": "VAL-07",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 6 -> 6",
+				"statement": "Out-of-sample burnt coke, P2 Pellet, with oversize: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 311.3,
+					"se": 1.94,
+					"params": {
+						"n": 6,
+						"realised": 315.5,
+						"fixed_omega": 311.5,
+						"strata_omega": 311.3,
+						"rmse_fixed": 5.87,
+						"rmse_strata": 5.87,
+						"skill": 0.0,
+						"bias": 4.19,
+						"se_bias": 1.94,
+						"composition": {
+							"pellet": 14.9,
+							"clo": 10.4,
+							"rom": 0.2,
+							"gomti": 0.0,
+							"oversize": 9.9
+						}
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 311.5,
+						"proposed": 311.3
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "VAL-08",
+				"fact_id": "VAL-08",
+				"kind": "status",
+				"automatic": false,
+				"reason": "Supported -> Neutral (n 27, skill -0.04, bias -1.0 +/- 1.4)",
+				"statement": "Out-of-sample burnt coke, P3 Pellet, with ROM: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 307.2,
+					"se": 1.44,
+					"params": {
+						"n": 27,
+						"realised": 306.2,
+						"fixed_omega": 306.4,
+						"strata_omega": 307.2,
+						"rmse_fixed": 4.4,
+						"rmse_strata": 4.48,
+						"skill": -0.037,
+						"bias": -1.02,
+						"se_bias": 1.44,
+						"composition": {
+							"pellet": 10.1,
+							"clo": 17.7,
+							"rom": 7.9,
+							"gomti": 0.0,
+							"oversize": 0.0
+						}
+					},
+					"status": "Neutral"
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 307.1,
+						"proposed": 307.2
+					},
+					{
+						"field": "status",
+						"in_force": "Supported",
+						"proposed": "Neutral"
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "VAL-09",
+				"fact_id": "VAL-09",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 8 -> 8",
+				"statement": "Out-of-sample burnt coke, P4 Pellet, ROM + oversize: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 296.2,
+					"se": 2.45,
+					"params": {
+						"n": 8,
+						"realised": 297.5,
+						"fixed_omega": 299.9,
+						"strata_omega": 296.2,
+						"rmse_fixed": 7.57,
+						"rmse_strata": 6.61,
+						"skill": 0.238,
+						"bias": 1.28,
+						"se_bias": 2.45,
+						"composition": {
+							"pellet": 15.0,
+							"clo": 10.0,
+							"rom": 4.4,
+							"gomti": 0.0,
+							"oversize": 6.8
+						}
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 297.0,
+						"proposed": 296.2
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "VAL-10",
+				"fact_id": "VAL-10",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 175 -> 175",
+				"statement": "Out-of-sample burnt coke, All days: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 306.3,
+					"se": 0.75,
+					"params": {
+						"n": 175,
+						"realised": 306.7,
+						"fixed_omega": 306.4,
+						"strata_omega": 306.3,
+						"rmse_fixed": 6.39,
+						"rmse_strata": 6.04,
+						"skill": 0.106,
+						"bias": 0.38,
+						"se_bias": 0.75,
+						"composition": {
+							"pellet": 5.8,
+							"clo": 22.9,
+							"rom": 3.6,
+							"gomti": 0.4,
+							"oversize": 2.4
+						}
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 306.4,
+						"proposed": 306.3
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "VAL-11",
+				"fact_id": "VAL-11",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 26 -> 26",
+				"statement": "Out-of-sample burnt coke, ROM >= 10 % (any family): realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 307.4,
+					"se": 1.59,
+					"params": {
+						"n": 26,
+						"realised": 305.7,
+						"fixed_omega": 307.1,
+						"strata_omega": 307.4,
+						"rmse_fixed": 6.97,
+						"rmse_strata": 5.7,
+						"skill": 0.331,
+						"bias": -1.65,
+						"se_bias": 1.59,
+						"composition": {
+							"pellet": 3.7,
+							"clo": 17.7,
+							"rom": 15.8,
+							"gomti": 0.0,
+							"oversize": 0.0
+						}
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 307.5,
+						"proposed": 307.4
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			},
+			{
+				"key": "VAL-12",
+				"fact_id": "VAL-12",
+				"kind": "value",
+				"automatic": true,
+				"reason": "n 35 -> 35",
+				"statement": "Out-of-sample burnt coke, Pellet >= 12 % (any family): realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"change": {
+					"value": 309.2,
+					"se": 1.88,
+					"params": {
+						"n": 35,
+						"realised": 308.9,
+						"fixed_omega": 310.0,
+						"strata_omega": 309.2,
+						"rmse_fixed": 6.95,
+						"rmse_strata": 6.6,
+						"skill": 0.097,
+						"bias": -0.27,
+						"se_bias": 1.88,
+						"composition": {
+							"pellet": 14.5,
+							"clo": 17.3,
+							"rom": 1.1,
+							"gomti": 0.0,
+							"oversize": 3.3
+						}
+					}
+				},
+				"register_changes": [
+					{
+						"field": "value",
+						"in_force": 309.4,
+						"proposed": 309.2
+					}
+				],
+				"not_carried": ["se", "params"],
+				"approvable": true,
+				"why": null,
+				"state": "open",
+				"decidable": true,
+				"decision": null
+			}
+		]
+	},
+	"decisions_reason": null,
+	"runs": [
+		{
+			"day": "2026-10-16",
+			"at": "2026-10-15T21:30:00Z",
+			"evidence_days": 191,
+			"evidence_to": "2026-10-07",
+			"appended_days": 0,
+			"gate_status": "evaluated",
+			"promote": false,
+			"drift_alarm": false,
+			"automatic": 12,
+			"approval": 2,
+			"coke_skill_challenger": 0.1056,
+			"coke_skill_champion": 0.1034
+		}
+	],
+	"job": {
+		"kind": "learn.shadow",
+		"title": "STRATA-Learn shadow run",
+		"role": "admin",
+		"schedule": "03:00",
+		"next_slot": "2026-10-16T21:30:00Z",
+		"timeout_s": 600.0
+	}
+}
