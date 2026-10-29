@@ -25,6 +25,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fact register
+         * @description The facts of the version in force (or of ``version``) with the fields it changes against the repository
+         *     file. Without a twin store the repository file, with the ``reason``.
+         */
+        get: operations["admin_get_register"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/facts/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare two fact register versions
+         * @description Values, bands and statuses that differ between two versions.
+         */
+        get: operations["admin_diff_versions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/facts/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a version as the register file
+         * @description ``src/config/facts_register.json`` with the version applied, for a repository PR: register version + 0.1, the
+         *     changed facts stamped with it and the approval day (IST), a revision-log entry; in the file's format. 409 when the
+         *     version is not approved (or none is in force).
+         */
+        get: operations["admin_export_version"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/facts/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fact register versions
+         * @description Newest first, with the one in force marked.
+         */
+        get: operations["admin_list_versions"];
+        put?: never;
+        /**
+         * Propose a fact register version
+         * @description Save the changes on the version in force as the next pending version, with its audit row
+         *     (``facts.propose``). 409 when another version is in force than ``parent_version``; 422 when the register would
+         *     fail the JSON schema or the engine's checks (e.g. retiring a fact the engine reads), or nothing changes.
+         */
+        post: operations["admin_propose_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/facts/versions/{version}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or reject a version
+         * @description Approve or reject a pending version, with its audit row (``facts.review``). 409 when it is not pending, when
+         *     it changes a status and the reviewer proposed it, or (approval) when it was not made from the version in force.
+         */
+        post: operations["admin_review_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -3168,6 +3278,364 @@ export interface components {
              * @description Skill on daily omega, dimensionless
              */
             skill_omega_day?: number | null;
+        };
+        /** FactChange */
+        FactChange: {
+            /**
+             * Band
+             * @description New [lo, hi] with lo <= hi (null removes a range), in the fact's unit
+             */
+            band?: number[] | null;
+            /**
+             * Status
+             * @description New status (one of the statuses)
+             */
+            status?: string | null;
+            /**
+             * Value
+             * @description New value (null: no value), in the fact's unit
+             */
+            value?: number | null;
+        };
+        /** FactDiffRow */
+        FactDiffRow: {
+            /**
+             * After
+             * @description Value in to_version (value, band [lo, hi] or status text), in the fact's unit
+             */
+            after: number | number[] | string | null;
+            /**
+             * Before
+             * @description Value in from_version (value, band [lo, hi] or status text), in the fact's unit
+             */
+            before: number | number[] | string | null;
+            /**
+             * Field
+             * @description Field that differs
+             * @enum {string}
+             */
+            field: "value" | "band" | "status";
+            /**
+             * Group
+             * @description Group of the fact
+             */
+            group: string;
+            /**
+             * Id
+             * @description Fact id
+             */
+            id: string;
+            /**
+             * Statement
+             * @description What the fact states
+             */
+            statement: string;
+            /**
+             * Unit
+             * @description Unit of value and band
+             */
+            unit: string;
+        };
+        /** FactRegisterView */
+        FactRegisterView: {
+            /**
+             * Facts
+             * @description Facts in register order
+             */
+            facts: components["schemas"]["FactView"][];
+            /**
+             * File Date
+             * @description Date of the repository file (YYYY-MM-DD)
+             */
+            file_date: string;
+            /**
+             * File Version
+             * @description Version of the repository file, e.g. 1.8
+             */
+            file_version: string;
+            /**
+             * Grades
+             * @description Evidence grades and their meaning
+             */
+            grades: {
+                [key: string]: string;
+            };
+            /**
+             * Groups
+             * @description Groups in register order
+             */
+            groups: string[];
+            /**
+             * In Force Version
+             * @description Approved version in force (0: the repository file), count
+             */
+            in_force_version: number;
+            /**
+             * Label
+             * @description Register shown, e.g. 1.8 or 1.8 + overlay 3
+             */
+            label: string;
+            /**
+             * Name
+             * @description Register name
+             */
+            name: string;
+            /**
+             * Reason
+             * @description Why the repository file is shown when the twin store is missing
+             */
+            reason: string | null;
+            /**
+             * Statuses
+             * @description Statuses a fact can have
+             */
+            statuses: string[];
+            /**
+             * Version
+             * @description Version shown (0: the repository file), count
+             */
+            version: number;
+            /**
+             * Version Status
+             * @description Status of the version shown (file: the repository file)
+             * @enum {string}
+             */
+            version_status: "file" | "pending" | "approved" | "rejected";
+        };
+        /** FactView */
+        FactView: {
+            /**
+             * Band
+             * @description [lo, hi]: the plausibility band (params lo / hi) or the range (null: none), in the fact's unit
+             */
+            band: number[] | null;
+            /**
+             * Band Kind
+             * @description plausibility: params lo / hi, a band the engine checks plans against; range: the range
+             * @enum {string}
+             */
+            band_kind: "plausibility" | "range";
+            /**
+             * Basis
+             * @description Basis of the value
+             */
+            basis: string;
+            /**
+             * Changed
+             * @description Fields the shown version changes against the repository file
+             */
+            changed: ("value" | "band" | "status")[];
+            /**
+             * Date
+             * @description Date of that change (YYYY-MM-DD)
+             */
+            date: string;
+            /**
+             * File
+             * @description The repository file's values of the changed fields (value and band in the fact's unit)
+             */
+            file: Record<string, unknown> | null;
+            /**
+             * Grade
+             * @description Evidence grade A-D (the register's grades)
+             */
+            grade: string;
+            /**
+             * Group
+             * @description Group: COKE, GAS, FLOW, DATA, BAND, ASM, MOD or VAL
+             */
+            group: string;
+            /**
+             * Id
+             * @description Fact id, GROUP-nn (e.g. ASM-08)
+             */
+            id: string;
+            /**
+             * Literature
+             * @description Published values
+             */
+            literature: string;
+            /**
+             * Next Test
+             * @description Next test of the fact
+             */
+            next_test: string;
+            /**
+             * Note
+             * @description Note
+             */
+            note: string;
+            /**
+             * Params
+             * @description Parameters the engine reads (units in the keys or the unit)
+             */
+            params: Record<string, unknown>;
+            /**
+             * Retired
+             * @description Status Retired: shown, refused to the engine (RetiredFactError)
+             */
+            retired: boolean;
+            /**
+             * Se
+             * @description Standard error of value (null: none), in the fact's unit
+             */
+            se: number | null;
+            /**
+             * Statement
+             * @description What the fact states
+             */
+            statement: string;
+            /**
+             * Status
+             * @description Status, one of the register's statuses (Retired: never used)
+             */
+            status: string;
+            /**
+             * Unit
+             * @description Unit of value, se and band (empty: dimensionless or several in params)
+             */
+            unit: string;
+            /**
+             * Validity Window
+             * @description Where the value holds
+             */
+            validity_window: string;
+            /**
+             * Value
+             * @description Value of the fact (null: none), in the fact's unit
+             */
+            value: number | null;
+            /**
+             * Version
+             * @description Register version that last changed the fact
+             */
+            version: string;
+        };
+        /** FactsDiff */
+        FactsDiff: {
+            /**
+             * Changes
+             * @description Fields that differ, in register order
+             */
+            changes: components["schemas"]["FactDiffRow"][];
+            /**
+             * From Version
+             * @description Version compared from (0: the repository file), count
+             */
+            from_version: number;
+            /**
+             * To Version
+             * @description Version compared to (0: the repository file), count
+             */
+            to_version: number;
+        };
+        /** FactsProposal */
+        FactsProposal: {
+            /**
+             * Changes
+             * @description Changes by fact id; a field left out keeps the value in force
+             */
+            changes: {
+                [key: string]: components["schemas"]["FactChange"];
+            };
+            /**
+             * Note
+             * @description Reason for the change, saved with the version
+             */
+            note: string;
+            /**
+             * Parent Version
+             * @description Version in force the edit started from (GET's in_force_version; 0: the file), count
+             */
+            parent_version: number;
+        };
+        /** FactsReview */
+        FactsReview: {
+            /**
+             * Approve
+             * @description true approves the version (it comes into force), false rejects it
+             */
+            approve: boolean;
+            /**
+             * Note
+             * @description Reason, recorded in the audit log
+             */
+            note?: string | null;
+        };
+        /** FactsVersionView */
+        FactsVersionView: {
+            /**
+             * Applies
+             * @description Made against the current repository file's version
+             */
+            applies: boolean;
+            /**
+             * Base Version
+             * @description Version of the repository file it applies to
+             */
+            base_version: string;
+            /**
+             * Content Hash
+             * @description SHA-256 of the overlay (canonical JSON)
+             */
+            content_hash: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Time of the proposal (UTC)
+             */
+            created_at: string;
+            /**
+             * Created By
+             * @description Administrator who proposed it
+             */
+            created_by: string;
+            /**
+             * Facts
+             * @description Facts that differ from the repository file in this version
+             */
+            facts: string[];
+            /**
+             * In Force
+             * @description The version the engine loads
+             */
+            in_force: boolean;
+            /**
+             * Note
+             * @description Reason given with the proposal
+             */
+            note: string | null;
+            /**
+             * Parent Version
+             * @description Version in force it was made from (0: the repository file), count
+             */
+            parent_version: number;
+            /**
+             * Reviewed At
+             * @description Time of the review (UTC)
+             */
+            reviewed_at: string | null;
+            /**
+             * Reviewed By
+             * @description Administrator who approved or rejected it
+             */
+            reviewed_by: string | null;
+            /**
+             * Second Review
+             * @description Changes a fact's status: another administrator must review it
+             */
+            second_review: boolean;
+            /**
+             * Status
+             * @description pending until an administrator approves or rejects it
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+            /**
+             * Version
+             * @description Version number, count
+             */
+            version: number;
         };
         /** FamilyRow */
         FamilyRow: {
@@ -9085,6 +9553,261 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_get_register: {
+        parameters: {
+            query?: {
+                /** @description Version to show (0: the repository file; default: the one in force), count */
+                version?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactRegisterView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_diff_versions: {
+        parameters: {
+            query?: {
+                /** @description Version from (0: the repository file), count */
+                from_version?: number;
+                /** @description Version to (default: the one in force), count */
+                to_version?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactsDiff"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_export_version: {
+        parameters: {
+            query?: {
+                /** @description Approved version to export (default: the one in force), count */
+                version?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The register file (facts_register.json) of the approved version, schema-valid */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_list_versions: {
+        parameters: {
+            query?: {
+                /** @description Versions to return, count */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactsVersionView"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_propose_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactsProposal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactsVersionView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_review_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Version to review, count */
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactsReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactsVersionView"];
                 };
             };
             /** @description Client error (problem+json) */

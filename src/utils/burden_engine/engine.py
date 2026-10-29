@@ -866,7 +866,7 @@ class Engine:
                    dlnK=d, V_ceiling=self.hy.v_ceiling(s.Pb, s.Pt, d), Pb_needed=self.hy.pb_needed(V, s.Pt, d),
                    charging_th=P / 1000 * (zs.sum() + s.nut_plant), charges_per_h=P / 1000 * (zs.sum() + s.nut_plant) / L.charge_t,
                    charging_cap_th=L.charge_t * L.charges_per_h, warnings=warnings, omega=om_info,
-                   facts_version=self.facts.version, facts=list(ENGINE_FACTS))
+                   facts_version=self.facts.label, facts=list(ENGINE_FACTS))
         out["dP_needed"] = out["Pb_needed"] - s.Pt
         return out
 

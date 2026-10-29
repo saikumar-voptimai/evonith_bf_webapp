@@ -7,24 +7,42 @@ so a monthly refit or a test result changes a versioned file, not code.
 
 Retired facts (status ``Retired``, e.g. COKE-17 the webapp hand coefficients and DATA-10 the regressed RAFT) can be
 displayed but never used: :meth:`FactRegister.param` refuses them.
+
+Overlay (SV-4.2, #305): administrators change a fact's value, band or status in the admin space; an approved version
+of ``twin.facts_version`` is an overlay on this file (``apply_overlay``). ``load_register()`` returns the file with the
+latest approved overlay made against the file's version (``services.facts.approved_overlay``, re-read every 60 s), else
+the file alone; ``load_register(path)`` and ``load_register(overlay=False)`` read the file only.
 """
 
 from __future__ import annotations
 
+import copy
 import json
+import logging
+import math
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 REGISTER_PATH = Path(__file__).resolve().parents[2] / "config" / "facts_register.json"
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "config" / "schemas" / "facts_register.schema.json"
 
 RETIRED = "Retired"
 
+#: Fields of a fact an overlay changes (the admin editor): value, band ([lo, hi]: ``params`` lo / hi of a plausibility
+#: band, else ``range``) and status.
+OVERLAY_FIELDS = ("value", "band", "status")
+
+log = logging.getLogger(__name__)
+
 
 class RetiredFactError(KeyError):
     """A retired fact was asked for a value the engine would use."""
+
+
+class OverlayError(ValueError):
+    """An overlay that does not apply to the register: unknown fact or field, or a value of the wrong type."""
 
 
 @dataclass(frozen=True)
@@ -68,14 +86,21 @@ class Fact:
 class FactRegister:
     """Read-only view of the register with guarded access for the engine."""
 
-    def __init__(self, data: dict[str, Any]):
+    def __init__(self, data: dict[str, Any], overlay_version: int | None = None):
         self.name: str = data["name"]
         self.version: str = data["version"]
+        #: Approved overlay version applied to the file (``twin.facts_version``), None for the file alone.
+        self.overlay_version = overlay_version
         self.date: str = data["date"]
         self.statuses: list[str] = list(data["statuses"])
         self.revision_log: list[dict[str, str]] = list(data.get("revision_log", []))
         self._facts = {f["id"]: Fact.from_dict(f) for f in data["facts"]}
         self._check()
+
+    @property
+    def label(self) -> str:
+        """``1.8``, or ``1.8 + overlay 3`` with an approved overlay."""
+        return self.version if self.overlay_version is None else f"{self.version} + overlay {self.overlay_version}"
 
     # ---------------------------------------------------------------------------------------------- access
     def __contains__(self, fact_id: str) -> bool:
@@ -170,14 +195,187 @@ def load_register_data(path: str | Path | None = None) -> dict[str, Any]:
         return json.load(fh)
 
 
+# -------------------------------------------------------------------------------------------------- overlay
+def fact_band(fact: Mapping[str, Any]) -> list[float] | None:
+    """[lo, hi] of a fact: ``params`` lo / hi of a plausibility band (BAND-01..03), else ``range``, else None."""
+    p = fact.get("params") or {}
+    if "lo" in p and "hi" in p:
+        return [float(p["lo"]), float(p["hi"])]
+    rng = fact.get("range")
+    return [float(rng[0]), float(rng[1])] if rng else None
+
+
+def band_kind(fact: Mapping[str, Any]) -> str:
+    """``plausibility`` when the band is ``params`` lo / hi (the engine's bands), else ``range``."""
+    p = fact.get("params") or {}
+    return "plausibility" if "lo" in p and "hi" in p else "range"
+
+
+def _number(fid: str, name: str, v: Any) -> float:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        raise OverlayError(f"{fid}: {name} must be a finite number, got {v!r}")
+    return float(v)
+
+
+def apply_overlay(data: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
+    """A copy of the register document ``data`` with ``overlay`` applied: ``{fact id: {value?, band?, status?}}``.
+
+    ``value`` a number or None; ``band`` [lo, hi] with lo <= hi (None removes a ``range``; a plausibility band cannot
+    be removed); ``status`` text (checked against the statuses by ``FactRegister``). ``OverlayError`` on an unknown
+    fact or field or a wrong type."""
+    out = copy.deepcopy(dict(data))
+    facts = {f["id"]: f for f in out["facts"]}
+    for fid, patch in overlay.items():
+        if fid not in facts:
+            raise OverlayError(f"{fid}: no such fact in register v{out.get('version')}")
+        if not isinstance(patch, Mapping) or not patch:
+            raise OverlayError(f"{fid}: a change sets at least one of {', '.join(OVERLAY_FIELDS)}")
+        unknown = sorted(set(patch) - set(OVERLAY_FIELDS))
+        if unknown:
+            raise OverlayError(f"{fid}: {', '.join(unknown)} cannot be changed (only {', '.join(OVERLAY_FIELDS)})")
+        f = facts[fid]
+        if "value" in patch:
+            f["value"] = None if patch["value"] is None else _number(fid, "value", patch["value"])
+        if "band" in patch:
+            band = patch["band"]
+            if band is None:
+                if band_kind(f) == "plausibility":
+                    raise OverlayError(f"{fid}: a plausibility band cannot be removed")
+                f.pop("range", None)
+            else:
+                if not isinstance(band, (list, tuple)) or len(band) != 2:
+                    raise OverlayError(f"{fid}: band must be [lo, hi], got {band!r}")
+                lo, hi = _number(fid, "band lo", band[0]), _number(fid, "band hi", band[1])
+                if lo > hi:
+                    raise OverlayError(f"{fid}: band lo {lo:g} lies above hi {hi:g}")
+                if band_kind(f) == "plausibility":
+                    f["params"] = {**f["params"], "lo": lo, "hi": hi}
+                else:
+                    f["range"] = [lo, hi]
+        if "status" in patch:
+            status = patch["status"]
+            if not isinstance(status, str) or not status:
+                raise OverlayError(f"{fid}: status must be text, got {status!r}")
+            f["status"] = status
+    return out
+
+
+@lru_cache(maxsize=1)
+def _schema() -> dict[str, Any]:
+    with open(SCHEMA_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def register_problems(data: Mapping[str, Any]) -> list[str]:
+    """Why ``data`` is not a usable register: JSON-schema errors (``config/schemas/facts_register.schema.json``),
+    then the register's own checks (statuses, ids, revision log), then the engine's reads (``engine_problems``).
+    Empty when it is usable."""
+    from jsonschema import Draft202012Validator
+
+    out = []
+    for e in sorted(Draft202012Validator(_schema()).iter_errors(data), key=lambda e: list(map(str, e.path))):
+        path = list(e.path)
+        where = "/".join(str(p) for p in path)
+        if len(path) >= 2 and path[0] == "facts" and isinstance(path[1], int):
+            fid = (data["facts"][path[1]] or {}).get("id", path[1])
+            where = "/".join([str(fid)] + [str(p) for p in path[2:]])
+        out.append(f"{where or 'register'}: {e.message}")
+    if out:
+        return out
+    try:
+        reg = FactRegister(dict(data))
+    except (KeyError, TypeError, ValueError) as exc:
+        return [str(exc)]
+    return engine_problems(reg)
+
+
+def engine_problems(reg: FactRegister) -> list[str]:
+    """The guarded reads the engine makes when it is built (hydraulics rules, default limits, plausibility bands):
+    a retired fact among them, or a missing parameter, would stop every optimiser run."""
+    out = []
+    for name, read in (("hydraulics rules", reg.thumb_rules), ("default limits", reg.default_limits),
+                       ("fuel-rate band", lambda: reg.band("BAND-01")), ("HMT band", lambda: reg.band("BAND-02")),
+                       ("Si band", lambda: reg.band("BAND-03"))):
+        try:
+            read()
+        except RetiredFactError as exc:
+            out.append(f"{exc.args[0]}: the engine reads it for its {name}; retiring it needs a code change first")
+        except (KeyError, TypeError, ValueError) as exc:
+            out.append(f"the engine's {name} cannot be read: {exc}")
+    return out
+
+
+@dataclass(frozen=True)
+class ApprovedOverlay:
+    """The overlay in force: an approved version of ``twin.facts_version`` made against the file ``base_version``."""
+
+    version: int
+    base_version: str
+    overlay: Mapping[str, Any]
+    content_hash: str
+
+
+OverlaySource = Callable[[], "ApprovedOverlay | None"]
+_DEFAULT_SOURCE: Any = object()
+_source: Any = _DEFAULT_SOURCE
+
+
+def set_overlay_source(source: Any = _DEFAULT_SOURCE) -> None:
+    """Where ``load_register()`` finds the approved overlay: a callable returning an ``ApprovedOverlay`` or None,
+    None (the file only) or, without an argument, the default (``services.facts.approved_overlay``, the twin store
+    of the process)."""
+    global _source
+    _source = source
+
+
+def _approved() -> ApprovedOverlay | None:
+    source = _source
+    if source is _DEFAULT_SOURCE:
+        try:
+            from services.facts import approved_overlay as source
+        except ImportError as exc:  # the engine without the service layer (vendored copies, scripts)
+            log.debug("fact register overlay unavailable: %s", exc)
+            return None
+    if source is None:
+        return None
+    try:
+        return source()
+    except Exception as exc:  # noqa: BLE001 - a store that fails leaves the file in force
+        log.warning("fact register overlay not read (%s): the repository file is in force", exc)
+        return None
+
+
 @lru_cache(maxsize=4)
 def _cached(path: str) -> FactRegister:
     return FactRegister(load_register_data(path))
 
 
-def load_register(path: str | Path | None = None) -> FactRegister:
-    """The register at ``path`` (default: the shipped one), cached per path."""
-    return _cached(str(Path(path or REGISTER_PATH).resolve()))
+@lru_cache(maxsize=8)
+def _overlaid(path: str, version: int, content_hash: str, overlay_json: str) -> FactRegister:
+    return FactRegister(apply_overlay(load_register_data(path), json.loads(overlay_json)), overlay_version=version)
+
+
+def load_register(path: str | Path | None = None, *, overlay: bool = True) -> FactRegister:
+    """The register the engine uses: the shipped file with the latest approved overlay made against its version
+    (``twin.facts_version``), else the file alone. ``path`` (or ``overlay=False``) reads that file only. Cached per
+    file and overlay version."""
+    if path is not None or not overlay:
+        return _cached(str(Path(path or REGISTER_PATH).resolve()))
+    file = str(Path(REGISTER_PATH).resolve())
+    base = _cached(file)
+    approved = _approved()
+    if approved is None:
+        return base
+    if approved.base_version != base.version:
+        log.warning("fact register overlay %s is for v%s, the file is v%s: the file is in force",
+                    approved.version, approved.base_version, base.version)
+        return base
+    try:
+        return _overlaid(file, approved.version, approved.content_hash,
+                         json.dumps(approved.overlay, sort_keys=True))
+    except (KeyError, TypeError, ValueError) as exc:
+        log.warning("fact register overlay %s does not apply (%s): the file is in force", approved.version, exc)
+        return base
 
 
 # Facts every engine result rests on; the page shows these with their status.

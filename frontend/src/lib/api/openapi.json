@@ -4270,6 +4270,639 @@
         "title": "ExpandingTest",
         "type": "object"
       },
+      "FactChange": {
+        "additionalProperties": false,
+        "properties": {
+          "band": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New [lo, hi] with lo <= hi (null removes a range), in the fact's unit",
+            "title": "Band"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New status (one of the statuses)",
+            "title": "Status"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New value (null: no value), in the fact's unit",
+            "title": "Value"
+          }
+        },
+        "title": "FactChange",
+        "type": "object"
+      },
+      "FactDiffRow": {
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Value in to_version (value, band [lo, hi] or status text), in the fact's unit",
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Value in from_version (value, band [lo, hi] or status text), in the fact's unit",
+            "title": "Before"
+          },
+          "field": {
+            "description": "Field that differs",
+            "enum": [
+              "value",
+              "band",
+              "status"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "group": {
+            "description": "Group of the fact",
+            "title": "Group",
+            "type": "string"
+          },
+          "id": {
+            "description": "Fact id",
+            "title": "Id",
+            "type": "string"
+          },
+          "statement": {
+            "description": "What the fact states",
+            "title": "Statement",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of value and band",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "group",
+          "statement",
+          "unit",
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "FactDiffRow",
+        "type": "object"
+      },
+      "FactRegisterView": {
+        "properties": {
+          "facts": {
+            "description": "Facts in register order",
+            "items": {
+              "$ref": "#/components/schemas/FactView"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "file_date": {
+            "description": "Date of the repository file (YYYY-MM-DD)",
+            "title": "File Date",
+            "type": "string"
+          },
+          "file_version": {
+            "description": "Version of the repository file, e.g. 1.8",
+            "title": "File Version",
+            "type": "string"
+          },
+          "grades": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Evidence grades and their meaning",
+            "title": "Grades",
+            "type": "object"
+          },
+          "groups": {
+            "description": "Groups in register order",
+            "items": {
+              "type": "string"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "in_force_version": {
+            "description": "Approved version in force (0: the repository file), count",
+            "title": "In Force Version",
+            "type": "integer"
+          },
+          "label": {
+            "description": "Register shown, e.g. 1.8 or 1.8 + overlay 3",
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "description": "Register name",
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the repository file is shown when the twin store is missing",
+            "title": "Reason"
+          },
+          "statuses": {
+            "description": "Statuses a fact can have",
+            "items": {
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          },
+          "version": {
+            "description": "Version shown (0: the repository file), count",
+            "title": "Version",
+            "type": "integer"
+          },
+          "version_status": {
+            "description": "Status of the version shown (file: the repository file)",
+            "enum": [
+              "file",
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Version Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "file_version",
+          "file_date",
+          "statuses",
+          "grades",
+          "groups",
+          "in_force_version",
+          "version",
+          "version_status",
+          "label",
+          "reason",
+          "facts"
+        ],
+        "title": "FactRegisterView",
+        "type": "object"
+      },
+      "FactView": {
+        "properties": {
+          "band": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "[lo, hi]: the plausibility band (params lo / hi) or the range (null: none), in the fact's unit",
+            "title": "Band"
+          },
+          "band_kind": {
+            "description": "plausibility: params lo / hi, a band the engine checks plans against; range: the range",
+            "enum": [
+              "plausibility",
+              "range"
+            ],
+            "title": "Band Kind",
+            "type": "string"
+          },
+          "basis": {
+            "description": "Basis of the value",
+            "title": "Basis",
+            "type": "string"
+          },
+          "changed": {
+            "description": "Fields the shown version changes against the repository file",
+            "items": {
+              "enum": [
+                "value",
+                "band",
+                "status"
+              ],
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "date": {
+            "description": "Date of that change (YYYY-MM-DD)",
+            "title": "Date",
+            "type": "string"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The repository file's values of the changed fields (value and band in the fact's unit)",
+            "title": "File"
+          },
+          "grade": {
+            "description": "Evidence grade A-D (the register's grades)",
+            "title": "Grade",
+            "type": "string"
+          },
+          "group": {
+            "description": "Group: COKE, GAS, FLOW, DATA, BAND, ASM, MOD or VAL",
+            "title": "Group",
+            "type": "string"
+          },
+          "id": {
+            "description": "Fact id, GROUP-nn (e.g. ASM-08)",
+            "title": "Id",
+            "type": "string"
+          },
+          "literature": {
+            "description": "Published values",
+            "title": "Literature",
+            "type": "string"
+          },
+          "next_test": {
+            "description": "Next test of the fact",
+            "title": "Next Test",
+            "type": "string"
+          },
+          "note": {
+            "description": "Note",
+            "title": "Note",
+            "type": "string"
+          },
+          "params": {
+            "description": "Parameters the engine reads (units in the keys or the unit)",
+            "title": "Params",
+            "type": "object"
+          },
+          "retired": {
+            "description": "Status Retired: shown, refused to the engine (RetiredFactError)",
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard error of value (null: none), in the fact's unit",
+            "title": "Se"
+          },
+          "statement": {
+            "description": "What the fact states",
+            "title": "Statement",
+            "type": "string"
+          },
+          "status": {
+            "description": "Status, one of the register's statuses (Retired: never used)",
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of value, se and band (empty: dimensionless or several in params)",
+            "title": "Unit",
+            "type": "string"
+          },
+          "validity_window": {
+            "description": "Where the value holds",
+            "title": "Validity Window",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Value of the fact (null: none), in the fact's unit",
+            "title": "Value"
+          },
+          "version": {
+            "description": "Register version that last changed the fact",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "group",
+          "statement",
+          "value",
+          "unit",
+          "se",
+          "band",
+          "band_kind",
+          "status",
+          "grade",
+          "basis",
+          "literature",
+          "validity_window",
+          "next_test",
+          "version",
+          "date",
+          "note",
+          "params",
+          "retired",
+          "changed",
+          "file"
+        ],
+        "title": "FactView",
+        "type": "object"
+      },
+      "FactsDiff": {
+        "properties": {
+          "changes": {
+            "description": "Fields that differ, in register order",
+            "items": {
+              "$ref": "#/components/schemas/FactDiffRow"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "from_version": {
+            "description": "Version compared from (0: the repository file), count",
+            "title": "From Version",
+            "type": "integer"
+          },
+          "to_version": {
+            "description": "Version compared to (0: the repository file), count",
+            "title": "To Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from_version",
+          "to_version",
+          "changes"
+        ],
+        "title": "FactsDiff",
+        "type": "object"
+      },
+      "FactsProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FactChange"
+            },
+            "description": "Changes by fact id; a field left out keeps the value in force",
+            "minProperties": 1,
+            "title": "Changes",
+            "type": "object"
+          },
+          "note": {
+            "description": "Reason for the change, saved with the version",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Note",
+            "type": "string"
+          },
+          "parent_version": {
+            "description": "Version in force the edit started from (GET's in_force_version; 0: the file), count",
+            "minimum": 0.0,
+            "title": "Parent Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "parent_version",
+          "changes",
+          "note"
+        ],
+        "title": "FactsProposal",
+        "type": "object"
+      },
+      "FactsReview": {
+        "additionalProperties": false,
+        "properties": {
+          "approve": {
+            "description": "true approves the version (it comes into force), false rejects it",
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason, recorded in the audit log",
+            "title": "Note"
+          }
+        },
+        "required": [
+          "approve"
+        ],
+        "title": "FactsReview",
+        "type": "object"
+      },
+      "FactsVersionView": {
+        "properties": {
+          "applies": {
+            "description": "Made against the current repository file's version",
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "base_version": {
+            "description": "Version of the repository file it applies to",
+            "title": "Base Version",
+            "type": "string"
+          },
+          "content_hash": {
+            "description": "SHA-256 of the overlay (canonical JSON)",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Time of the proposal (UTC)",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "description": "Administrator who proposed it",
+            "title": "Created By",
+            "type": "string"
+          },
+          "facts": {
+            "description": "Facts that differ from the repository file in this version",
+            "items": {
+              "type": "string"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "in_force": {
+            "description": "The version the engine loads",
+            "title": "In Force",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason given with the proposal",
+            "title": "Note"
+          },
+          "parent_version": {
+            "description": "Version in force it was made from (0: the repository file), count",
+            "title": "Parent Version",
+            "type": "integer"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the review (UTC)",
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Administrator who approved or rejected it",
+            "title": "Reviewed By"
+          },
+          "second_review": {
+            "description": "Changes a fact's status: another administrator must review it",
+            "title": "Second Review",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "pending until an administrator approves or rejects it",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version number, count",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "parent_version",
+          "base_version",
+          "status",
+          "second_review",
+          "note",
+          "created_by",
+          "created_at",
+          "reviewed_by",
+          "reviewed_at",
+          "facts",
+          "content_hash",
+          "in_force",
+          "applies"
+        ],
+        "title": "FactsVersionView",
+        "type": "object"
+      },
       "FamilyRow": {
         "properties": {
           "bias": {
@@ -16334,6 +16967,387 @@
           }
         },
         "summary": "Audit log",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/facts": {
+      "get": {
+        "description": "The facts of the version in force (or of ``version``) with the fields it changes against the repository\nfile. Without a twin store the repository file, with the ``reason``.",
+        "operationId": "admin_get_register",
+        "parameters": [
+          {
+            "description": "Version to show (0: the repository file; default: the one in force), count",
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Version to show (0: the repository file; default: the one in force), count",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactRegisterView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Fact register",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/facts/diff": {
+      "get": {
+        "description": "Values, bands and statuses that differ between two versions.",
+        "operationId": "admin_diff_versions",
+        "parameters": [
+          {
+            "description": "Version from (0: the repository file), count",
+            "in": "query",
+            "name": "from_version",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Version from (0: the repository file), count",
+              "minimum": 0,
+              "title": "From Version",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Version to (default: the one in force), count",
+            "in": "query",
+            "name": "to_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Version to (default: the one in force), count",
+              "title": "To Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactsDiff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Compare two fact register versions",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/facts/export": {
+      "get": {
+        "description": "``src/config/facts_register.json`` with the version applied, for a repository PR: register version + 0.1, the\nchanged facts stamped with it and the approval day (IST), a revision-log entry; in the file's format. 409 when the\nversion is not approved (or none is in force).",
+        "operationId": "admin_export_version",
+        "parameters": [
+          {
+            "description": "Approved version to export (default: the one in force), count",
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Approved version to export (default: the one in force), count",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The register file (facts_register.json) of the approved version, schema-valid"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Export a version as the register file",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/facts/versions": {
+      "get": {
+        "description": "Newest first, with the one in force marked.",
+        "operationId": "admin_list_versions",
+        "parameters": [
+          {
+            "description": "Versions to return, count",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "description": "Versions to return, count",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FactsVersionView"
+                  },
+                  "title": "Response Admin List Versions",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Fact register versions",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Save the changes on the version in force as the next pending version, with its audit row\n(``facts.propose``). 409 when another version is in force than ``parent_version``; 422 when the register would\nfail the JSON schema or the engine's checks (e.g. retiring a fact the engine reads), or nothing changes.",
+        "operationId": "admin_propose_version",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactsProposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactsVersionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Propose a fact register version",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/facts/versions/{version}/review": {
+      "post": {
+        "description": "Approve or reject a pending version, with its audit row (``facts.review``). 409 when it is not pending, when\nit changes a status and the reviewer proposed it, or (approval) when it was not made from the version in force.",
+        "operationId": "admin_review_version",
+        "parameters": [
+          {
+            "description": "Version to review, count",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "description": "Version to review, count",
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactsReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactsVersionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Approve or reject a version",
         "tags": [
           "admin"
         ]
