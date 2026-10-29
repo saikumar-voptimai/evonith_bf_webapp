@@ -1,0 +1,1171 @@
+{
+  "source": "services.status.snapshot_view of tests.test_services_status.plant_frames at NOW; ui.furnace_status",
+  "now": "2026-10-27T09:30:15+00:00",
+  "layout": {
+    "panel_columns": [
+      [
+        "Production",
+        "Blast and Gas",
+        "Steam and O\u2082"
+      ],
+      [
+        "Furnace Performance",
+        "Total Heat Load"
+      ]
+    ],
+    "strips": {
+      "Uptake Temperatures": [
+        "uptake_t1",
+        "uptake_t2",
+        "uptake_t3",
+        "uptake_t4",
+        "uptake_avg",
+        "uptake_std"
+      ],
+      "Hearth Temperatures": [
+        "hearth_temp_a",
+        "hearth_temp_b",
+        "hearth_temp_c",
+        "hearth_temp_d"
+      ]
+    },
+    "heat_total_key": "heat_load_total",
+    "heat_quadrant_keys": [
+      "heat_load_q1",
+      "heat_load_q2",
+      "heat_load_q3",
+      "heat_load_q4"
+    ],
+    "not_available": "Not available"
+  },
+  "settings": {
+    "stale_after_minutes": 15.0,
+    "live_max_age_minutes": 5.0,
+    "live_min_coverage": 0.7,
+    "refresh": [
+      {
+        "label": "10 s",
+        "seconds": 10
+      },
+      {
+        "label": "30 s",
+        "seconds": 30
+      },
+      {
+        "label": "1 min",
+        "seconds": 60
+      },
+      {
+        "label": "5 min",
+        "seconds": 300
+      }
+    ],
+    "refresh_default_seconds": 10,
+    "live_period_seconds": 10.0,
+    "trend_intervals": [
+      {
+        "id": "1h",
+        "hours": 1.0
+      },
+      {
+        "id": "4h",
+        "hours": 4.0
+      },
+      {
+        "id": "8h",
+        "hours": 8.0
+      },
+      {
+        "id": "16h",
+        "hours": 16.0
+      },
+      {
+        "id": "24h",
+        "hours": 24.0
+      }
+    ],
+    "trend_default": "8h",
+    "custom_interval": "custom",
+    "max_custom_range_days": 7.0,
+    "operating_state": {
+      "parameter": "hot_blast_volume",
+      "label": "Hot Blast Volume",
+      "unit": "Nm\u00b3/h",
+      "normal_min": 25000.0
+    },
+    "sections": [
+      "Production",
+      "Blast and Gas",
+      "Uptake Temperatures",
+      "Steam and O\u2082",
+      "Furnace Performance",
+      "Total Heat Load",
+      "Hearth Temperatures"
+    ],
+    "zones": [
+      {
+        "name": "Stack",
+        "lower_m": 15.0,
+        "upper_m": 20.0,
+        "readings": [
+          "uptake_t1",
+          "uptake_t2",
+          "uptake_t3",
+          "uptake_t4",
+          "uptake_avg",
+          "uptake_std",
+          "top_pressure",
+          "body_dp_total",
+          "furnace_level",
+          "charges_per_hr",
+          "stock_rod1_pos",
+          "stock_rod2_pos",
+          "co_utilization",
+          "top_gas_h2"
+        ]
+      },
+      {
+        "name": "Belly",
+        "lower_m": 12.9,
+        "upper_m": 15.0,
+        "readings": [
+          "permeability",
+          "body_dp_total",
+          "heat_load_total",
+          "heat_load_q1",
+          "heat_load_q2",
+          "heat_load_q3",
+          "heat_load_q4"
+        ]
+      },
+      {
+        "name": "Bosh",
+        "lower_m": 10.5,
+        "upper_m": 12.9,
+        "readings": [
+          "permeability",
+          "body_dp_total",
+          "heat_load_total",
+          "heat_load_q1",
+          "heat_load_q2",
+          "heat_load_q3",
+          "heat_load_q4"
+        ]
+      },
+      {
+        "name": "Tuyere",
+        "lower_m": 5.5,
+        "upper_m": 10.5,
+        "readings": [
+          "body_dp_total",
+          "body_dp_bottom",
+          "hot_blast_volume",
+          "blast_pressure",
+          "hbt",
+          "raft",
+          "tuyere_velocity",
+          "pci_rate",
+          "steam_injection",
+          "o2_injection",
+          "oxygen_flow"
+        ]
+      },
+      {
+        "name": "Hearth",
+        "lower_m": 0.0,
+        "upper_m": 5.5,
+        "readings": [
+          "body_dp_total",
+          "hearth_temp_a",
+          "hearth_temp_b",
+          "hearth_temp_c",
+          "hearth_temp_d",
+          "production_theoretical",
+          "production_rate",
+          "slag_rate"
+        ]
+      }
+    ]
+  },
+  "snapshot": {
+    "parameters": [
+      {
+        "key": "production_theoretical",
+        "label": "Production (Theor.)",
+        "title": "Production (Theor.)",
+        "section": "Production",
+        "unit": "t/day",
+        "decimals": 0,
+        "value": 2325.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "2,325",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "production_rate",
+        "label": "Production Rate",
+        "title": "Production Rate",
+        "section": "Production",
+        "unit": "TPH",
+        "decimals": 1,
+        "value": 97.2,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "97.2",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "charges_per_hr",
+        "label": "Charges Per Hour",
+        "title": "Charges Per Hour",
+        "section": "Production",
+        "unit": "charges/h",
+        "decimals": 2,
+        "value": 6.12,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "6.12",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "hot_blast_volume",
+        "label": "Hot Blast Volume",
+        "title": "Hot Blast Volume",
+        "section": "Blast and Gas",
+        "unit": "Nm\u00b3/h",
+        "decimals": 0,
+        "value": 102400.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "102,400",
+        "state": "ok",
+        "limits": {
+          "low": null,
+          "high": 115000.0,
+          "fact": "ASM-11",
+          "basis": "Process limits (observed Jun-Oct envelope, not equipment ratings)"
+        },
+        "note": ""
+      },
+      {
+        "key": "blast_pressure",
+        "label": "Blast Pressure",
+        "title": "Blast Pressure",
+        "section": "Blast and Gas",
+        "unit": "bar",
+        "decimals": 2,
+        "value": 2.92,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "2.92",
+        "state": "high",
+        "limits": {
+          "low": null,
+          "high": 2.85,
+          "fact": "ASM-11",
+          "basis": "Process limits (observed Jun-Oct envelope, not equipment ratings)"
+        },
+        "note": ""
+      },
+      {
+        "key": "top_pressure",
+        "label": "Top Pressure",
+        "title": "Top Pressure",
+        "section": "Blast and Gas",
+        "unit": "bar",
+        "decimals": 2,
+        "value": 1.413,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "1.41",
+        "state": "ok",
+        "limits": {
+          "low": 1.3,
+          "high": 1.5,
+          "fact": "ASM-11",
+          "basis": "Process limits (observed Jun-Oct envelope, not equipment ratings)"
+        },
+        "note": ""
+      },
+      {
+        "key": "body_dp_total",
+        "label": "Total DP",
+        "title": "Total DP",
+        "section": "Blast and Gas",
+        "unit": "bar",
+        "decimals": 2,
+        "value": 1.34,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "1.34",
+        "state": "ok",
+        "limits": {
+          "low": null,
+          "high": 1.45,
+          "fact": "ASM-11",
+          "basis": "Process limits (observed Jun-Oct envelope, not equipment ratings)"
+        },
+        "note": ""
+      },
+      {
+        "key": "body_dp_bottom",
+        "label": "Bottom Pressure",
+        "title": "Bottom Pressure",
+        "section": "Blast and Gas",
+        "unit": "bar",
+        "decimals": 2,
+        "value": 0.981,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "0.98",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "co_utilization",
+        "label": "Eta CO",
+        "title": "Eta CO",
+        "section": "Blast and Gas",
+        "unit": "",
+        "decimals": 1,
+        "value": 47.5,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "47.5",
+        "state": "ok",
+        "limits": null,
+        "note": "ETA CO as stored; the raw scale is preserved, not converted to %."
+      },
+      {
+        "key": "top_gas_h2",
+        "label": "Top Gas H\u2082",
+        "title": "Top Gas H\u2082",
+        "section": "Blast and Gas",
+        "unit": "%",
+        "decimals": 2,
+        "value": 3.07,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "3.07",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "hbt",
+        "label": "HBT",
+        "title": "HBT",
+        "section": "Blast and Gas",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 1187.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "1,187",
+        "state": "ok",
+        "limits": {
+          "low": null,
+          "high": 1230.0,
+          "fact": "ASM-11",
+          "basis": "Process limits (observed Jun-Oct envelope, not equipment ratings)"
+        },
+        "note": ""
+      },
+      {
+        "key": "raft",
+        "label": "RAFT",
+        "title": "RAFT",
+        "section": "Blast and Gas",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 2085.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "2,085",
+        "state": "low",
+        "limits": {
+          "low": 2100.0,
+          "high": 2350.0,
+          "fact": "ASM-11",
+          "basis": "Process limits (observed Jun-Oct envelope, not equipment ratings)"
+        },
+        "note": ""
+      },
+      {
+        "key": "uptake_t1",
+        "label": "T1",
+        "title": "Uptake Temperature T1",
+        "section": "Uptake Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 129.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "129",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "uptake_t2",
+        "label": "T2",
+        "title": "Uptake Temperature T2",
+        "section": "Uptake Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 140.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "140",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "uptake_t3",
+        "label": "T3",
+        "title": "Uptake Temperature T3",
+        "section": "Uptake Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 135.2,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "135",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "uptake_t4",
+        "label": "T4",
+        "title": "Uptake Temperature T4",
+        "section": "Uptake Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 152.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "152",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "uptake_avg",
+        "label": "T Avg",
+        "title": "Uptake Temperature Average",
+        "section": "Uptake Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 138.6,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "139",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "uptake_std",
+        "label": "Std Dev",
+        "title": "Uptake Temperature Standard Deviation",
+        "section": "Uptake Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 1,
+        "value": 8.432526311847477,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "8.4",
+        "state": "ok",
+        "limits": null,
+        "note": "Population standard deviation of T1\u2013T4."
+      },
+      {
+        "key": "steam_injection",
+        "label": "Steam Injection",
+        "title": "Steam Injection",
+        "section": "Steam and O\u2082",
+        "unit": "TPH",
+        "decimals": 2,
+        "value": 2.45,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "2.45",
+        "state": "ok",
+        "limits": null,
+        "note": "Source field is in kg/h; shown in TPH (\u00f7 1000)."
+      },
+      {
+        "key": "o2_injection",
+        "label": "O\u2082 Injection",
+        "title": "O\u2082 Injection",
+        "section": "Steam and O\u2082",
+        "unit": "%",
+        "decimals": 2,
+        "value": 4.21,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "4.21",
+        "state": "ok",
+        "limits": {
+          "low": null,
+          "high": 5.5,
+          "fact": "ASM-11",
+          "basis": "Process limits (observed Jun-Oct envelope, not equipment ratings)"
+        },
+        "note": "Represents oxygen enrichment (%) of the blast."
+      },
+      {
+        "key": "oxygen_flow",
+        "label": "Oxygen Flow",
+        "title": "Oxygen Flow",
+        "section": "Steam and O\u2082",
+        "unit": "Nm\u00b3/h",
+        "decimals": 0,
+        "value": 5330.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "5,330",
+        "state": "ok",
+        "limits": {
+          "low": null,
+          "high": 6500.0,
+          "fact": "ASM-11",
+          "basis": "Process limits (observed Jun-Oct envelope, not equipment ratings)"
+        },
+        "note": ""
+      },
+      {
+        "key": "flare_bypass_press",
+        "label": "Flare Stack Bypass Pressure",
+        "title": "Flare Stack Bypass Pressure",
+        "section": "Steam and O\u2082",
+        "unit": "",
+        "decimals": 2,
+        "value": null,
+        "at": null,
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "Not available",
+        "state": "fetch_failed",
+        "limits": null,
+        "note": "Pressure unit is not confirmed in the application, so none is shown."
+      },
+      {
+        "key": "flare_press",
+        "label": "Flare Stack Pressure",
+        "title": "Flare Stack Pressure",
+        "section": "Steam and O\u2082",
+        "unit": "",
+        "decimals": 2,
+        "value": null,
+        "at": null,
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "Not available",
+        "state": "fetch_failed",
+        "limits": null,
+        "note": "Pressure unit is not confirmed in the application, so none is shown."
+      },
+      {
+        "key": "fuel_rate",
+        "label": "Fuel Rate (SP/ACT)",
+        "title": "Fuel Rate (SP / Actual)",
+        "section": "Furnace Performance",
+        "unit": "kg/THM",
+        "decimals": 0,
+        "value": 538.0,
+        "at": "2026-10-27T09:29:00Z",
+        "setpoint": 545.0,
+        "setpoint_at": "2026-10-27T09:30:00Z",
+        "display": "545 / 538",
+        "state": "ok",
+        "limits": {
+          "low": 520.0,
+          "high": 600.0,
+          "fact": "BAND-01",
+          "basis": "Fuel rate, coke (wet) + nut coke + PCI"
+        },
+        "note": "Actual is PCI actual + coke rate + nut coke rate."
+      },
+      {
+        "key": "coke_rate",
+        "label": "Coke Rate",
+        "title": "Coke Rate",
+        "section": "Furnace Performance",
+        "unit": "kg/THM",
+        "decimals": 0,
+        "value": 337.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "337",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "nut_coke_rate",
+        "label": "Nut Coke Rate",
+        "title": "Nut Coke Rate",
+        "section": "Furnace Performance",
+        "unit": "kg/THM",
+        "decimals": 0,
+        "value": 48.0,
+        "at": "2026-10-27T09:29:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "48",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "pci_rate",
+        "label": "PCI Rate (SP/ACT.)",
+        "title": "PCI Rate (SP / Actual)",
+        "section": "Furnace Performance",
+        "unit": "kg/THM",
+        "decimals": 0,
+        "value": 153.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": 150.0,
+        "setpoint_at": "2026-10-27T09:30:00Z",
+        "display": "150 / 153",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "slag_rate",
+        "label": "Slag Rate",
+        "title": "Slag Rate",
+        "section": "Furnace Performance",
+        "unit": "",
+        "decimals": 1,
+        "value": null,
+        "at": null,
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "Not available",
+        "state": "no_source",
+        "limits": null,
+        "note": "Slag rate exists only in the daily production report. There is no high-frequency live field, so no 1\u201324 hour trend can be built."
+      },
+      {
+        "key": "permeability",
+        "label": "Permeability",
+        "title": "Permeability",
+        "section": "Furnace Performance",
+        "unit": "",
+        "decimals": 1,
+        "value": 2.64,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "2.6",
+        "state": "ok",
+        "limits": null,
+        "note": "Unit not confirmed in the application, so none is shown."
+      },
+      {
+        "key": "tuyere_velocity",
+        "label": "Tuyere Velocity",
+        "title": "Tuyere Velocity",
+        "section": "Furnace Performance",
+        "unit": "m/s",
+        "decimals": 1,
+        "value": 236.4,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "236.4",
+        "state": "ok",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "furnace_level",
+        "label": "Radar Level",
+        "title": "Radar Level",
+        "section": "Furnace Performance",
+        "unit": "m",
+        "decimals": 2,
+        "value": null,
+        "at": null,
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "Not available",
+        "state": "fetch_failed",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "stock_rod1_pos",
+        "label": "Stock Rod Position 1",
+        "title": "Stock Rod Position 1",
+        "section": "Furnace Performance",
+        "unit": "m",
+        "decimals": 2,
+        "value": null,
+        "at": null,
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "Not available",
+        "state": "fetch_failed",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "stock_rod2_pos",
+        "label": "Stock Rod Position 2",
+        "title": "Stock Rod Position 2",
+        "section": "Furnace Performance",
+        "unit": "m",
+        "decimals": 2,
+        "value": null,
+        "at": null,
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "Not available",
+        "state": "fetch_failed",
+        "limits": null,
+        "note": ""
+      },
+      {
+        "key": "heat_load_total",
+        "label": "Total Heat Load",
+        "title": "Total Heat Load",
+        "section": "Total Heat Load",
+        "unit": "MW",
+        "decimals": 2,
+        "value": 11.900000000000002,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "11.90",
+        "state": "ok",
+        "limits": null,
+        "note": "Q1 + Q2 + Q3 + Q4 (rows R6\u2013R10)."
+      },
+      {
+        "key": "heat_load_q1",
+        "label": "Q1 (Staves 1\u20138)",
+        "title": "Heat Load Q1 (Staves 1\u20138, R6\u2013R10)",
+        "section": "Total Heat Load",
+        "unit": "MW",
+        "decimals": 2,
+        "value": 2.6,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "2.60",
+        "state": "ok",
+        "limits": null,
+        "note": "Sum of rows R6\u2013R10, staves 1\u20138."
+      },
+      {
+        "key": "heat_load_q2",
+        "label": "Q2 (Staves 9\u201316)",
+        "title": "Heat Load Q2 (Staves 9\u201316, R6\u2013R10)",
+        "section": "Total Heat Load",
+        "unit": "MW",
+        "decimals": 2,
+        "value": 2.8499999999999996,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "2.85",
+        "state": "ok",
+        "limits": null,
+        "note": "Sum of rows R6\u2013R10, staves 9\u201316."
+      },
+      {
+        "key": "heat_load_q3",
+        "label": "Q3 (Staves 17\u201324)",
+        "title": "Heat Load Q3 (Staves 17\u201324, R6\u2013R10)",
+        "section": "Total Heat Load",
+        "unit": "MW",
+        "decimals": 2,
+        "value": 3.1000000000000005,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "3.10",
+        "state": "ok",
+        "limits": null,
+        "note": "Sum of rows R6\u2013R10, staves 17\u201324."
+      },
+      {
+        "key": "heat_load_q4",
+        "label": "Q4 (Staves 25\u201332)",
+        "title": "Heat Load Q4 (Staves 25\u201332, R6\u2013R10)",
+        "section": "Total Heat Load",
+        "unit": "MW",
+        "decimals": 2,
+        "value": 3.3499999999999996,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "3.35",
+        "state": "ok",
+        "limits": null,
+        "note": "Sum of rows R6\u2013R10, staves 25\u201332."
+      },
+      {
+        "key": "hearth_temp_a",
+        "label": "4.3 m",
+        "title": "Hearth Temp A",
+        "section": "Hearth Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": null,
+        "at": null,
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "Not available",
+        "state": "stale",
+        "limits": null,
+        "note": "Hearth pad A (HEARTH_TEMP_A)."
+      },
+      {
+        "key": "hearth_temp_b",
+        "label": "5.4 m",
+        "title": "Hearth Temp B",
+        "section": "Hearth Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": null,
+        "at": null,
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "Not available",
+        "state": "no_data",
+        "limits": null,
+        "note": "Hearth pad B (HEARTH_TEMP_B)."
+      },
+      {
+        "key": "hearth_temp_c",
+        "label": "5.7 m",
+        "title": "Hearth Temp C",
+        "section": "Hearth Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 388.5,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "388",
+        "state": "ok",
+        "limits": null,
+        "note": "Hearth pad C (HEARTH_TEMP_C)."
+      },
+      {
+        "key": "hearth_temp_d",
+        "label": "6.1 m",
+        "title": "Hearth Temp D",
+        "section": "Hearth Temperatures",
+        "unit": "\u00b0C",
+        "decimals": 0,
+        "value": 372.0,
+        "at": "2026-10-27T09:30:00Z",
+        "setpoint": null,
+        "setpoint_at": null,
+        "display": "372",
+        "state": "ok",
+        "limits": null,
+        "note": "Hearth pad D (HEARTH_TEMP_D)."
+      }
+    ],
+    "sections": [
+      "Production",
+      "Blast and Gas",
+      "Uptake Temperatures",
+      "Steam and O\u2082",
+      "Furnace Performance",
+      "Total Heat Load",
+      "Hearth Temperatures"
+    ],
+    "zones": [
+      {
+        "name": "Stack",
+        "lower_m": 15.0,
+        "upper_m": 20.0,
+        "readings": [
+          "uptake_t1",
+          "uptake_t2",
+          "uptake_t3",
+          "uptake_t4",
+          "uptake_avg",
+          "uptake_std",
+          "top_pressure",
+          "body_dp_total",
+          "furnace_level",
+          "charges_per_hr",
+          "stock_rod1_pos",
+          "stock_rod2_pos",
+          "co_utilization",
+          "top_gas_h2"
+        ]
+      },
+      {
+        "name": "Belly",
+        "lower_m": 12.9,
+        "upper_m": 15.0,
+        "readings": [
+          "permeability",
+          "body_dp_total",
+          "heat_load_total",
+          "heat_load_q1",
+          "heat_load_q2",
+          "heat_load_q3",
+          "heat_load_q4"
+        ]
+      },
+      {
+        "name": "Bosh",
+        "lower_m": 10.5,
+        "upper_m": 12.9,
+        "readings": [
+          "permeability",
+          "body_dp_total",
+          "heat_load_total",
+          "heat_load_q1",
+          "heat_load_q2",
+          "heat_load_q3",
+          "heat_load_q4"
+        ]
+      },
+      {
+        "name": "Tuyere",
+        "lower_m": 5.5,
+        "upper_m": 10.5,
+        "readings": [
+          "body_dp_total",
+          "body_dp_bottom",
+          "hot_blast_volume",
+          "blast_pressure",
+          "hbt",
+          "raft",
+          "tuyere_velocity",
+          "pci_rate",
+          "steam_injection",
+          "o2_injection",
+          "oxygen_flow"
+        ]
+      },
+      {
+        "name": "Hearth",
+        "lower_m": 0.0,
+        "upper_m": 5.5,
+        "readings": [
+          "body_dp_total",
+          "hearth_temp_a",
+          "hearth_temp_b",
+          "hearth_temp_c",
+          "hearth_temp_d",
+          "production_theoretical",
+          "production_rate",
+          "slag_rate"
+        ]
+      }
+    ],
+    "operating_state": {
+      "level": "normal",
+      "state": "normal",
+      "label": "Normal",
+      "detail": "Normal when Hot Blast Volume \u2265 25,000 Nm\u00b3/h \u00b7 now 102,400 Nm\u00b3/h",
+      "parameter": "hot_blast_volume",
+      "normal_min": 25000.0,
+      "value": 102400.0
+    },
+    "freshness": {
+      "computed_at": "2026-10-27T09:30:15Z",
+      "data_at": "2026-10-27T09:30:00Z",
+      "age_s": 15.0,
+      "stale": false,
+      "telemetry": "live",
+      "telemetry_label": "Live",
+      "detail": "34 of 41 mapped parameters reporting",
+      "coverage": 0.8292682926829268,
+      "stale_after_minutes": 15.0,
+      "live_max_age_minutes": 5.0,
+      "live_min_coverage": 0.7,
+      "failed_sources": [
+        "miscellaneous"
+      ],
+      "source": "request"
+    }
+  },
+  "expected": {
+    "rows": {
+      "production_theoretical": "Production (Theor.): 2,325 t/day. Open trend",
+      "production_rate": "Production Rate: 97.2 TPH. Open trend",
+      "charges_per_hr": "Charges Per Hour: 6.12 charges/h. Open trend",
+      "hot_blast_volume": "Hot Blast Volume: 102,400 Nm\u00b3/h. Open trend",
+      "blast_pressure": "Blast Pressure: 2.92 bar. Open trend",
+      "top_pressure": "Top Pressure: 1.41 bar. Open trend",
+      "body_dp_total": "Total DP: 1.34 bar. Open trend",
+      "body_dp_bottom": "Bottom Pressure: 0.98 bar. Open trend",
+      "co_utilization": "Eta CO: 47.5. Open trend",
+      "top_gas_h2": "Top Gas H\u2082: 3.07 %. Open trend",
+      "hbt": "HBT: 1,187 \u00b0C. Open trend",
+      "raft": "RAFT: 2,085 \u00b0C. Open trend",
+      "uptake_t1": "T1: 129 \u00b0C. Open trend",
+      "uptake_t2": "T2: 140 \u00b0C. Open trend",
+      "uptake_t3": "T3: 135 \u00b0C. Open trend",
+      "uptake_t4": "T4: 152 \u00b0C. Open trend",
+      "uptake_avg": "T Avg: 139 \u00b0C. Open trend",
+      "uptake_std": "Std Dev: 8.4 \u00b0C. Open trend",
+      "steam_injection": "Steam Injection: 2.45 TPH. Open trend",
+      "o2_injection": "O\u2082 Injection: 4.21 %. Open trend",
+      "oxygen_flow": "Oxygen Flow: 5,330 Nm\u00b3/h. Open trend",
+      "flare_bypass_press": "Flare Stack Bypass Pressure: Not available. Open trend",
+      "flare_press": "Flare Stack Pressure: Not available. Open trend",
+      "fuel_rate": "Fuel Rate (SP/ACT): 545 / 538 kg/THM. Open trend",
+      "coke_rate": "Coke Rate: 337 kg/THM. Open trend",
+      "nut_coke_rate": "Nut Coke Rate: 48 kg/THM. Open trend",
+      "pci_rate": "PCI Rate (SP/ACT.): 150 / 153 kg/THM. Open trend",
+      "slag_rate": "Slag Rate: Not available. Open trend",
+      "permeability": "Permeability: 2.6. Open trend",
+      "tuyere_velocity": "Tuyere Velocity: 236.4 m/s. Open trend",
+      "furnace_level": "Radar Level: Not available. Open trend",
+      "stock_rod1_pos": "Stock Rod Position 1: Not available. Open trend",
+      "stock_rod2_pos": "Stock Rod Position 2: Not available. Open trend",
+      "heat_load_total": "Total Heat Load: 11.90 MW. Open trend",
+      "heat_load_q1": "Q1 (Staves 1\u20138): 2.60 MW. Open trend",
+      "heat_load_q2": "Q2 (Staves 9\u201316): 2.85 MW. Open trend",
+      "heat_load_q3": "Q3 (Staves 17\u201324): 3.10 MW. Open trend",
+      "heat_load_q4": "Q4 (Staves 25\u201332): 3.35 MW. Open trend",
+      "hearth_temp_a": "4.3 m: Not available. Open trend",
+      "hearth_temp_b": "5.4 m: Not available. Open trend",
+      "hearth_temp_c": "5.7 m: 388 \u00b0C. Open trend",
+      "hearth_temp_d": "6.1 m: 372 \u00b0C. Open trend"
+    },
+    "callouts": {
+      "top_pressure": {
+        "label": "Top Pressure",
+        "value": "1.41",
+        "unit": "bar"
+      },
+      "permeability": {
+        "label": "Permeability",
+        "value": "2.6",
+        "unit": ""
+      },
+      "hbt": {
+        "label": "HBT",
+        "value": "1,187",
+        "unit": "\u00b0C"
+      },
+      "raft": {
+        "label": "RAFT",
+        "value": "2,085",
+        "unit": "\u00b0C"
+      },
+      "furnace_level": {
+        "label": "Radar Level",
+        "value": "Not available",
+        "unit": ""
+      },
+      "heat_load_total": {
+        "label": "Total Heat Load",
+        "value": "11.90",
+        "unit": "MW"
+      },
+      "blast_pressure": {
+        "label": "Blast Pressure",
+        "value": "2.92",
+        "unit": "bar"
+      },
+      "hearth_temp_d": {
+        "label": "6.1 m",
+        "value": "372",
+        "unit": "\u00b0C"
+      }
+    },
+    "strips": {
+      "Uptake Temperatures": {
+        "keys": [
+          "uptake_t1",
+          "uptake_t2",
+          "uptake_t3",
+          "uptake_t4",
+          "uptake_avg",
+          "uptake_std"
+        ],
+        "spread": 23.0,
+        "spread_text": "23"
+      },
+      "Hearth Temperatures": {
+        "keys": [
+          "hearth_temp_a",
+          "hearth_temp_b",
+          "hearth_temp_c",
+          "hearth_temp_d"
+        ],
+        "spread": null,
+        "spread_text": null
+      }
+    },
+    "heat_load": {
+      "shares": [
+        0.2184873949579832,
+        0.23949579831932769,
+        0.2605042016806723,
+        0.28151260504201675
+      ],
+      "highest": [
+        3
+      ],
+      "summary": "Highest share: Q4 (28.2%)"
+    },
+    "status": {
+      "level": "live",
+      "label": "Live",
+      "detail": "34 of 41 mapped parameters reporting"
+    },
+    "operating_state": {
+      "level": "normal",
+      "label": "Normal",
+      "detail": "Normal when Hot Blast Volume \u2265 25,000 Nm\u00b3/h \u00b7 now 102,400 Nm\u00b3/h"
+    },
+    "zone_notes": {
+      "Stack": "Stack: highlighting T1, T2, T3, T4, T Avg, Std Dev, Top Pressure, Total DP, Radar Level, Charges Per Hour, Stock Rod Position 1, Stock Rod Position 2, Eta CO, Top Gas H\u2082.",
+      "Belly": "Belly: highlighting Permeability, Total DP, Total Heat Load, Q1 (Staves 1\u20138), Q2 (Staves 9\u201316), Q3 (Staves 17\u201324), Q4 (Staves 25\u201332).",
+      "Bosh": "Bosh: highlighting Permeability, Total DP, Total Heat Load, Q1 (Staves 1\u20138), Q2 (Staves 9\u201316), Q3 (Staves 17\u201324), Q4 (Staves 25\u201332).",
+      "Tuyere": "Tuyere: highlighting Total DP, Bottom Pressure, Hot Blast Volume, Blast Pressure, HBT, RAFT, Tuyere Velocity, PCI Rate (SP/ACT.), Steam Injection, O\u2082 Injection, Oxygen Flow.",
+      "Hearth": "Hearth: highlighting Total DP, 4.3 m, 5.4 m, 5.7 m, 6.1 m, Production (Theor.), Production Rate, Slag Rate."
+    }
+  }
+}

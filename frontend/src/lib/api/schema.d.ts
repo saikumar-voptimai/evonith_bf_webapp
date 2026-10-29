@@ -699,6 +699,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/status/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Furnace status display rules
+         * @description The display rules of ``config/furnace_status.yml`` (SV-2.2): stale-after and live-age minutes, the refresh
+         *     choices, the trend intervals and the longest custom range, the operating-state rule, sections and zones. The
+         *     Furnace Status page reads them here instead of holding copies.
+         */
+        get: operations["status_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status/snapshot": {
         parameters: {
             query?: never;
@@ -7274,6 +7296,26 @@ export interface components {
              */
             low?: number | null;
         };
+        /** StatusOperatingRule */
+        StatusOperatingRule: {
+            /** Label */
+            label: string;
+            /**
+             * Normal Min
+             * @description Lowest value of normal operation, in unit
+             */
+            normal_min: number;
+            /**
+             * Parameter
+             * @description Catalogue key of the deciding parameter
+             */
+            parameter: string;
+            /**
+             * Unit
+             * @description Unit of normal_min
+             */
+            unit: string;
+        };
         /** StatusOperatingState */
         StatusOperatingState: {
             /**
@@ -7376,6 +7418,87 @@ export interface components {
              */
             value?: number | null;
         };
+        /** StatusRefreshChoice */
+        StatusRefreshChoice: {
+            /**
+             * Label
+             * @description Choice as the V-Board lists it, e.g. '10 s'
+             */
+            label: string;
+            /**
+             * Seconds
+             * @description Refresh period, s
+             */
+            seconds: number;
+        };
+        /**
+         * StatusSettings
+         * @description Display rules of ``config/furnace_status.yml`` for the Furnace Status page (SV-2.2): the page reads them here
+         *     instead of holding copies.
+         */
+        StatusSettings: {
+            /**
+             * Custom Interval
+             * @description Interval id of a custom range
+             */
+            custom_interval: string;
+            /**
+             * Live Max Age Minutes
+             * @description Largest age of the newest reading for live telemetry, min
+             */
+            live_max_age_minutes: number;
+            /**
+             * Live Min Coverage
+             * @description Smallest coverage for live telemetry, fraction 0-1
+             */
+            live_min_coverage: number;
+            /**
+             * Live Period Seconds
+             * @description Period of the live.status event; a refresh at this period follows the event stream, s
+             */
+            live_period_seconds: number;
+            /**
+             * Max Custom Range Days
+             * @description Longest custom trend range, d
+             */
+            max_custom_range_days: number;
+            operating_state: components["schemas"]["StatusOperatingRule"];
+            /**
+             * Refresh
+             * @description Refresh choices, in display order
+             */
+            refresh: components["schemas"]["StatusRefreshChoice"][];
+            /**
+             * Refresh Default Seconds
+             * @description Refresh period selected at first, s
+             */
+            refresh_default_seconds: number;
+            /**
+             * Sections
+             * @description Section names, in display order
+             */
+            sections: string[];
+            /**
+             * Stale After Minutes
+             * @description Age from which a reading is not shown, min
+             */
+            stale_after_minutes: number;
+            /**
+             * Trend Default
+             * @description Trend interval selected at first
+             */
+            trend_default: string;
+            /**
+             * Trend Intervals
+             * @description Fixed trend intervals, in display order
+             */
+            trend_intervals: components["schemas"]["StatusTrendInterval"][];
+            /**
+             * Zones
+             * @description Furnace zones, top to bottom, with their related readings
+             */
+            zones: components["schemas"]["StatusZone"][];
+        };
         /**
          * StatusSnapshotView
          * @description Latest 15-min snapshot of every furnace-status catalogue parameter, as the Streamlit V-Board shows it.
@@ -7425,6 +7548,19 @@ export interface components {
              * @description Start of the range (UTC)
              */
             start: string;
+        };
+        /** StatusTrendInterval */
+        StatusTrendInterval: {
+            /**
+             * Hours
+             * @description Length of the range ending now, h
+             */
+            hours: number;
+            /**
+             * Id
+             * @description Interval id of the trend route, e.g. 8h
+             */
+            id: string;
         };
         /** StatusTrendSeries */
         StatusTrendSeries: {
@@ -10482,6 +10618,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShiftReportDetail"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    status_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusSettings"];
                 };
             };
             /** @description Client error (problem+json) */

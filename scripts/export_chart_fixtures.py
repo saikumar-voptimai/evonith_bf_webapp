@@ -9,6 +9,11 @@
 - ``frontend/src/lib/furnace/fixtures/schematic.json``: the furnace outline, lining and zone dividers of
   ``ui.furnace_status.schematic.build_furnace_svg`` for the configured profile. ``FurnaceSchematic.svelte`` must
   draw the same points (acceptance criterion of #275).
+- ``frontend/src/lib/status/fixtures/snapshot.json``: a recorded furnace-status snapshot (the plant frames of
+  ``tests/test_services_status.py`` at 27 Oct 2026 15:00:15 IST) as ``GET /api/status/snapshot`` and
+  ``GET /api/status/settings`` serve it, with the V-Board's layout (``ui.furnace_status.layout``) and the texts it
+  renders from the same snapshot (row labels, callouts, strip spreads, heat-load shares, badges). The builders of the
+  Furnace Status page (``frontend/src/lib/status/status.ts``) must reproduce them (acceptance criterion of #294).
 
 ``tests/test_chart_fixtures.py`` fails when a committed fixture differs from this output.
 """
@@ -28,6 +33,7 @@ os.environ.setdefault("COKE_ENERGY_WEATHER_LIVE", "0")  # the shipped weather re
 
 RIST_OUT = ROOT / "frontend" / "src" / "lib" / "charts" / "fixtures" / "rist_shift.json"
 SCHEMATIC_OUT = ROOT / "frontend" / "src" / "lib" / "furnace" / "fixtures" / "schematic.json"
+STATUS_OUT = ROOT / "frontend" / "src" / "lib" / "status" / "fixtures" / "snapshot.json"
 SHIFT_INPUTS = ROOT / "tests" / "fixtures" / "coke_energy" / "shift_inputs.csv"
 SHIFT_KEY = "2026-10-14_A"
 
@@ -135,6 +141,82 @@ def schematic_fixture() -> dict[str, Any]:
     }
 
 
+def status_fixture() -> dict[str, Any]:
+    """The recorded snapshot of ``tests/test_services_status.py`` (fake InfluxDB, no plant source) through the service
+    and the V-Board, so the Svelte builders can be checked against both."""
+    if str(ROOT) not in sys.path:
+        sys.path.append(str(ROOT))
+    from data import furnace_status as fs
+    from data.furnace_status import repository as fs_repository
+    from services import status
+    from tests.test_services_status import NOW, CountingFetcher, plant_frames
+    from ui.furnace_status import components, layout, schematic
+
+    fake = CountingFetcher(plant_frames())
+    original = fs_repository.TimeSeriesDataFetcher
+    fs_repository.TimeSeriesDataFetcher = fake
+    status.clear_cache()
+    try:
+        page = fs.load_status_snapshot(NOW)
+        view = status.snapshot_view(page, NOW)
+    finally:
+        fs_repository.TimeSeriesDataFetcher = original
+        status.clear_cache()
+
+    readings = {reading.spec.key: reading for reading in page.readings}
+    strips: dict[str, Any] = {}
+    for section, keys in layout.STRIPS.items():
+        primary = [readings[key] for key in keys[:4]]
+        spread = components.strip_spread([reading.value for reading in primary])
+        strips[section] = {
+            "keys": list(keys),
+            "spread": spread,
+            "spread_text": None if spread is None else fs.format_value(spread, primary[0].spec.decimals),
+        }
+    shares = components.quadrant_shares([readings[key].value for key in layout.HEAT_QUADRANT_KEYS])
+    callouts = {}
+    for callout in schematic.CALLOUTS:
+        reading = readings[callout.key]
+        callouts[callout.key] = {
+            "label": reading.spec.label,
+            "value": fs.format_reading(reading),
+            "unit": reading.spec.unit if reading.value is not None and reading.spec.unit else "",
+        }
+    return {
+        "source": "services.status.snapshot_view of tests.test_services_status.plant_frames at NOW; ui.furnace_status",
+        "now": NOW.isoformat(),
+        "layout": {
+            "panel_columns": [list(column) for column in layout.PANEL_COLUMNS],
+            "strips": {section: list(keys) for section, keys in layout.STRIPS.items()},
+            "heat_total_key": layout.HEAT_TOTAL_KEY,
+            "heat_quadrant_keys": list(layout.HEAT_QUADRANT_KEYS),
+            "not_available": fs.NOT_AVAILABLE,
+        },
+        "settings": json.loads(status.settings_view().model_dump_json()),
+        "snapshot": json.loads(view.model_dump_json()),
+        "expected": {
+            "rows": {key: components.button_label(reading) for key, reading in readings.items()},
+            "callouts": callouts,
+            "strips": strips,
+            "heat_load": {
+                "shares": None if shares.shares is None else list(shares.shares),
+                "highest": list(shares.highest),
+                "summary": components._share_summary(shares),
+            },
+            "status": {"level": page.status.level, "label": page.status.label, "detail": page.status.detail},
+            "operating_state": {
+                "level": page.operating_state.level,
+                "label": page.operating_state.label,
+                "detail": page.operating_state.detail,
+            },
+            "zone_notes": {
+                zone: f"{zone}: highlighting {', '.join(readings[key].spec.label for key in keys)}."
+                for zone, keys in layout.ZONE_READINGS.items()
+            },
+        },
+    }
+
+
 def write(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
@@ -144,6 +226,7 @@ def write(path: Path, data: dict[str, Any]) -> None:
 def main() -> None:
     write(RIST_OUT, rist_fixture())
     write(SCHEMATIC_OUT, schematic_fixture())
+    write(STATUS_OUT, status_fixture())
 
 
 if __name__ == "__main__":

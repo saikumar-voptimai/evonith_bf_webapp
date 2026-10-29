@@ -6,7 +6,8 @@ top gas and tapping, and readings in callouts on both sides with leader lines to
 describe. The zone buttons highlight a zone and the readings related to it. Illustrative: the shading is not a
 measured temperature map and the callouts are related readings, not sensor positions. `overlay` draws inside the
 furnace (view-box units of `geometry.ts`, clipped to the profile, under the outline), e.g. the Live Twin's burden
-column (SV-1.9); without it the schematic is unchanged.
+column (SV-1.9); without it the schematic is unchanged. `zoneStatus` (SV-2.2) shows a status with icon and word in
+each zone button, and `onselect` reports a zone selection (the Furnace Status page opens the zone drawer from it).
 -->
 <script lang="ts" module>
 	import type { StatusKind } from '../components/status.ts';
@@ -20,6 +21,12 @@ column (SV-1.9); without it the schematic is unchanged.
 		state?: StatusKind;
 		/** Word of the state when more specific than the default, e.g. "Above band" or "No reading". */
 		word?: string;
+	}
+
+	/** Status of a zone, shown with icon and word in its button. */
+	export interface ZoneStatus {
+		kind: StatusKind;
+		word: string;
 	}
 </script>
 
@@ -66,6 +73,10 @@ column (SV-1.9); without it the schematic is unchanged.
 		layers?: boolean;
 		/** Drawing inside the furnace, clipped to the profile and drawn under the outline. */
 		overlay?: Snippet;
+		/** Status per zone name, shown with icon and word in the zone's button. */
+		zoneStatus?: Record<string, ZoneStatus>;
+		/** Called when a zone button selects a zone (or clears the selection). */
+		onselect?: (name: string | null) => void;
 	}
 
 	let {
@@ -75,7 +86,9 @@ column (SV-1.9); without it the schematic is unchanged.
 		zoneReadings = {},
 		selected = $bindable(null),
 		layers = true,
-		overlay
+		overlay,
+		zoneStatus = {},
+		onselect
 	}: Props = $props();
 
 	const uid = $props.id();
@@ -165,6 +178,7 @@ column (SV-1.9); without it the schematic is unchanged.
 
 	function toggle(name: string): void {
 		selected = selected === name ? null : name;
+		onselect?.(selected);
 	}
 </script>
 
@@ -305,9 +319,16 @@ column (SV-1.9); without it the schematic is unchanged.
 
 	<div class="zones" role="group" aria-label="Highlight a zone and its related readings">
 		{#each zones as zone (zone.name)}
-			<button type="button" aria-pressed={zone.name === selected} onclick={() => toggle(zone.name)}
-				>{zone.name}</button
-			>
+			{@const zs = zoneStatus[zone.name]}
+			{@const ZoneIcon = zs ? STATUS_ICON[zs.kind] : null}
+			<button type="button" aria-pressed={zone.name === selected} onclick={() => toggle(zone.name)}>
+				<span>{zone.name}</span>
+				{#if zs && ZoneIcon}
+					<span class={['zs', zs.kind]}
+						><ZoneIcon size={12} strokeWidth={2.25} aria-hidden="true" />{zs.word}</span
+					>
+				{/if}
+			</button>
 		{/each}
 	</div>
 	<figcaption>{caption}</figcaption>
@@ -509,6 +530,9 @@ column (SV-1.9); without it the schematic is unchanged.
 		margin-top: var(--vo-space-3);
 	}
 	.zones button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		min-height: 30px;
 		padding: 0 12px;
 		border: 1px solid var(--vo-border);
@@ -525,6 +549,28 @@ column (SV-1.9); without it the schematic is unchanged.
 		border-color: var(--vo-accent-strong);
 		background: var(--vo-accent-soft);
 		color: var(--vo-text);
+	}
+	.zs {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		font-size: 0.75rem;
+		font-weight: 600;
+	}
+	.zs.ok {
+		color: var(--vo-ok);
+	}
+	.zs.warning {
+		color: var(--vo-warning);
+	}
+	.zs.critical {
+		color: var(--vo-critical);
+	}
+	.zs.stale {
+		color: var(--vo-stale);
+	}
+	.zs.info {
+		color: var(--vo-info);
 	}
 	figcaption {
 		margin-top: var(--vo-space-2);

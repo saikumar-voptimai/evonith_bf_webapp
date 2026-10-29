@@ -45,6 +45,7 @@ __all__ = [
     "PARAMETERS_BY_KEY",
     "SETTINGS",
     "RangeError",
+    "StatusSettings",
     "StatusSnapshotView",
     "StatusTrend",
     "build_snapshot_view",
@@ -56,6 +57,7 @@ __all__ = [
     "live_status_fields",
     "load_status_snapshot",
     "load_trend_view",
+    "settings_view",
     "snapshot_view",
 ]
 
@@ -172,6 +174,44 @@ class StatusSnapshotView(BaseModel):
     freshness: StatusFreshness
 
 
+class StatusRefreshChoice(BaseModel):
+    label: str = Field(..., description="Choice as the V-Board lists it, e.g. '10 s'")
+    seconds: int = Field(..., description="Refresh period, s")
+
+
+class StatusTrendInterval(BaseModel):
+    id: str = Field(..., description="Interval id of the trend route, e.g. 8h")
+    hours: float = Field(..., description="Length of the range ending now, h")
+
+
+class StatusOperatingRule(BaseModel):
+    parameter: str = Field(..., description="Catalogue key of the deciding parameter")
+    label: str
+    unit: str = Field(..., description="Unit of normal_min")
+    normal_min: float = Field(..., description="Lowest value of normal operation, in unit")
+
+
+class StatusSettings(BaseModel):
+    """Display rules of ``config/furnace_status.yml`` for the Furnace Status page (SV-2.2): the page reads them here
+    instead of holding copies."""
+
+    stale_after_minutes: float = Field(..., description="Age from which a reading is not shown, min")
+    live_max_age_minutes: float = Field(..., description="Largest age of the newest reading for live telemetry, min")
+    live_min_coverage: float = Field(..., description="Smallest coverage for live telemetry, fraction 0-1")
+    refresh: list[StatusRefreshChoice] = Field(..., description="Refresh choices, in display order")
+    refresh_default_seconds: int = Field(..., description="Refresh period selected at first, s")
+    live_period_seconds: float = Field(
+        ..., description="Period of the live.status event; a refresh at this period follows the event stream, s"
+    )
+    trend_intervals: list[StatusTrendInterval] = Field(..., description="Fixed trend intervals, in display order")
+    trend_default: str = Field(..., description="Trend interval selected at first")
+    custom_interval: str = Field(..., description="Interval id of a custom range")
+    max_custom_range_days: float = Field(..., description="Longest custom trend range, d")
+    operating_state: StatusOperatingRule
+    sections: list[str] = Field(..., description="Section names, in display order")
+    zones: list[StatusZone] = Field(..., description="Furnace zones, top to bottom, with their related readings")
+
+
 class StatusTrendStats(BaseModel):
     minimum: float = Field(..., description="Lowest reading of the range, in unit")
     maximum: float = Field(..., description="Highest reading of the range, in unit")
@@ -285,6 +325,42 @@ def parameter_view(reading: ParameterReading) -> StatusParameter:
     )
 
 
+# ---------------------------------------------------------------- settings
+
+
+def _zones() -> list[StatusZone]:
+    return [
+        StatusZone(name=zone.name, lower_m=zone.lower_m, upper_m=zone.upper_m, readings=list(zone.readings))
+        for zone in UI.zones
+    ]
+
+
+def settings_view() -> StatusSettings:
+    """The catalogue's display rules (``config/furnace_status.yml -> settings``) as the API serves them."""
+    choices = dict(SETTINGS.refresh_choices)
+    policy = SETTINGS.operating_state
+    deciding = PARAMETERS_BY_KEY[policy.parameter]
+    return StatusSettings(
+        stale_after_minutes=SETTINGS.stale_after.total_seconds() / 60,
+        live_max_age_minutes=SETTINGS.live_max_age.total_seconds() / 60,
+        live_min_coverage=SETTINGS.live_min_coverage,
+        refresh=[StatusRefreshChoice(label=label, seconds=seconds) for label, seconds in choices.items()],
+        refresh_default_seconds=choices[SETTINGS.refresh_default],
+        live_period_seconds=PERIOD_S,
+        trend_intervals=[
+            StatusTrendInterval(id=label, hours=span.total_seconds() / 3600) for label, span in FIXED_INTERVALS.items()
+        ],
+        trend_default=SETTINGS.default_interval,
+        custom_interval=CUSTOM,
+        max_custom_range_days=SETTINGS.max_custom_range.total_seconds() / 86_400,
+        operating_state=StatusOperatingRule(
+            parameter=policy.parameter, label=deciding.label, unit=deciding.unit, normal_min=policy.normal_min
+        ),
+        sections=list(SECTIONS),
+        zones=_zones(),
+    )
+
+
 # ---------------------------------------------------------------- snapshot
 
 
@@ -309,10 +385,7 @@ def snapshot_view(
     return StatusSnapshotView(
         parameters=[parameter_view(reading) for reading in snapshot.readings],
         sections=list(SECTIONS),
-        zones=[
-            StatusZone(name=zone.name, lower_m=zone.lower_m, upper_m=zone.upper_m, readings=list(zone.readings))
-            for zone in UI.zones
-        ],
+        zones=_zones(),
         operating_state=StatusOperatingState(
             level=state.level,
             state=live_operating_state(state.level),

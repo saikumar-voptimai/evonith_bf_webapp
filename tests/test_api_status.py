@@ -61,9 +61,43 @@ def get(client: TestClient, user: str, url: str, **kw: Any):
 
 
 def test_status_routes_need_a_session(client) -> None:
-    for url in ("/api/status/snapshot", "/api/status/trend?parameters=raft"):
+    for url in ("/api/status/snapshot", "/api/status/trend?parameters=raft", "/api/status/settings"):
         r = client.get(url)
         assert r.status_code == 401 and r.headers["content-type"].startswith("application/problem+json"), url
+
+
+# ---------------------------------------------------------------- settings (SV-2.2)
+
+
+def test_settings_route_serves_the_catalogue_rules(client) -> None:
+    """The SPA reads the stale-after, live-age, refresh and trend rules of furnace_status.yml from the API."""
+    r = get(client, "op", "/api/status/settings")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["stale_after_minutes"] == fs.SETTINGS.stale_after.total_seconds() / 60 == 15
+    assert body["live_max_age_minutes"] == fs.SETTINGS.live_max_age.total_seconds() / 60 == 5
+    assert body["live_min_coverage"] == fs.SETTINGS.live_min_coverage == 0.70
+    assert [(c["label"], c["seconds"]) for c in body["refresh"]] == list(fs.SETTINGS.refresh_choices)
+    assert [c["seconds"] for c in body["refresh"]] == [10, 30, 60, 300]
+    assert body["refresh_default_seconds"] == 10 and body["live_period_seconds"] == status.PERIOD_S == 10
+    assert [(i["id"], i["hours"]) for i in body["trend_intervals"]] == [
+        ("1h", 1),
+        ("4h", 4),
+        ("8h", 8),
+        ("16h", 16),
+        ("24h", 24),
+    ]
+    assert body["trend_default"] == "8h" and body["custom_interval"] == "custom"
+    assert body["max_custom_range_days"] == fs.MAX_CUSTOM_RANGE.days == 7
+    assert body["operating_state"] == {
+        "parameter": "hot_blast_volume",
+        "label": "Hot Blast Volume",
+        "unit": "Nm³/h",
+        "normal_min": 25000.0,
+    }
+    assert body["sections"] == list(fs.SECTIONS)
+    assert [z["name"] for z in body["zones"]] == [z.name for z in fs.UI.zones]
+    assert {z["name"]: z["readings"] for z in body["zones"]} == {z.name: list(z.readings) for z in fs.UI.zones}
 
 
 # ---------------------------------------------------------------- snapshot

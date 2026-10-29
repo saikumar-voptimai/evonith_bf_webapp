@@ -12828,6 +12828,37 @@
         "title": "StatusLimits",
         "type": "object"
       },
+      "StatusOperatingRule": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "normal_min": {
+            "description": "Lowest value of normal operation, in unit",
+            "title": "Normal Min",
+            "type": "number"
+          },
+          "parameter": {
+            "description": "Catalogue key of the deciding parameter",
+            "title": "Parameter",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of normal_min",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parameter",
+          "label",
+          "unit",
+          "normal_min"
+        ],
+        "title": "StatusOperatingRule",
+        "type": "object"
+      },
       "StatusOperatingState": {
         "properties": {
           "detail": {
@@ -13028,6 +13059,123 @@
         "title": "StatusParameter",
         "type": "object"
       },
+      "StatusRefreshChoice": {
+        "properties": {
+          "label": {
+            "description": "Choice as the V-Board lists it, e.g. '10 s'",
+            "title": "Label",
+            "type": "string"
+          },
+          "seconds": {
+            "description": "Refresh period, s",
+            "title": "Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "label",
+          "seconds"
+        ],
+        "title": "StatusRefreshChoice",
+        "type": "object"
+      },
+      "StatusSettings": {
+        "description": "Display rules of ``config/furnace_status.yml`` for the Furnace Status page (SV-2.2): the page reads them here\ninstead of holding copies.",
+        "properties": {
+          "custom_interval": {
+            "description": "Interval id of a custom range",
+            "title": "Custom Interval",
+            "type": "string"
+          },
+          "live_max_age_minutes": {
+            "description": "Largest age of the newest reading for live telemetry, min",
+            "title": "Live Max Age Minutes",
+            "type": "number"
+          },
+          "live_min_coverage": {
+            "description": "Smallest coverage for live telemetry, fraction 0-1",
+            "title": "Live Min Coverage",
+            "type": "number"
+          },
+          "live_period_seconds": {
+            "description": "Period of the live.status event; a refresh at this period follows the event stream, s",
+            "title": "Live Period Seconds",
+            "type": "number"
+          },
+          "max_custom_range_days": {
+            "description": "Longest custom trend range, d",
+            "title": "Max Custom Range Days",
+            "type": "number"
+          },
+          "operating_state": {
+            "$ref": "#/components/schemas/StatusOperatingRule"
+          },
+          "refresh": {
+            "description": "Refresh choices, in display order",
+            "items": {
+              "$ref": "#/components/schemas/StatusRefreshChoice"
+            },
+            "title": "Refresh",
+            "type": "array"
+          },
+          "refresh_default_seconds": {
+            "description": "Refresh period selected at first, s",
+            "title": "Refresh Default Seconds",
+            "type": "integer"
+          },
+          "sections": {
+            "description": "Section names, in display order",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "stale_after_minutes": {
+            "description": "Age from which a reading is not shown, min",
+            "title": "Stale After Minutes",
+            "type": "number"
+          },
+          "trend_default": {
+            "description": "Trend interval selected at first",
+            "title": "Trend Default",
+            "type": "string"
+          },
+          "trend_intervals": {
+            "description": "Fixed trend intervals, in display order",
+            "items": {
+              "$ref": "#/components/schemas/StatusTrendInterval"
+            },
+            "title": "Trend Intervals",
+            "type": "array"
+          },
+          "zones": {
+            "description": "Furnace zones, top to bottom, with their related readings",
+            "items": {
+              "$ref": "#/components/schemas/StatusZone"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stale_after_minutes",
+          "live_max_age_minutes",
+          "live_min_coverage",
+          "refresh",
+          "refresh_default_seconds",
+          "live_period_seconds",
+          "trend_intervals",
+          "trend_default",
+          "custom_interval",
+          "max_custom_range_days",
+          "operating_state",
+          "sections",
+          "zones"
+        ],
+        "title": "StatusSettings",
+        "type": "object"
+      },
       "StatusSnapshotView": {
         "description": "Latest 15-min snapshot of every furnace-status catalogue parameter, as the Streamlit V-Board shows it.",
         "properties": {
@@ -13112,6 +13260,26 @@
           "series"
         ],
         "title": "StatusTrend",
+        "type": "object"
+      },
+      "StatusTrendInterval": {
+        "properties": {
+          "hours": {
+            "description": "Length of the range ending now, h",
+            "title": "Hours",
+            "type": "number"
+          },
+          "id": {
+            "description": "Interval id of the trend route, e.g. 8h",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "hours"
+        ],
+        "title": "StatusTrendInterval",
         "type": "object"
       },
       "StatusTrendSeries": {
@@ -18403,6 +18571,48 @@
         "summary": "A shift report",
         "tags": [
           "reports"
+        ]
+      }
+    },
+    "/api/status/settings": {
+      "get": {
+        "description": "The display rules of ``config/furnace_status.yml`` (SV-2.2): stale-after and live-age minutes, the refresh\nchoices, the trend intervals and the longest custom range, the operating-state rule, sections and zones. The\nFurnace Status page reads them here instead of holding copies.",
+        "operationId": "status_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Furnace status display rules",
+        "tags": [
+          "status"
         ]
       }
     },

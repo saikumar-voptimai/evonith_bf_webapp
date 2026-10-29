@@ -20,13 +20,21 @@ from api.auth import require_role
 from api.errors import ApiError
 from services import live_status
 from services import status as status_service
-from services.status import StatusSnapshotView, StatusTrend
+from services.status import StatusSettings, StatusSnapshotView, StatusTrend
 
 log = logging.getLogger("api.status")
 
 router = APIRouter(prefix="/api/status", tags=["status"], dependencies=[Depends(require_role("user"))])
 
 TrendInterval = Literal[status_service.TREND_INTERVALS]  # type: ignore[valid-type]  # 1h ... 24h from the catalogue
+
+
+@router.get("/settings", response_model=StatusSettings, summary="Furnace status display rules")
+def settings() -> StatusSettings:
+    """The display rules of ``config/furnace_status.yml`` (SV-2.2): stale-after and live-age minutes, the refresh
+    choices, the trend intervals and the longest custom range, the operating-state rule, sections and zones. The
+    Furnace Status page reads them here instead of holding copies."""
+    return status_service.settings_view()
 
 
 @router.get("/snapshot", response_model=StatusSnapshotView, summary="Latest furnace status snapshot")
