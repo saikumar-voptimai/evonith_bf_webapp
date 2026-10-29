@@ -47,6 +47,7 @@ from data.twin.models import (
     ShiftReport,
     Snapshot,
     TwinBase,
+    WhatIfCase,
 )
 
 M = TypeVar("M", bound=TwinBase)
@@ -1171,6 +1172,57 @@ class FurnaceMindRepository(_Repository):
         return row
 
 
+class WhatIfRepository(_Repository):
+    """Saved what-if cases of the admin space (SV-4.3, #306): reads by owner and the worker's result.
+
+    Saves and deletes are admin writes with their audit row (``services.whatif.save_case``, ``delete_case`` through
+    ``services.audit.admin_write``); ``store_result`` is the worker's and writes no audit row."""
+
+    def list(self, owner: str, kind: str | None = None, *, limit: int = 100) -> list[WhatIfCase]:
+        """The owner's cases, most recently changed first."""
+        query = select(WhatIfCase).where(WhatIfCase.owner == owner)
+        if kind is not None:
+            query = query.where(WhatIfCase.kind == kind)
+        query = query.order_by(WhatIfCase.updated_at.desc(), WhatIfCase.name).limit(max(1, limit))
+        with self._sessions() as session:
+            return list(session.scalars(query))
+
+    def get(self, case_id: uuid.UUID | str) -> WhatIfCase | None:
+        try:
+            key = uuid.UUID(str(case_id))
+        except ValueError:
+            return None
+        with self._sessions() as session:
+            return session.get(WhatIfCase, key)
+
+    def store_result(
+        self,
+        case_id: uuid.UUID | str,
+        *,
+        owner: str,
+        inputs: Mapping[str, Any],
+        result: Mapping[str, Any],
+        job_id: str | None,
+        facts_version: str | None,
+        at: datetime | None = None,
+    ) -> bool:
+        """Store a run's result with the case when the case is ``owner``'s and still holds ``inputs`` (the case the
+        run solved); False otherwise (deleted, another owner's, or changed since the run started)."""
+        try:
+            key = uuid.UUID(str(case_id))
+        except ValueError:
+            return False
+        with self._sessions.begin() as session:
+            row = session.get(WhatIfCase, key, with_for_update=True)
+            if row is None or row.owner != owner or dict(row.inputs or {}) != dict(inputs):
+                return False
+            row.result = dict(result)
+            row.result_job_id = job_id
+            row.result_at = _utc(at) or utcnow()
+            row.facts_version = facts_version
+            return True
+
+
 class TwinStore:
     """The repositories of the ``twin`` schema over one engine."""
 
@@ -1187,6 +1239,7 @@ class TwinStore:
         self.operator_inputs = OperatorInputsRepository(sessions)
         self.audit = AuditRepository(sessions)
         self.fm = FurnaceMindRepository(sessions)
+        self.whatif = WhatIfRepository(sessions)
 
     @classmethod
     def from_url(cls, url: str | None = None, *, application_name: str = "twin") -> TwinStore | None:

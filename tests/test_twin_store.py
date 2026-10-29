@@ -45,10 +45,12 @@ TABLES = (
     "fm_message",
     "optimiser_commentary",
     "fm_feedback",
+    "whatif_case",
 )
 FM_TABLES = {"fm_conversation", "fm_message"}  # twin_0006 (SV-5.1)
 COMMENTARY = {"optimiser_commentary"}  # twin_0007 (SV-3.2)
 FEEDBACK = {"fm_feedback"}  # twin_0008 (SV-5.2)
+WHATIF = {"whatif_case"}  # twin_0009 (SV-4.3)
 T0 = datetime(2026, 10, 27, 0, 30, tzinfo=UTC)  # 06:00 IST, start of shift A
 H = timedelta(hours=1)
 ALICE = Actor("alice", "admin", "10.0.0.5")
@@ -110,31 +112,35 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
         config = alembic_config(url)
         command.upgrade(config, "head")
         assert twin_tables(url) == {*TABLES, "alembic_version"}
-        assert TwinStore.from_url(url).revision() == "twin_0008"
+        assert TwinStore.from_url(url).revision() == "twin_0009"
         assert {"scheduled_for", "run_s"} <= job_columns(url)
         assert {"before", "after"} <= job_columns(url, "audit_log")
 
+        command.downgrade(config, "-1")  # twin_0009: the saved what-if cases (SV-4.3)
+        assert TwinStore.from_url(url).revision() == "twin_0008"
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - WHATIF
+
         command.downgrade(config, "-1")  # twin_0008: the feedback on FurnaceMind answers (SV-5.2)
         assert TwinStore.from_url(url).revision() == "twin_0007"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - WHATIF - FEEDBACK
 
         command.downgrade(config, "-1")  # twin_0007: the optimiser commentaries (SV-3.2)
         assert TwinStore.from_url(url).revision() == "twin_0006"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - WHATIF - FEEDBACK - COMMENTARY
 
         command.downgrade(config, "-1")  # twin_0006: the FurnaceMind conversations and messages (SV-5.1)
         assert TwinStore.from_url(url).revision() == "twin_0005"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY - FM_TABLES
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - WHATIF - FEEDBACK - COMMENTARY - FM_TABLES
 
         command.downgrade(config, "-1")  # twin_0005: the versions of the operator inputs (SV-3.1)
         assert TwinStore.from_url(url).revision() == "twin_0004"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY - FM_TABLES - {
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - WHATIF - FEEDBACK - COMMENTARY - FM_TABLES - {
             "operator_inputs"
         }
 
         command.downgrade(config, "-1")  # twin_0004: the shift reports (SV-2.3)
         assert TwinStore.from_url(url).revision() == "twin_0003"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY - FM_TABLES - {
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - WHATIF - FEEDBACK - COMMENTARY - FM_TABLES - {
             "shift_report",
             "operator_inputs",
         }
@@ -145,7 +151,7 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
 
         command.downgrade(config, "-1")  # twin_0002: the slot and execution time of the jobs
         assert TwinStore.from_url(url).revision() == "twin_0001"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY - FM_TABLES - {
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - WHATIF - FEEDBACK - COMMENTARY - FM_TABLES - {
             "shift_report",
             "operator_inputs",
         }
@@ -795,6 +801,28 @@ def test_furnacemind_feedback_is_one_row_per_answer_with_its_audit_rows(store) -
     with store.engine.begin() as connection:
         connection.execute(text("DELETE FROM twin.fm_conversation WHERE id = :id"), {"id": conversation.id})
         assert connection.execute(text("SELECT count(*) FROM twin.fm_feedback")).scalar_one() == 0
+
+
+@needs_postgres
+def test_whatif_cases_are_the_owners_with_their_audit_rows(store) -> None:
+    """SV-4.3: a saved case and its audit row in one transaction (JSONB inputs on PostgreSQL); the worker's result is
+    stored with the owner's unchanged case only; the kind is forge or strata."""
+    from services import whatif
+
+    inputs = whatif.case_inputs("forge", forge={"pci_kg_thm": 196.8})
+    view = whatif.save_case(store, ALICE, kind="forge", name="PCI +10", inputs=inputs, at=T0)
+    (entry,) = store.audit.query(action="whatif.save")
+    assert entry.object_id == view["id"] and entry.before is None and entry.after["inputs"] == inputs
+    assert not store.whatif.store_result(view["id"], owner="bob", inputs=inputs, result={}, job_id=None,
+                                         facts_version=None)  # fmt: skip
+    assert store.whatif.store_result(view["id"], owner="alice", inputs=inputs, result={"r": 1}, job_id="j",
+                                     facts_version="1.8", at=T0 + H)  # fmt: skip
+    (row,) = store.whatif.list("alice", "forge")
+    assert row.result == {"r": 1} and row.result_at == T0 + H and row.facts_version == "1.8"
+    with pytest.raises(IntegrityError), store.engine.begin() as connection:
+        connection.execute(text("UPDATE twin.whatif_case SET kind = 'trace'"))
+    whatif.delete_case(store, ALICE, view["id"])
+    assert store.whatif.list("alice") == [] and len(store.audit.query(object_type="whatif_case")) == 2
 
 
 @needs_postgres

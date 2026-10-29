@@ -135,6 +135,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/whatif/basis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What-if days, the calibration point and materials
+         * @description The stored what-if days, the calibration asked for with its FORGE calibration point (two balances, a few ms),
+         *     the register version in force and the ferrous materials of the live and the reference yard.
+         */
+        get: operations["admin_basis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/whatif/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's saved what-if cases
+         * @description The signed-in administrator's cases, most recently changed first, each with its latest result.
+         */
+        get: operations["admin_list_cases"];
+        put?: never;
+        /** Save a new what-if case */
+        post: operations["admin_create_case"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/whatif/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a saved what-if case
+         * @description A change of the inputs clears the case's result; a new name keeps it.
+         */
+        put: operations["admin_update_case"];
+        post?: never;
+        /** Delete a saved what-if case */
+        delete: operations["admin_delete_case"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/whatif/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run saved what-if cases
+         * @description Queue ``whatif.forge`` or ``whatif.strata`` for up to four of the user's cases; follow it with
+         *     ``GET /api/jobs/{id}`` or the ``job.progress`` / ``job.done`` events, then read the cases (their results).
+         */
+        post: operations["admin_start_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -4374,6 +4458,15 @@ export interface components {
              */
             type: "forecast.si";
         };
+        /** ForgeBase */
+        ForgeBase: {
+            /** @description Oxygen-balance model at the calibration point */
+            fixed_eta: components["schemas"]["ForgeModelResult"];
+            /** @description The calibration point's lever values */
+            inputs: components["schemas"]["ForgeInputs"];
+            /** @description Two-zone balance at the calibration point */
+            two_zone: components["schemas"]["ForgeModelResult"];
+        };
         /** ForgeCalibration */
         ForgeCalibration: {
             /**
@@ -4445,6 +4538,311 @@ export interface components {
              * @description First IST day of the window
              */
             window_start: string;
+        };
+        /** ForgeCaseResult */
+        ForgeCaseResult: {
+            /**
+             * Case Id
+             * @description Saved case (UUID)
+             */
+            case_id?: string | null;
+            /**
+             * Error
+             * @description Why the case failed
+             */
+            error?: string | null;
+            /** @description Oxygen-balance model (ηCO held) */
+            fixed_eta?: components["schemas"]["ForgeModelResult"] | null;
+            /** @description Every lever's value in the case */
+            inputs: components["schemas"]["ForgeInputs"];
+            /** @description The levers the case set */
+            levers: components["schemas"]["ForgeLevers"];
+            /** Name */
+            name: string;
+            /**
+             * Notes
+             * @description Levers one of the two models does not take
+             */
+            notes?: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "failed";
+            /** @description Two-zone balance (ω held), FORGE's what-if model */
+            two_zone?: components["schemas"]["ForgeModelResult"] | null;
+            /**
+             * Warnings
+             * @description Plausibility bands breached (register BAND-01..03)
+             */
+            warnings?: string[];
+        };
+        /**
+         * ForgeCaseRun
+         * @description A FORGE case's latest result, as stored with the case.
+         */
+        ForgeCaseRun: {
+            /** @description The calibration point the case changes */
+            base: components["schemas"]["ForgeBase"];
+            basis: components["schemas"]["WhatIfBasis"];
+            /**
+             * Computed At
+             * Format: date-time
+             * @description UTC
+             */
+            computed_at: string;
+            /**
+             * Facts Version
+             * @description Fact-register version used (e.g. 1.8, 1.8 + overlay 2)
+             */
+            facts_version: string;
+            /** Job Id */
+            job_id?: string | null;
+            result: components["schemas"]["ForgeCaseResult"];
+        };
+        /**
+         * ForgeInputs
+         * @description The values of every FORGE lever in a case (the calibration point's where the case leaves a lever unset).
+         */
+        ForgeInputs: {
+            /**
+             * Blast Moisture G Nm3
+             * @description Blast moisture, g/Nm³
+             */
+            blast_moisture_g_nm3: number;
+            /**
+             * Coke Ash Pct
+             * @description Coke ash, dry mass %
+             */
+            coke_ash_pct: number;
+            /**
+             * Coke Fc Pct
+             * @description Coke fixed carbon, dry mass %
+             */
+            coke_fc_pct: number;
+            /**
+             * Coke Moisture Pct
+             * @description Coke moisture as charged, mass %
+             */
+            coke_moisture_pct: number;
+            /**
+             * Coke Vm Pct
+             * @description Coke volatile matter, dry mass %
+             */
+            coke_vm_pct: number;
+            /**
+             * Eta Co Pct
+             * @description ηCO the oxygen-balance model holds, %
+             */
+            eta_co_pct: number;
+            /**
+             * Hbt C
+             * @description Hot-blast temperature, °C
+             */
+            hbt_c: number;
+            /**
+             * Hm Si Pct
+             * @description Hot-metal Si, mass %
+             */
+            hm_si_pct: number;
+            /**
+             * Hmt C
+             * @description Hot-metal temperature, °C
+             */
+            hmt_c: number;
+            /**
+             * Nut Coke Kg Thm
+             * @description Nut coke as charged, kg/tHM
+             */
+            nut_coke_kg_thm: number;
+            /**
+             * O2 Per Air
+             * @description Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air
+             */
+            o2_per_air: number;
+            /**
+             * Pci Kg Thm
+             * @description PCI as injected, kg/tHM
+             */
+            pci_kg_thm: number;
+            /**
+             * Production T H
+             * @description Hot-metal production, t/h
+             */
+            production_t_h: number;
+            /**
+             * Shaft Efficiency
+             * @description Shaft efficiency the two-zone balance holds, dimensionless
+             */
+            shaft_efficiency: number;
+        };
+        /**
+         * ForgeLevers
+         * @description FORGE what-if levers (``coke_energy.whatif.run_scenario``): each set field replaces the calibration point's
+         *     value; unset fields keep it.
+         */
+        ForgeLevers: {
+            /**
+             * Blast Moisture G Nm3
+             * @description Blast moisture, g/Nm³
+             */
+            blast_moisture_g_nm3?: number | null;
+            /**
+             * Coke Ash Pct
+             * @description Coke ash, dry mass %
+             */
+            coke_ash_pct?: number | null;
+            /**
+             * Coke Fc Pct
+             * @description Coke fixed carbon, dry mass %
+             */
+            coke_fc_pct?: number | null;
+            /**
+             * Coke Moisture Pct
+             * @description Coke moisture as charged, mass %
+             */
+            coke_moisture_pct?: number | null;
+            /**
+             * Coke Vm Pct
+             * @description Coke volatile matter, dry mass %
+             */
+            coke_vm_pct?: number | null;
+            /**
+             * Eta Co Pct
+             * @description Top-gas CO utilisation, % (oxygen-balance model; the two-zone model computes it)
+             */
+            eta_co_pct?: number | null;
+            /**
+             * Hbt C
+             * @description Hot-blast temperature, °C
+             */
+            hbt_c?: number | null;
+            /**
+             * Hm Si Pct
+             * @description Hot-metal Si, mass %
+             */
+            hm_si_pct?: number | null;
+            /**
+             * Hmt C
+             * @description Hot-metal temperature, °C
+             */
+            hmt_c?: number | null;
+            /**
+             * Nut Coke Kg Thm
+             * @description Nut coke as charged, kg/tHM
+             */
+            nut_coke_kg_thm?: number | null;
+            /**
+             * O2 Per Air
+             * @description Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air
+             */
+            o2_per_air?: number | null;
+            /**
+             * Pci Kg Thm
+             * @description PCI as injected, kg/tHM
+             */
+            pci_kg_thm?: number | null;
+            /**
+             * Production T H
+             * @description Hot-metal production, t/h (heat losses held in GJ/h)
+             */
+            production_t_h?: number | null;
+            /**
+             * Shaft Efficiency
+             * @description Shaft efficiency ω (two-zone model; the oxygen-balance model holds ηCO), dimensionless
+             */
+            shaft_efficiency?: number | null;
+        };
+        /**
+         * ForgeModelResult
+         * @description One model's answer for a FORGE case.
+         */
+        ForgeModelResult: {
+            /**
+             * Blast Air Nm3 Thm
+             * @description Blast air, Nm³/tHM
+             */
+            blast_air_nm3_thm: number;
+            /**
+             * Coke Kg Thm
+             * @description Coke rate, kg/tHM dry
+             */
+            coke_kg_thm: number;
+            /**
+             * Coke Wet Kg Thm
+             * @description Coke rate as charged, kg/tHM
+             */
+            coke_wet_kg_thm: number;
+            /**
+             * D Coke Kg Thm
+             * @description Coke rate minus the calibration point's (same model), kg/tHM dry
+             */
+            d_coke_kg_thm: number;
+            /**
+             * Direct Reduction Pct
+             * @description Degree of direct reduction, % (two-zone)
+             */
+            direct_reduction_pct?: number | null;
+            /**
+             * Eta Co Pct
+             * @description Top-gas CO utilisation, % (an input of the oxygen-balance model)
+             */
+            eta_co_pct: number;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke as charged + nut coke + PCI, kg/tHM
+             */
+            fuel_rate_kg_thm: number;
+            /**
+             * Limestone Kg Thm
+             * @description Limestone added to hold the basicity, kg/tHM
+             */
+            limestone_kg_thm: number;
+            /**
+             * O2 Nm3 Thm
+             * @description Enrichment oxygen, Nm³/tHM
+             */
+            o2_nm3_thm: number;
+            /**
+             * Quartzite Kg Thm
+             * @description Quartzite added to hold the basicity, kg/tHM (two-zone)
+             */
+            quartzite_kg_thm?: number | null;
+            /**
+             * Shaft Efficiency
+             * @description Shaft efficiency, dimensionless (two-zone)
+             */
+            shaft_efficiency?: number | null;
+            /**
+             * Slag Al2O3 Pct
+             * @description Slag Al₂O₃, mass %
+             */
+            slag_al2o3_pct: number;
+            /**
+             * Slag Cao Sio2
+             * @description Slag CaO/SiO₂, dimensionless
+             */
+            slag_cao_sio2: number;
+            /**
+             * Slag Kg Thm
+             * @description Slag, kg/tHM
+             */
+            slag_kg_thm: number;
+            /**
+             * Slag Mgo Pct
+             * @description Slag MgO, mass %
+             */
+            slag_mgo_pct: number;
+            /**
+             * Top Gas C
+             * @description Top-gas temperature, °C (an input of the oxygen-balance model)
+             */
+            top_gas_c: number;
+            /**
+             * Top Gas Nm3 Thm
+             * @description Top gas, Nm³/tHM
+             */
+            top_gas_nm3_thm: number;
         };
         /** ForgePrediction */
         ForgePrediction: {
@@ -5773,6 +6171,22 @@ export interface components {
              * @description Account name, as in the Streamlit app
              */
             username: string;
+        };
+        /** MaterialOption */
+        MaterialOption: {
+            /**
+             * Id
+             * @description Material id of the engine
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Source
+             * @description live: in the latest optimiser run's yard; reference: the yard of 16 Oct 2026
+             * @enum {string}
+             */
+            source: "live" | "reference";
         };
         /** MessageCreate */
         MessageCreate: {
@@ -9045,6 +9459,291 @@ export interface components {
              */
             upper_m: number;
         };
+        /** StrataBasis */
+        StrataBasis: {
+            /**
+             * Blast Moisture G Nm3
+             * @description Blast moisture of the calibration point, g/Nm³
+             */
+            blast_moisture_g_nm3?: number | null;
+            /**
+             * Calibration
+             * @description day = calibration.nightly's for the what-if day; reference = the shipped Jul-Oct 2026 one
+             * @enum {string}
+             */
+            calibration: "day" | "reference";
+            /**
+             * Coke Kg Thm
+             * @description Coke of the calibration point, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Day
+             * @description What-if day (IST) of a day calibration
+             */
+            day?: string | null;
+            /**
+             * N Shifts
+             * @description Stable shifts of the calibration, count
+             */
+            n_shifts?: number | null;
+            /**
+             * Omega
+             * @description Shaft efficiency of the calibration, dimensionless
+             */
+            omega?: number | null;
+            /**
+             * Omega Mode
+             * @description STRATA-ω (blend-dependent) or Fixed-ω
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /**
+             * Production Source
+             * @description Where the production came from
+             * @default
+             */
+            production_source: string;
+            /**
+             * Q Lz Gj H
+             * @description Lower-zone heat loss of the calibration, GJ/h
+             */
+            q_lz_gj_h?: number | null;
+            /**
+             * Q Uz Gj H
+             * @description Upper-zone heat loss of the calibration, GJ/h
+             */
+            q_uz_gj_h?: number | null;
+            /**
+             * R H
+             * @description Hydrogen share of the reduction work of the calibration, dimensionless
+             */
+            r_h?: number | null;
+            /**
+             * Window
+             * @description Shifts the calibration was made on (IST dates)
+             */
+            window: string;
+            /**
+             * Yard
+             * @description Yard the plans used: live or reference
+             */
+            yard: string;
+            /**
+             * Yard Message
+             * @description Why the yard fell back to the reference, if it did
+             * @default
+             */
+            yard_message: string;
+        };
+        /** StrataCaseInputs */
+        StrataCaseInputs: {
+            /**
+             * Blend
+             * @description Forced ferrous blend: material id → share of the wet ferrous burden, %; null = cheapest
+             */
+            blend?: {
+                [key: string]: number;
+            } | null;
+            /** @description Controls and targets instead of the basis */
+            settings?: components["schemas"]["OptimiserSettings"] | null;
+        };
+        /** StrataCaseResult */
+        StrataCaseResult: {
+            /**
+             * Blast Nm3 H
+             * @description Hot blast (meter basis), Nm³/h
+             */
+            blast_nm3_h?: number | null;
+            /**
+             * Blend
+             * @description Ferrous materials of the plan
+             */
+            blend?: components["schemas"]["WhatIfMaterialRow"][];
+            /**
+             * Case Id
+             * @description Saved case (UUID)
+             */
+            case_id?: string | null;
+            /**
+             * Certainty
+             * @description High, Medium, Low or Investigate (STRATA-ω); Held (Fixed-ω)
+             */
+            certainty?: string | null;
+            /**
+             * Charges Per H
+             * @description Charging rate, charges/h
+             */
+            charges_per_h?: number | null;
+            /**
+             * Coke Kg Thm
+             * @description Coke rate, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Coke Sd Kg Thm
+             * @description 1 sigma of the coke rate (STRATA-ω), kg/tHM dry
+             */
+            coke_sd_kg_thm?: number | null;
+            /**
+             * Coke Wet Kg Thm
+             * @description Coke rate as charged, kg/tHM
+             */
+            coke_wet_kg_thm?: number | null;
+            /**
+             * Cost Gross Rs Thm
+             * @description Ore + flux + fuel, Rs/tHM
+             */
+            cost_gross_rs_thm?: number | null;
+            /**
+             * Cost Rs Thm
+             * @description Ore + flux + fuel − slag credit, Rs/tHM
+             */
+            cost_rs_thm?: number | null;
+            /**
+             * Error
+             * @description Why the case is infeasible or failed
+             */
+            error?: string | null;
+            /**
+             * Eta Co Pct
+             * @description Top-gas CO utilisation, %
+             */
+            eta_co_pct?: number | null;
+            /**
+             * Facts Version
+             * @description Fact-register version the engine used
+             */
+            facts_version?: string | null;
+            /**
+             * Flux
+             * @description Flux of the plan
+             */
+            flux?: components["schemas"]["WhatIfMaterialRow"][];
+            /**
+             * Flux Rs Thm
+             * @description Flux, Rs/tHM
+             */
+            flux_rs_thm?: number | null;
+            /**
+             * Forced
+             * @description The ferrous blend was forced (else the cheapest blend)
+             */
+            forced: boolean;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke as charged + nut coke + PCI, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Fuel Rs Thm
+             * @description Coke + nut coke + PCI, Rs/tHM
+             */
+            fuel_rs_thm?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * O2 Nm3 H
+             * @description Oxygen flow, Nm³/h
+             */
+            o2_nm3_h?: number | null;
+            /**
+             * Ore Rs Thm
+             * @description Ferrous burden, Rs/tHM
+             */
+            ore_rs_thm?: number | null;
+            /**
+             * Production T D
+             * @description Hot-metal production, t/d
+             */
+            production_t_d?: number | null;
+            /**
+             * Raft C
+             * @description RAFT (plant workbook), °C
+             */
+            raft_c?: number | null;
+            /**
+             * Requested Blend
+             * @description The forced shares as given, % of wet ferrous
+             */
+            requested_blend?: {
+                [key: string]: number;
+            } | null;
+            /** @description Controls and targets of the plan */
+            settings?: components["schemas"]["StrataSettingsUsed"] | null;
+            /**
+             * Shaft Efficiency
+             * @description Shaft efficiency, dimensionless
+             */
+            shaft_efficiency?: number | null;
+            /**
+             * Slag Al2O3 Pct
+             * @description Slag Al₂O₃, mass %
+             */
+            slag_al2o3_pct?: number | null;
+            /**
+             * Slag Cao Sio2
+             * @description Slag CaO/SiO₂, dimensionless
+             */
+            slag_cao_sio2?: number | null;
+            /**
+             * Slag Credit Rs Thm
+             * @description Slag sold, Rs/tHM
+             */
+            slag_credit_rs_thm?: number | null;
+            /**
+             * Slag Kg Thm
+             * @description Slag, kg/tHM
+             */
+            slag_kg_thm?: number | null;
+            /**
+             * Slag Mgo Pct
+             * @description Slag MgO, mass %
+             */
+            slag_mgo_pct?: number | null;
+            /**
+             * Status
+             * @description infeasible: the LP has no solution, a band refused the inputs, or a limit stays breached
+             * @enum {string}
+             */
+            status: "ok" | "infeasible" | "failed";
+            /**
+             * Top Gas C
+             * @description Top-gas temperature, °C
+             */
+            top_gas_c?: number | null;
+            /**
+             * Violations
+             * @description Limits the plan breaches
+             */
+            violations?: string[];
+            /**
+             * Warnings
+             * @description The engine's warnings
+             */
+            warnings?: string[];
+        };
+        /**
+         * StrataCaseRun
+         * @description A STRATA case's latest result, as stored with the case.
+         */
+        StrataCaseRun: {
+            basis: components["schemas"]["StrataBasis"];
+            /**
+             * Computed At
+             * Format: date-time
+             * @description UTC
+             */
+            computed_at: string;
+            /**
+             * Facts Version
+             * @description Fact-register version used (e.g. 1.8, 1.8 + overlay 2)
+             */
+            facts_version: string;
+            /** Job Id */
+            job_id?: string | null;
+            result: components["schemas"]["StrataCaseResult"];
+        };
         /** StrataOmega */
         StrataOmega: {
             /**
@@ -9067,6 +9766,44 @@ export interface components {
              * @description First window end shown (UTC)
              */
             start: string;
+        };
+        /** StrataSettingsUsed */
+        StrataSettingsUsed: {
+            /**
+             * Blast Moisture G Nm3
+             * @description Blast moisture, g/Nm³
+             */
+            blast_moisture_g_nm3: number;
+            /**
+             * Hbt C
+             * @description Hot-blast temperature, °C
+             */
+            hbt_c: number;
+            /**
+             * Hm Si Pct
+             * @description Hot-metal Si target, mass %
+             */
+            hm_si_pct: number;
+            /**
+             * Hmt C
+             * @description Hot-metal temperature target, °C
+             */
+            hmt_c: number;
+            /**
+             * Nut Coke Kg Thm
+             * @description Nut coke as charged, kg/tHM
+             */
+            nut_coke_kg_thm: number;
+            /**
+             * O2 Per Air
+             * @description Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air
+             */
+            o2_per_air: number;
+            /**
+             * Pci Kg Thm
+             * @description PCI as injected, kg/tHM
+             */
+            pci_kg_thm: number;
         };
         /** StrataSummary */
         StrataSummary: {
@@ -10464,6 +11201,219 @@ export interface components {
             /** Limit */
             limit: string;
         };
+        /** WhatIfBasis */
+        WhatIfBasis: {
+            /**
+             * Blast Moisture G Nm3
+             * @description Blast moisture of the calibration point, g/Nm³
+             */
+            blast_moisture_g_nm3?: number | null;
+            /**
+             * Calibration
+             * @description day = calibration.nightly's for the what-if day; reference = the shipped Jul-Oct 2026 one
+             * @enum {string}
+             */
+            calibration: "day" | "reference";
+            /**
+             * Coke Kg Thm
+             * @description Coke of the calibration point, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Day
+             * @description What-if day (IST) of a day calibration
+             */
+            day?: string | null;
+            /**
+             * N Shifts
+             * @description Stable shifts of the calibration, count
+             */
+            n_shifts?: number | null;
+            /**
+             * Omega
+             * @description Shaft efficiency of the calibration, dimensionless
+             */
+            omega?: number | null;
+            /**
+             * Q Lz Gj H
+             * @description Lower-zone heat loss of the calibration, GJ/h
+             */
+            q_lz_gj_h?: number | null;
+            /**
+             * Q Uz Gj H
+             * @description Upper-zone heat loss of the calibration, GJ/h
+             */
+            q_uz_gj_h?: number | null;
+            /**
+             * R H
+             * @description Hydrogen share of the reduction work of the calibration, dimensionless
+             */
+            r_h?: number | null;
+            /**
+             * Window
+             * @description Shifts the calibration was made on (IST dates)
+             */
+            window: string;
+        };
+        /** WhatIfBasisView */
+        WhatIfBasisView: {
+            /** @description The calibration point the FORGE cases change */
+            base?: components["schemas"]["ForgeBase"] | null;
+            /** @description The calibration asked for; null when it is not stored */
+            basis?: components["schemas"]["WhatIfBasis"] | null;
+            /**
+             * Days
+             * @description What-if days with a stored day calibration (IST), newest first
+             */
+            days: string[];
+            /**
+             * Facts Version
+             * @description Fact-register version in force (e.g. 1.8, 1.8 + overlay 2)
+             */
+            facts_version: string;
+            /**
+             * Materials
+             * @description Ferrous materials a forced blend can name
+             */
+            materials: components["schemas"]["MaterialOption"][];
+            /**
+             * Max Cases
+             * @description Cases a run compares at most, count
+             */
+            max_cases: number;
+            /**
+             * Message
+             * @description Why there is no basis
+             */
+            message?: string | null;
+        };
+        /** WhatIfCaseSave */
+        WhatIfCaseSave: {
+            /** @description FORGE levers (kind forge) */
+            forge?: components["schemas"]["ForgeLevers"] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "forge" | "strata";
+            /**
+             * Name
+             * @description Name of the case
+             */
+            name: string;
+            /** @description Forced blend and controls (kind strata) */
+            strata?: components["schemas"]["StrataCaseInputs"] | null;
+        };
+        /** WhatIfCaseView */
+        WhatIfCaseView: {
+            /**
+             * Created At
+             * Format: date-time
+             * @description UTC
+             */
+            created_at: string;
+            /** @description FORGE levers (kind forge) */
+            forge?: components["schemas"]["ForgeLevers"] | null;
+            /** @description Latest FORGE result; null before the first run */
+            forge_run?: components["schemas"]["ForgeCaseRun"] | null;
+            /**
+             * Id
+             * @description Case id (UUID)
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "forge" | "strata";
+            /** Name */
+            name: string;
+            /** Owner */
+            owner: string;
+            /** @description Forced blend and controls (kind strata) */
+            strata?: components["schemas"]["StrataCaseInputs"] | null;
+            /** @description Latest STRATA result; null before the first run */
+            strata_run?: components["schemas"]["StrataCaseRun"] | null;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description UTC
+             */
+            updated_at: string;
+        };
+        /** WhatIfMaterialRow */
+        WhatIfMaterialRow: {
+            /**
+             * Id
+             * @description Material id
+             */
+            id: string;
+            /**
+             * Kg Thm
+             * @description Wet mass, kg/tHM
+             */
+            kg_thm: number;
+            /** Name */
+            name: string;
+            /**
+             * Share Pct
+             * @description Share of the wet ferrous burden, % (ferrous only)
+             */
+            share_pct?: number | null;
+        };
+        /** WhatIfRunRequest */
+        WhatIfRunRequest: {
+            /**
+             * Calibration
+             * @description day = calibration.nightly's for the what-if day; reference = the shipped Jul-Oct 2026 one
+             * @default day
+             * @enum {string}
+             */
+            calibration: "day" | "reference";
+            /**
+             * Case Ids
+             * @description The user's saved cases, in column order
+             */
+            case_ids: string[];
+            /**
+             * Day
+             * @description What-if day (IST); default: the latest stored day calibration
+             */
+            day?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "forge" | "strata";
+            /**
+             * Omega Mode
+             * @description STRATA cases: STRATA-ω or Fixed-ω
+             * @default strata
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /**
+             * Production T D
+             * @description STRATA cases: hot-metal production, t/d (default: the regime median)
+             */
+            production_t_d?: number | null;
+            /**
+             * Yard
+             * @description STRATA cases: live or reference yard
+             * @default live
+             * @enum {string}
+             */
+            yard: "live" | "reference";
+        };
+        /** WhatIfRunSubmitted */
+        WhatIfRunSubmitted: {
+            /**
+             * Duplicate
+             * @description True when an identical run was already queued or running
+             */
+            duplicate: boolean;
+            job: components["schemas"]["JobRecord"];
+        };
         /** WorkerStatus */
         WorkerStatus: {
             /**
@@ -10938,6 +11888,258 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactsVersionView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_basis: {
+        parameters: {
+            query?: {
+                /** @description day or reference */
+                calibration?: "day" | "reference";
+                /** @description What-if day (IST); default: the latest stored */
+                day?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatIfBasisView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_list_cases: {
+        parameters: {
+            query?: {
+                /** @description Only FORGE or only STRATA cases */
+                kind?: ("forge" | "strata") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatIfCaseView"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_create_case: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WhatIfCaseSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatIfCaseView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_update_case: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Case id (UUID) */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WhatIfCaseSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatIfCaseView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_delete_case: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Case id (UUID) */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_start_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WhatIfRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatIfRunSubmitted"];
                 };
             };
             /** @description Client error (problem+json) */
