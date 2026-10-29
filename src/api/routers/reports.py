@@ -8,6 +8,9 @@ retry is stored without it (``status`` no_narrative, ``narrative_status`` failed
 SV-2.4 (#296), the Shift Reports page: ``GET /api/reports/thresholds`` serves the status thresholds of
 ``config/shift_report.yml`` (read at every request) and a report's ``kpis`` are its ETA CO, fuel rate, RAFT and
 permeability against them (``services.reports.kpi_checks``, the builder's rule).
+
+SV-2.5 (#297): a report links the handover record of its shift (``record``, ``GET /api/shift-records/{shift_key}``)
+once ``shift.close`` has frozen it (06:10, 14:10, 22:10 IST).
 """
 
 from __future__ import annotations
@@ -24,9 +27,10 @@ from pydantic import BaseModel, Field
 from api.auth import require_role
 from api.errors import ApiError
 from api.live import job_store
+from api.routers.shift_records import ShiftRecordLink
 from api.store import twin_store
 from data.twin.repositories import TwinStore
-from services import reports
+from services import reports, shift_records
 from services.auth import Principal
 from services.jobs import JobRecord, JobStore, LiveReportParams
 
@@ -180,6 +184,9 @@ class ShiftReportDetail(ShiftReportSummary):
     kpis: list[KpiStatusView] = Field(
         default_factory=list, description="ETA CO, fuel rate, RAFT and permeability against the current thresholds"
     )
+    record: ShiftRecordLink | None = Field(
+        None, description="The handover record of the report's shift; null until shift.close has frozen it"
+    )
 
 
 class KpiStatusView(BaseModel):
@@ -294,4 +301,6 @@ async def get_report(
         detail = await asyncio.to_thread(reports.detail_data, row)  # reads the thresholds file
     except ValueError as exc:  # thresholds missing from the configuration
         raise ApiError(500, f"config/shift_report.yml: {exc}") from exc
+    record = await asyncio.to_thread(store.shifts.get, row.shift_key)
+    detail["record"] = shift_records.link_data(record) if record is not None else None
     return ShiftReportDetail.model_validate(detail)

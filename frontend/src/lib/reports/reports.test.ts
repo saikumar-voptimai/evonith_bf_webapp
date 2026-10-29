@@ -5,6 +5,7 @@ import {
 	burdenFacts,
 	burdenShares,
 	consumptionCells,
+	decisionLine,
 	fuelCells,
 	groupReports,
 	hearthCells,
@@ -18,6 +19,9 @@ import {
 	parameterGroups,
 	pickTwinRow,
 	readView,
+	recordCells,
+	recordChip,
+	recordLinkState,
 	regenerateJob,
 	reportTiles,
 	temperatureRows,
@@ -28,6 +32,7 @@ import {
 	type ReportDetail,
 	type ReportSummary,
 	type ReportThresholds,
+	type ShiftRecord,
 	type TwinSeriesRow
 } from './reports.ts';
 import { formatNumber } from '../format/number.ts';
@@ -373,5 +378,81 @@ describe('materials', () => {
 		expect(materialGroups(undefined)).toEqual([]);
 		expect(burdenShares('64.3: x: 9.7')).toBeNull();
 		expect(burdenShares(null)).toBeNull();
+	});
+});
+
+describe('handover record (SV-2.5)', () => {
+	const end = Date.parse(detail.shift_end); // 26 Oct 22:00 IST, the end of shift B
+	const at = (minutes: number) => new Date(end + minutes * 60_000);
+
+	it('states why a report has no record: the shift runs, the record is due, or it is missing', () => {
+		expect(recordLinkState({ ...detail, record: null }, at(-60))).toMatchObject({
+			kind: 'info',
+			label: 'Shift running'
+		});
+		const due = recordLinkState({ ...detail, record: null }, at(12));
+		expect(due).toMatchObject({ kind: 'info', label: 'Due' });
+		expect(due.message).toContain('by 22:30 IST');
+		expect(recordLinkState({ ...detail, record: null }, at(31))).toMatchObject({
+			kind: 'warning',
+			label: 'No record'
+		});
+		const linked = recordLinkState(
+			{
+				...detail,
+				record: {
+					shift_key: detail.shift_key,
+					closed_at: '2026-10-26T16:42:00Z',
+					href: '/api/shift-records/x'
+				}
+			},
+			at(600)
+		);
+		expect(linked).toMatchObject({ kind: 'ok', label: 'Frozen', message: 'Frozen 26 Oct 22:12 IST' });
+	});
+
+	it('reads a frozen record: completeness, the shift window and the decision of the shift', () => {
+		const r = {
+			k_trace: 381.2,
+			k_forge: 377.0,
+			k_strata: 379.4,
+			k_charged: 388.1,
+			omega_imp: 0.912,
+			windows_stored: 8,
+			windows_expected: 8,
+			shift_window: true,
+			shift_window_snapshot: { k_strata_sd: 5.1 },
+			plan: {
+				decision: {
+					run_id: 'r1',
+					decision: 'rejected',
+					decided_by: 'sv1',
+					decided_at: '2026-10-26T12:15:00Z',
+					shift_key: '2026-10-26_B',
+					comment: 'pellet short'
+				},
+				run: { mode: 'step2', omega_mode: 'strata' }
+			}
+		} as unknown as ShiftRecord;
+		expect(recordChip(r)).toMatchObject({ kind: 'ok', label: 'Complete' });
+		expect(recordChip({ ...r, windows_stored: 6 })).toMatchObject({ kind: 'warning', label: 'Partial' });
+		expect(recordChip({ ...r, shift_window: false })).toMatchObject({
+			kind: 'warning',
+			label: 'No shift window'
+		});
+		const cells = recordCells(r);
+		expect(cells.map((c) => [c.key, c.value, c.unit])).toEqual([
+			['k_trace', 381.2, 'kg/tHM'],
+			['k_forge', 377.0, 'kg/tHM'],
+			['k_strata', 379.4, 'kg/tHM'],
+			['k_charged', 388.1, 'kg/tHM'],
+			['omega_imp', 0.912, '']
+		]);
+		expect(cells[2]?.sd).toBe(5.1);
+		expect(decisionLine(r)).toEqual({
+			chip: { kind: 'warning', label: 'Plan rejected' },
+			text: 'Step 2, STRATA-ω, decided by sv1 26 Oct 17:45 IST'
+		});
+		expect(decisionLine({ plan: null }).chip.label).toBe('No decision');
 	});
 });

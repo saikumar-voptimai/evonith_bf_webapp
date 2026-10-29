@@ -8,6 +8,7 @@ from worker.kinds import (  # noqa: F401
     learn,
     optimiser,
     reports,
+    shift,
     strata,
     system,
     trace,

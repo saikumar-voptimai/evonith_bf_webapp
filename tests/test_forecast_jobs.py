@@ -477,7 +477,7 @@ def test_the_forecast_jobs_are_scheduled_in_ist(monkeypatch) -> None:
     assert CATALOG["forecast.si"].timeout_s < 300  # a run ends before the next one starts
     monkeypatch.setenv(
         "BF_WORKER_SKIP_SCHEDULES",
-        "forecast.charged_coke, system., twin., optimiser., calibration., learn., report., strata.",
+        "forecast.charged_coke, system., twin., optimiser., calibration., learn., report., strata., shift.",
     )
     assert sorted(c.name for c in settings.cron_jobs()) == ["cron:schedule_forecast_si"]
 

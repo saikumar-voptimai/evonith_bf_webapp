@@ -415,6 +415,17 @@ class OptimiserRunRepository(_Repository):
         with self._sessions() as session:
             return session.scalars(query).one_or_none()
 
+    def latest_decision_between(self, start: datetime, end: datetime) -> PlanDecision | None:
+        """The latest decision on any run taken in [start, end) (a shift's decision, SV-2.5)."""
+        query = (
+            select(PlanDecision)
+            .where(PlanDecision.decided_at >= _utc(start, "start"), PlanDecision.decided_at < _utc(end, "end"))
+            .order_by(PlanDecision.decided_at.desc(), PlanDecision.id.desc())
+            .limit(1)
+        )
+        with self._sessions() as session:
+            return session.scalars(query).one_or_none()
+
     def decisions(self, run_id: uuid.UUID | str) -> list[PlanDecision]:
         """Every decision on the run, oldest first."""
         query = (
@@ -488,6 +499,25 @@ class ShiftRecordRepository(_Repository):
             .where(ShiftRecord.shift_start >= _utc(start, "start"), ShiftRecord.shift_start < _utc(end, "end"))
             .order_by(ShiftRecord.shift_start)
         )
+        with self._sessions() as session:
+            return list(session.scalars(query))
+
+    def recent(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        letter: str | None = None,
+        limit: int = 50,
+    ) -> list[ShiftRecord]:
+        """Records of shifts starting in [start, end), newest shift first (SV-2.5)."""
+        query = select(ShiftRecord).order_by(ShiftRecord.shift_start.desc()).limit(limit)
+        if start:
+            query = query.where(ShiftRecord.shift_start >= _utc(start, "start"))
+        if end:
+            query = query.where(ShiftRecord.shift_start < _utc(end, "end"))
+        if letter:
+            query = query.where(ShiftRecord.letter == letter)
         with self._sessions() as session:
             return list(session.scalars(query))
 

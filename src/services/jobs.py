@@ -210,6 +210,27 @@ class LiveReportParams(BaseModel):
     narrative: bool = Field(True, description="Also write the LLM narrative (one retry on failure)")
 
 
+class ShiftCloseParams(BaseModel):
+    """The handover record of a closed shift (``shift.close``, SV-2.5)."""
+
+    model_config = {"extra": "forbid"}
+
+    shift_key: str | None = Field(
+        None,
+        pattern=r"^\d{4}-\d{2}-\d{2}_[ABC]$",
+        description=(
+            "Shift to freeze, YYYY-MM-DD_A|B|C (IST date of its start; it must have ended); default: the shift that "
+            "ended before the schedule slot (C at 06:10, A at 14:10, B at 22:10), else before now"
+        ),
+    )
+    backfill_shifts: int = Field(
+        3,
+        ge=0,
+        le=42,
+        description="Shifts before it that have no record are frozen too (3 = the 24 h before, 42 = 14 days), count",
+    )
+
+
 class StrataLivePointParams(BaseModel):
     """The STRATA live point (``strata.live_point``): the MOD facts and the ring view at the current calibration."""
 
@@ -684,6 +705,23 @@ register(
         description=(
             "The Reports tab's report of the running shift, data up to now, with the LLM narrative (one retry) into "
             "twin.shift_report (POST /api/reports/live, SV-2.3)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="shift.close",
+        title="Shift handover record",
+        role="supervisor",
+        timeout_s=120,  # reads of the twin store only
+        max_tries=5,  # HH:10 to HH:30 while twin.evaluate (HH:10, retried to HH:25) has not stored the shift's window
+        retry_delay_s=300,
+        params=ShiftCloseParams,
+        schedule=({6, 14, 22}, {10}),
+        description=(
+            "Freezes the shift that has just closed (C, A, B) into twin.shift_record, once: its hourly twin snapshots "
+            "and the shift window's coke rates and implied ω, the latest plan decision of the shift with its run, and "
+            "the link of its report; shifts of the 24 h before without a record are frozen too (SV-2.5)."
         ),
     )
 )

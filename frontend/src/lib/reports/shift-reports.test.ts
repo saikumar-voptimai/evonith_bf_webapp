@@ -3,7 +3,15 @@ import { FakeSource } from '../live/fake-source.ts';
 import type { JobRecord, JobsApi } from '../live/jobs.svelte.ts';
 import { LiveStream, type StreamEvent } from '../live/stream.svelte.ts';
 import fixture from './fixtures/report.json';
-import type { ReportDetail, ReportSummary, ReportThresholds, TwinQuery, TwinSeriesRow } from './reports.ts';
+import type {
+	RecordLink,
+	ReportDetail,
+	ReportSummary,
+	ReportThresholds,
+	ShiftRecord,
+	TwinQuery,
+	TwinSeriesRow
+} from './reports.ts';
 import { ShiftReports, type ReportsApi } from './shift-reports.svelte.ts';
 
 const detail = fixture.detail as unknown as ReportDetail;
@@ -39,8 +47,39 @@ function job(overrides: Partial<JobRecord> = {}): JobRecord {
 	};
 }
 
-function fakes(options: { fail?: Set<string>; active?: JobRecord[] } = {}) {
+/** The record of shift 26 Oct B as `GET /api/shift-records/{key}` returns it. */
+const record: ShiftRecord = {
+	shift_key: detail.shift_key,
+	shift: 'B',
+	shift_date: '2026-10-26',
+	shift_start: detail.shift_start,
+	shift_end: detail.shift_end,
+	closed_at: '2026-10-26T16:42:00Z',
+	k_trace: 381.2,
+	k_forge: 377.0,
+	k_strata: 379.4,
+	k_charged: 388.1,
+	omega_imp: 0.912,
+	windows_stored: 8,
+	windows_expected: 8,
+	shift_window: true,
+	plan_run_id: null,
+	plan_decision: null,
+	report_ref: '/reports?date=2026-10-26&shift=B',
+	href: `/api/shift-records/${detail.shift_key}`,
+	hourly: [],
+	shift_window_snapshot: null,
+	missing_windows: [],
+	plan: null,
+	frozen_by: 'scheduler',
+	frozen_by_job: 'close-1',
+	report_id: detail.id
+};
+const link: RecordLink = { shift_key: record.shift_key, closed_at: record.closed_at, href: record.href };
+
+function fakes(options: { fail?: Set<string>; active?: JobRecord[]; linked?: boolean } = {}) {
 	const calls: string[] = [];
+	const state = { linked: options.linked ?? false };
 	const twinQueries: TwinQuery[] = [];
 	const fail = options.fail ?? new Set<string>();
 	let stored = job();
@@ -53,7 +92,7 @@ function fakes(options: { fail?: Set<string>; active?: JobRecord[] } = {}) {
 		async detail(id) {
 			calls.push(`detail ${id}`);
 			if (fail.has('detail')) throw new Error('detail down');
-			return { ...detail, id };
+			return { ...detail, id, record: state.linked ? link : null };
 		},
 		async thresholds() {
 			calls.push('thresholds');
@@ -64,6 +103,11 @@ function fakes(options: { fail?: Set<string>; active?: JobRecord[] } = {}) {
 			twinQueries.push(q);
 			if (fail.has('twin')) throw new Error('twin down');
 			return [twinRow as TwinSeriesRow];
+		},
+		async record(key) {
+			calls.push(`record ${key}`);
+			if (fail.has('record')) throw new Error('record down');
+			return record;
 		},
 		async jobs() {
 			calls.push('jobs');
@@ -81,7 +125,7 @@ function fakes(options: { fail?: Set<string>; active?: JobRecord[] } = {}) {
 	const finish = (result: Record<string, unknown>) => {
 		stored = { ...stored, status: 'done', progress: 1, result, finished_at: '2026-10-27T03:02:00Z' };
 	};
-	return { api, jobs, calls, twinQueries, finish };
+	return { api, jobs, calls, twinQueries, finish, state };
 }
 
 const doneEvent = (jobId: string, kind = 'report.shift'): StreamEvent => ({
@@ -196,6 +240,48 @@ describe('ShiftReports', () => {
 		await settle();
 		expect(page.tracker.record?.id).toBe('sched');
 		expect(page.tracker.active).toBe(true);
+		stop();
+	});
+
+	it('loads the handover record the report links, and the link once shift.close has frozen it', async () => {
+		const f = fakes();
+		const page = new ShiftReports({ api: f.api, jobs: f.jobs, stream, now: () => AFTER });
+		const stop = page.start();
+		page.setView({ date: null, shift: null, id: detail.id });
+		await settle();
+		expect(page.detail?.record).toBeNull();
+		expect(page.record).toBeNull();
+		expect(f.calls.some((c) => c.startsWith('record'))).toBe(false);
+		const source = FakeSource.last();
+		source.open();
+		f.state.linked = true; // shift.close freezes the record
+		f.calls.length = 0;
+		source.emit(doneEvent('close-1', 'shift.close'));
+		await settle();
+		await settle();
+		expect(f.calls).toEqual([`detail ${detail.id}`, 'twin', `record ${detail.shift_key}`]);
+		expect(page.detail?.record?.href).toBe('/api/shift-records/2026-10-26_B');
+		expect(page.record?.k_trace).toBe(381.2);
+		expect(page.recordState).toMatchObject({ loading: false, error: null });
+		// Linked already: another shift.close (the next shift's) reads nothing.
+		f.calls.length = 0;
+		source.emit(doneEvent('close-2', 'shift.close'));
+		await settle();
+		expect(f.calls).toEqual([]);
+		page.setView({ date: null, shift: null, id: null });
+		expect(page.record).toBeNull();
+		stop();
+	});
+
+	it('shows a record that does not load as its own error', async () => {
+		const f = fakes({ fail: new Set(['record']), linked: true });
+		const page = new ShiftReports({ api: f.api, jobs: f.jobs, stream, now: () => AFTER });
+		const stop = page.start();
+		page.setView({ date: null, shift: null, id: detail.id });
+		await settle();
+		expect(page.detail).not.toBeNull();
+		expect(page.record).toBeNull();
+		expect(page.recordState.error).toBeInstanceOf(Error);
 		stop();
 	});
 
