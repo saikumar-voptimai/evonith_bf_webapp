@@ -46,6 +46,11 @@ def utc(value: datetime | pd.Timestamp | str | None) -> datetime | None:
     return stamp.to_pydatetime()
 
 
+def ist_utc(value: pd.Timestamp | datetime | str) -> datetime:
+    """A naive IST wall-clock time (the hourly dataset's time base) as an aware UTC datetime, to the second."""
+    return pd.Timestamp(value).round("s").tz_localize(PLANT_TZ).tz_convert("UTC").to_pydatetime()
+
+
 def _get(row: Any, key: str, default: Any = None) -> Any:
     return row.get(key, default) if isinstance(row, Mapping) else getattr(row, key, default)
 
@@ -330,6 +335,7 @@ __all__ = [
     "decision_data",
     "expected_window_end",
     "freshness",
+    "ist_utc",
     "run_data",
     "series_rows",
     "shift_key",

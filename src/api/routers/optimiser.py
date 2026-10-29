@@ -24,7 +24,7 @@ from api.errors import ApiError
 from api.live import job_store, live_state
 from api.store import twin_store
 from data.twin.repositories import Actor, NotFound, TwinStore
-from services import optimiser_commentary, twin_views
+from services import optimiser_commentary, twin_reads, twin_views
 from services.auth import Principal
 from services.jobs import JobRecord, JobStore, OptimiserRunParams
 from services.optimiser_results import OptimiserResult, result_view
@@ -107,12 +107,7 @@ class DecisionRequest(BaseModel):
     comment: str | None = Field(None, max_length=2000, description="Reason, shown with the decision")
 
 
-def _summary(store: TwinStore, row: Any, *, detail: bool = False) -> dict[str, Any]:
-    data = twin_views.run_data(row, detail=detail)
-    data["decision"] = twin_views.decision_data(store.optimiser.decision(row.id))
-    if detail:
-        data["decisions"] = [twin_views.decision_data(d) for d in store.optimiser.decisions(row.id)]
-    return data
+_summary = twin_reads.run_summary  # also FurnaceMind's get_optimiser_result (SV-5.3)
 
 
 def _uuid(value: str) -> uuid.UUID | None:

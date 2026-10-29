@@ -32,6 +32,10 @@ It is the source of truth for tool routing and plotting behavior.
 | Stitch static + online row-wise | `concat_datasets` |
 | Join offline columns onto online/static timeline | `merge_furnace_data` |
 | Single 8-hour shift from static dataset | `load_static_shift_data` |
+| Current coke rate burnt / modelled, coke-rate gap (FORGE - TRACE, STRATA - TRACE), omega, twin status | `get_twin_snapshot` (quote its `cite`) |
+| Twin coke rates per hour or per shift over a range | `get_twin_series` |
+| Burden column, descent times, coke in transit, blend change arrival | `get_transit` |
+| Optimiser plan, blend, cost, saving, decision | `get_optimiser_result` |
 
 ## Pre-Flight Checklist for `execute_python_plot`
 
