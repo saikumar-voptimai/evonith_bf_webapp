@@ -1,0 +1,37 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): twin-api, uvicorn with 2 worker processes on 127.0.0.1:8100
+# (Caddy's /api upstream). uvicorn's parent restarts a worker process that dies; systemd restarts the parent.
+# Revoked sessions are shared through Redis (SV-6.6); the sign-in failure limit is counted per process (README).
+#
+# The interpreter and src are found relative to the working directory: systemd resolves /opt/bf-webapp/current once,
+# at the start, so a release switch never mixes two releases in one process tree (release.sh restarts the units).
+[Unit]
+Description=BF-02 webapp: twin-api (uvicorn, 2 workers, 127.0.0.1:8100)
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+After=network-online.target bf-redis.service
+Wants=network-online.target bf-redis.service
+RequiresMountsFor=/var/lib/bf-webapp
+ConditionPathExists=/opt/bf-webapp/current/.venv/bin/python
+PartOf=bf-webapp.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+User=bfapp
+Group=bfapp
+EnvironmentFile=/etc/bf-webapp/env
+EnvironmentFile=-/etc/bf-webapp/uv.env
+WorkingDirectory=/opt/bf-webapp/current
+# Open event streams (/api/stream) end after 10 s at a stop, inside TimeoutStopSec
+ExecStart=/usr/bin/env ./.venv/bin/python -m uvicorn api.main:app --app-dir src --host 127.0.0.1 --port 8100 --workers 2 --timeout-graceful-shutdown 10
+Restart=always
+RestartSec=2s
+TimeoutStopSec=20s
+MemoryMax=3G
+LimitNOFILE=65536
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=bf-webapp.target

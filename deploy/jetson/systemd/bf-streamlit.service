@@ -1,0 +1,33 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): the Streamlit pages under /legacy on 127.0.0.1:8501 (Caddy's
+# /legacy upstream). run_streamlit.py runs src/app.py from the repository root (torch first only on Windows); no file
+# watcher in production.
+[Unit]
+Description=BF-02 webapp: Streamlit (/legacy, 127.0.0.1:8501)
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+After=network-online.target bf-redis.service bf-furnace-data.service
+Wants=network-online.target bf-redis.service bf-furnace-data.service
+RequiresMountsFor=/var/lib/bf-webapp
+ConditionPathExists=/opt/bf-webapp/current/.venv/bin/python
+PartOf=bf-webapp.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+User=bfapp
+Group=bfapp
+EnvironmentFile=/etc/bf-webapp/env
+EnvironmentFile=-/etc/bf-webapp/uv.env
+WorkingDirectory=/opt/bf-webapp/current
+ExecStart=/usr/bin/env ./.venv/bin/python run_streamlit.py --server.address 127.0.0.1 --server.port 8501 --server.baseUrlPath legacy --server.headless true --server.fileWatcherType none --browser.gatherUsageStats false
+Restart=always
+RestartSec=2s
+TimeoutStopSec=15s
+MemoryMax=6G
+LimitNOFILE=65536
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=bf-webapp.target

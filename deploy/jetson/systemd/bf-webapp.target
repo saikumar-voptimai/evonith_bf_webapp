@@ -1,0 +1,10 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): every service of the console. Installed and enabled by
+# deploy/jetson/provision.sh; each bf-* unit is WantedBy= this target and PartOf= it, so
+#   systemctl start|stop|restart bf-webapp.target
+# acts on all of them (release.sh, SV-6.4, restarts it after switching /opt/bf-webapp/current).
+[Unit]
+Description=BF-02 webapp: Caddy, twin-api, twin-worker, Streamlit, Redis, furnace-data-service, health check
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+
+[Install]
+WantedBy=multi-user.target

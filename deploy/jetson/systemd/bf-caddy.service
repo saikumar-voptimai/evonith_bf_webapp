@@ -1,0 +1,40 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): Caddy, the HTTPS origin on :443 (and the redirect on :80) for the
+# SPA, /api (twin-api, 127.0.0.1:8100) and /legacy (Streamlit, 127.0.0.1:8501). The Caddyfile of the current release;
+# its BF_* variables come from /etc/bf-webapp/env. Binary /usr/local/bin/caddy (provision.sh, SHA-checked release).
+# Started after its upstreams, so the first request after a boot is not answered with 502. Certificates and Caddy's
+# internal CA under /var/lib/bf-webapp/caddy/data/caddy (XDG_DATA_HOME).
+[Unit]
+Description=BF-02 webapp: Caddy (HTTPS :443, HTTP :80 redirect)
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+After=network.target bf-twin-api.service bf-streamlit.service
+Wants=bf-twin-api.service bf-streamlit.service
+RequiresMountsFor=/var/lib/bf-webapp
+ConditionPathExists=/opt/bf-webapp/current/deploy/jetson/Caddyfile
+PartOf=bf-webapp.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+User=bfapp
+Group=bfapp
+EnvironmentFile=/etc/bf-webapp/env
+Environment=XDG_DATA_HOME=/var/lib/bf-webapp/caddy/data XDG_CONFIG_HOME=/var/lib/bf-webapp/caddy/config
+StateDirectory=bf-webapp/caddy
+StateDirectoryMode=0750
+ExecStart=/usr/local/bin/caddy run --config /opt/bf-webapp/current/deploy/jetson/Caddyfile --adapter caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /opt/bf-webapp/current/deploy/jetson/Caddyfile --adapter caddyfile --force
+Restart=always
+RestartSec=2s
+TimeoutStopSec=10s
+MemoryMax=512M
+LimitNOFILE=65536
+# Ports 80 and 443 as bfapp
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=bf-webapp.target

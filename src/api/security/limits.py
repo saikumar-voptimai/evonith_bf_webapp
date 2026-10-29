@@ -1,9 +1,10 @@
 """Sign-in failure limit per client address and the revoked-session list.
 
-Both hold their state in the API process. One API process (the Jetson service unit) shares them across all requests.
-With ``BF_REDIS_URL`` the revoked-session list is also kept in Redis (``services.session_tokens.RedisRevocations``,
-SV-6.6 #320), where the Streamlit pages under ``/legacy`` and other processes see it; the failure limit stays per
-process.
+Both hold their state in the API process. With ``BF_REDIS_URL`` the revoked-session list is also kept in Redis
+(``services.session_tokens.RedisRevocations``, SV-6.6 #320), where the Streamlit pages under ``/legacy`` and the other
+API processes see it; the failure limit stays per process. The Jetson unit runs two uvicorn workers
+(``deploy/jetson/systemd/bf-twin-api.service``, SV-6.3 #317), so a client can fail up to twice ``max_failures`` sign-ins
+per window there.
 """
 
 from __future__ import annotations
