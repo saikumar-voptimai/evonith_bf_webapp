@@ -1048,11 +1048,13 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   when Redis answers). Lint the new Python with `uvx ruff@0.17.2` (paths in the Makefile). Lock changes with
   `uvx --from "uv==0.7.13" uv lock` (keeps `uv.lock` at revision 2 with pure additions; uv 0.11 rewrites it to
   revision 3 and later 0.7.x releases add marker churn), then `uv sync --frozen`.
-- CI (`.github/workflows/`, SV-0.11): `ci.yml` on pull requests and pushes to `main` / `feature/**` (`static`:
+- CI (`.github/workflows/`, SV-0.11): **manual runs only** (`workflow_dispatch`; user decision 29 Oct 2026, to save
+  GitHub Actions minutes: nothing runs on push, pull request, schedule or tag; run the checks locally and start a
+  workflow by hand when needed, `gh workflow run ci.yml --ref <branch>`). `ci.yml` (`static`:
   `make lint-py`, `make lock-check`; `python-tests`: pytest with PostgreSQL, Redis and Caddy,
   `BF_TEST_REQUIRE_SERVICES=1`, `BURDEN_ENGINE_FAST=1`; `frontend`: lint, check, Vitest, `schema.d.ts` against
-  `openapi.json`, build, UI audit), `nightly.yml` (full suite), `release.yml` (tag `v*`: `frontend-build.tar.gz`,
-  `uv.lock`, `pnpm-lock.yaml`, `SHA256SUMS`). Keep every CI step runnable as a Make target or pnpm script, and run
+  `openapi.json`, build, UI audit), `nightly.yml` (full suite), `release.yml` (dispatched on a tag `v*`:
+  `frontend-build.tar.gz`, `uv.lock`, `pnpm-lock.yaml`, `SHA256SUMS`). Keep every CI step runnable as a Make target or pnpm script, and run
   it through `bash scripts/ci/step.sh "<title>" <command>` (a failure's last 50 lines become an error annotation,
   readable through the Checks API: `gh api repos/:owner/:repo/check-runs/<id>/annotations`). Servers started by a
   check bind to `127.0.0.1`, not `localhost` (`::1` first on the runners).

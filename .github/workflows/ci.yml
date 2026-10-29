@@ -9,16 +9,15 @@
 #   frontend        Prettier and ESLint, svelte-check, Vitest, the TypeScript client against the committed OpenAPI
 #                   schema, the static build and the UI audit (axe-core, layout, keyboard; Playwright Chromium)
 #
-# Pull requests and pushes run the fast suite (BURDEN_ENGINE_FAST=1: the production cases of the burden engine,
-# 10-50 s each, are skipped). nightly.yml calls this workflow with full-suite: true; release.yml calls it before it
-# publishes the release artefacts. Action versions are pinned to commits (tag in the comment). The command steps run
-# through scripts/ci/step.sh, which repeats the end of a failing step's output as an error annotation.
+# Manual runs only (user decision 29 Oct 2026, to save GitHub Actions minutes): no run on pull requests or pushes.
+# Start it from the Actions tab or `gh workflow run ci.yml --ref <branch> -f full-suite=false`. The fast suite sets
+# BURDEN_ENGINE_FAST=1 (the production cases of the burden engine, 10-50 s each, are skipped). nightly.yml calls this
+# workflow with full-suite: true; release.yml calls it before it publishes the release artefacts. Action versions are
+# pinned to commits (tag in the comment). The command steps run through scripts/ci/step.sh, which repeats the end of a
+# failing step's output as an error annotation.
 name: CI
 
 on:
-  pull_request:
-  push:
-    branches: [main, "feature/**"]
   workflow_dispatch:
     inputs:
       full-suite:
