@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping, MutableMapping
 
 import pandas as pd
 import streamlit as st
@@ -54,6 +54,11 @@ log = logging.getLogger(__name__)
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 MODE_KEY = f"{LIVE_PREFIX}{UI_SUFFIX}sandbox"
+#: Query parameters of a link from the SPA to a section of this page (``open_linked_section``).
+SECTION_PARAM = "section"
+SNAPSHOT_PARAM = "snapshot"
+#: Anchor of the run form's heading: the Intensive Optimizer (DE search) section the SPA links to.
+DE_SEARCH_ANCHOR = "de-search"
 SB_UI = f"{SANDBOX_PREFIX}{UI_SUFFIX}"
 LOADED_KEY = f"{SB_UI}loaded"
 LOAD_ERROR_KEY = f"{SB_UI}load_error"
@@ -148,16 +153,17 @@ def _clear_sandbox(state: Any) -> None:
             del state[key]
 
 
-def apply_to_sandbox(snapshot: Mapping[str, Any]) -> None:
+def apply_to_sandbox(snapshot: Mapping[str, Any], state: Any = None) -> None:
     """Replace the sandbox state with this snapshot: inputs, results, frozen plant data.
 
     Safe to call from a widget callback (no rerun inside). With a frozen context
     the sandbox also re-applies the session values the run read at its start
     until the first run there - so running LP/DE right after loading reproduces
     the saved numbers, not ones influenced by what the page displayed since.
+    ``state`` defaults to the session state.
     """
 
-    state = st.session_state
+    state = st.session_state if state is None else state
     _clear_sandbox(state)
 
     inputs = restorable_state(snapshot, prefix=SANDBOX_PREFIX)
@@ -264,12 +270,35 @@ def _preserve(state: Any, prefix: str) -> None:
             pass
 
 
+def open_linked_section(
+    state: Any, params: MutableMapping[str, Any], loader: Callable[[str], Any] = load
+) -> str | None:
+    """Open the section a link from the SPA names (``config.page_registry`` sections of this page, SV-3.6), once:
+    ``?section=sandbox`` switches to Sandbox, ``?section=replay&snapshot=<id>`` loads that snapshot into it. The
+    parameters are removed, so the switch works as usual afterwards. Returns the section opened, else None. The
+    third section, ``#de-search``, is the anchor of the run form's heading (Streamlit scrolls to it)."""
+
+    section = params.get(SECTION_PARAM)
+    snapshot_id = params.get(SNAPSHOT_PARAM)
+    for key in (SECTION_PARAM, SNAPSHOT_PARAM):
+        if key in params:
+            del params[key]
+    if section == "sandbox":
+        state[MODE_KEY] = True
+        return section
+    if section == "replay" and snapshot_id:
+        open_in_sandbox(state, str(snapshot_id), loader)
+        return section
+    return None
+
+
 def render_mode_gate(prefix: str = "bmo_") -> None:
     """Top of the optimiser page: Live / Sandbox switch; in Sandbox, run the replay and stop."""
 
     if prefix != LIVE_PREFIX:
         return  # this is the sandbox copy of the page running
     state = st.session_state
+    open_linked_section(state, st.query_params)
     sandbox = st.toggle(
         "🧪 Sandbox",
         key=MODE_KEY,
@@ -403,13 +432,18 @@ def _render_loader(state: Any) -> None:
 # --- the snapshot panel -------------------------------------------------------------------
 
 
-def _open_in_sandbox_cb(snapshot_id: str) -> None:
+def open_in_sandbox(state: Any, snapshot_id: str, loader: Callable[[str], Any] = load) -> None:
+    """Switch to Sandbox with this snapshot loaded (a load error is shown by the loader)."""
+    state[MODE_KEY] = True
     try:
-        apply_to_sandbox(load(snapshot_id))
-        st.session_state[MODE_KEY] = True
-        st.session_state[f"{SB_UI}saved_choice"] = snapshot_id
+        apply_to_sandbox(loader(snapshot_id), state)
+        state[f"{SB_UI}saved_choice"] = snapshot_id
     except Exception as exc:  # noqa: BLE001
-        st.session_state[LOAD_ERROR_KEY] = f"Could not load {snapshot_id}: {exc}"
+        state[LOAD_ERROR_KEY] = f"Could not load {snapshot_id}: {exc}"
+
+
+def _open_in_sandbox_cb(snapshot_id: str) -> None:
+    open_in_sandbox(st.session_state, snapshot_id)
 
 
 def render_snapshot_panel(

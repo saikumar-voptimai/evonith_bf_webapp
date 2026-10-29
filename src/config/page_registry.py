@@ -3,6 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+
+@dataclass(frozen=True)
+class PageSection:
+    """A section of a Streamlit page that the SPA links to (``legacyHref(page, section)`` in ``#lib/legacy.ts``).
+
+    ``via="query"``: the page opens the section from ``?section=<key>`` plus ``params`` (and removes them);
+    ``via="anchor"``: a heading of the page carries ``anchor=<key>`` and Streamlit scrolls to ``#<key>``.
+    """
+
+    key: str
+    title: str
+    via: Literal["query", "anchor"] = "query"
+    params: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -13,6 +28,7 @@ class AppPageDescriptor:
     title: str
     icon: str
     include_in_feedback: bool = True
+    sections: tuple[PageSection, ...] = ()
 
 
 PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
@@ -47,6 +63,12 @@ PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
         "custom_pages/9_Blend_Optimizer.py",
         title="Blend Mix Optimiser",
         icon=":material/science:",
+        # Linked from /bmo (SV-3.6); opened by ui.bmo.snapshot_panel.open_linked_section and the run form's heading.
+        sections=(
+            PageSection("de-search", "Intensive Optimizer (DE search)", via="anchor"),
+            PageSection("replay", "Snapshot replay", params=("snapshot",)),
+            PageSection("sandbox", "Sandbox"),
+        ),
     ),
     AppPageDescriptor(
         "custom_pages/10_Coke_Energy.py",
@@ -60,7 +82,6 @@ PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
     ),
     AppPageDescriptor("custom_pages/8_Feedback.py", title="Feedback", icon="📮"),
 )
-
 
 
 def get_navigation_pages() -> tuple[AppPageDescriptor, ...]:

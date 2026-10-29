@@ -249,7 +249,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Recent Blend Mix Optimiser runs
+         * @description The latest ``bmo.run`` jobs of the last 7 days (any user), newest first, each with its plan once done.
+         */
+        get: operations["bmo_list_runs"];
         put?: never;
         /**
          * Start a Blend Mix Optimiser run
@@ -1819,6 +1823,48 @@ export interface components {
             worker_active: boolean;
         };
         /**
+         * BmoCharging
+         * @description What the plan charges per day and how often (page 9's Charging card and rows,
+         *     ``utils.bmo.calculations.compute_charging_requirements``).
+         */
+        BmoCharging: {
+            /**
+             * Chemical Hm Per Charge T
+             * @description Hot metal of the full material balance per charge, t
+             */
+            chemical_hm_per_charge_t?: number | null;
+            /**
+             * Coke T D
+             * @description Wet coke in the charges, t/day
+             */
+            coke_t_d?: number | null;
+            /**
+             * Flux Rate Kg Thm
+             * @description Wet flux charged, kg/tHM
+             */
+            flux_rate_kg_thm?: number | null;
+            /**
+             * Nut Coke T D
+             * @description Wet nut coke in the charges, t/day
+             */
+            nut_coke_t_d?: number | null;
+            /**
+             * Pci T D
+             * @description PCI injected, t/day
+             */
+            pci_t_d?: number | null;
+            /**
+             * Production T D
+             * @description Hot-metal target of the plan, t/day
+             */
+            production_t_d?: number | null;
+            /**
+             * Required Charges Per Hour
+             * @description Charges needed, charges/h
+             */
+            required_charges_per_hour?: number | null;
+        };
+        /**
          * BmoFuelPrices
          * @description Fuel prices of the run (None keeps page 9's price).
          */
@@ -1974,9 +2020,12 @@ export interface components {
         };
         /**
          * BmoPlanView
-         * @description A blend as page 9's result cards show it.
+         * @description A blend as page 9's result cards show it. Slag, fuel and charging figures are page 9's outcome rows
+         *     (``services.bmo.comparison_view``): a ratio whose denominator is zero is null, where page 9 shows n/a.
          */
         BmoPlanView: {
+            /** @description Charging of the plan */
+            charging?: components["schemas"]["BmoCharging"] | null;
             /**
              * Coke Correction Kg Thm
              * @description Blend correction of the coke rate against the reference burden, kg/tHM
@@ -1987,6 +2036,11 @@ export interface components {
              * @description Coke rate of the blend, kg/tHM
              */
             coke_rate_kg_thm?: number | null;
+            /**
+             * Coke Rate Uncorrected Kg Thm
+             * @description Coke rate before the blend correction (the anchor's), kg/tHM
+             */
+            coke_rate_uncorrected_kg_thm?: number | null;
             /**
              * Fe Production T D
              * @description Fe from the dry burden, t/day
@@ -2052,6 +2106,11 @@ export interface components {
              */
             slag_basicity?: number | null;
             /**
+             * Slag Ib4
+             * @description (CaO+MgO)/(SiO₂+Al₂O₃) of the slag (display only), ratio
+             */
+            slag_ib4?: number | null;
+            /**
              * Slag Mgo Al2O3 Ratio
              * @description MgO/Al₂O₃ of the slag, ratio
              */
@@ -2088,6 +2147,14 @@ export interface components {
             total_qty_t_d?: number | null;
             /** Violations */
             violations?: string[];
+        };
+        /** BmoRunList */
+        BmoRunList: {
+            /**
+             * Runs
+             * @description Newest first
+             */
+            runs?: components["schemas"]["BmoRunLookup"][];
         };
         /** BmoRunLookup */
         BmoRunLookup: {
@@ -2274,6 +2341,11 @@ export interface components {
              */
             seconds: number;
             /**
+             * Slag Bands
+             * @description Plant p5–p95 bands of B2, T-basicity and IB4
+             */
+            slag_bands?: components["schemas"]["BmoSlagBand"][];
+            /**
              * Status
              * @description ok: a feasible plan; infeasible: the LP found none or broke a limit; refused: see refusal
              * @enum {string}
@@ -2417,6 +2489,28 @@ export interface components {
              */
             worker_active: boolean;
         };
+        /**
+         * BmoSlagBand
+         * @description The plant's own p5–p95 band of a slag ratio (``utils.slag_bands``), shown beside page 9's slag ratios.
+         */
+        BmoSlagBand: {
+            /**
+             * High
+             * @description p95 of the plant's HM/slag analyses, ratio
+             */
+            high: number;
+            /**
+             * Low
+             * @description p5 of the plant's HM/slag analyses, ratio
+             */
+            low: number;
+            /**
+             * Quantity
+             * @description b2 = CaO/SiO₂, t_basicity, ib4
+             * @enum {string}
+             */
+            quantity: "b2" | "t_basicity" | "ib4";
+        };
         /** BmoSnapshotDetail */
         BmoSnapshotDetail: {
             /**
@@ -2464,6 +2558,11 @@ export interface components {
              * @default
              */
             schema_version: string;
+            /**
+             * Slag Bands
+             * @description Plant p5–p95 bands of B2, T-basicity and IB4
+             */
+            slag_bands?: components["schemas"]["BmoSlagBand"][];
             /**
              * Source
              * @description Blend Mix Optimiser or Sandbox
@@ -11031,6 +11130,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BmoSiForecastView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_list_runs: {
+        parameters: {
+            query?: {
+                /** @description Runs, count */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoRunList"];
                 };
             };
             /** @description Client error (problem+json) */
