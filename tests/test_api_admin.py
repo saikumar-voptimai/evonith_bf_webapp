@@ -71,7 +71,7 @@ def test_every_admin_route_requires_the_admin_role() -> None:
     from tests.test_api_auth import _declared_roles
 
     routes = [r for r in build().routes if isinstance(r, APIRoute) and r.path.startswith("/api/admin/")]
-    assert [r.path for r in routes] == [URL]
+    assert URL in [r.path for r in routes]  # the admin views (#305-#311) add theirs
     assert all(set(_declared_roles(r.dependant)) == {"admin"} for r in routes)
 
 

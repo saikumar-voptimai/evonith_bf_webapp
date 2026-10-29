@@ -720,10 +720,13 @@ class FactsVersionRepository(_Repository):
             )
             return row
 
-    def latest_approved(self) -> FactsVersion | None:
+    def latest_approved(self, base_version: str | None = None) -> FactsVersion | None:
+        """The approved version with the highest number; with ``base_version`` only among those made against it."""
         query = (
             select(FactsVersion).where(FactsVersion.status == "approved").order_by(FactsVersion.version.desc()).limit(1)
         )
+        if base_version is not None:
+            query = query.where(FactsVersion.base_version == base_version)
         with self._sessions() as session:
             return session.scalars(query).one_or_none()
 
