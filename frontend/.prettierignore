@@ -11,6 +11,7 @@ src/lib/charts/fixtures/
 src/lib/furnace/fixtures/
 src/lib/status/fixtures/
 src/lib/reports/fixtures/
+src/lib/optimiser/fixtures/
 
 # Miscellaneous
 /static/
