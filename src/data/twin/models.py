@@ -6,6 +6,7 @@
 | ``snapshot`` | Hourly twin evaluation of the window [t − 8 h, t) | ``twin.evaluate`` (SV-1.1) |
 | ``optimiser_run`` | Optimiser runs (Step 1, Step 2, maximum production), inputs and result | optimiser jobs (SV-1.7) |
 | ``plan_decision`` | Accept / reject of a run by a supervisor, append-only | API (SV-1.6) |
+| ``optimiser_commentary`` | LLM furnace commentary on a run, with the context it was given | ``optimiser.commentary`` |
 | ``shift_record`` | Shift handover record frozen at 06:10, 14:10, 22:10, immutable | ``shift.close`` (SV-2.5) |
 | ``shift_report`` | Shift report (data, tables, LLM narrative) of a closed or the running shift | ``report.*`` |
 | ``alarm_event`` | Alarms raised and cleared (ω drift, model gap, stale source, job failure, lag) | twin and worker |
@@ -81,6 +82,7 @@ FACTS_STATES = ("pending", "approved", "rejected")
 SHIFT_LETTERS = ("A", "B", "C")
 REPORT_KINDS = ("closed", "live")
 NARRATIVE_STATES = ("ok", "failed", "skipped")
+COMMENTARY_STATES = ("ok", "failed")
 #: Where a version of the operator inputs was written: the YAML recorded as version 1, page 9, the API.
 OPERATOR_INPUT_ORIGINS = ("seed", "streamlit", "api")
 FM_ROLES = ("user", "assistant")
@@ -226,6 +228,40 @@ class PlanDecision(TwinBase):
         CheckConstraint(_in("decision", DECISIONS), name="decision"),
         Index("ix_plan_decision_decided_at", "decided_at"),
         Index("ix_plan_decision_run_id_decided_at", "run_id", "decided_at"),
+    )
+
+
+class OptimiserCommentary(TwinBase):
+    """Page 11's furnace commentary on an optimiser run (``optimiser.commentary``): the LLM's text, or why there is
+    none (``failed`` after its retry, with the error of each try), and the full context it was given."""
+
+    __tablename__ = "optimiser_commentary"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(f"{SCHEMA}.optimiser_run.id", ondelete="CASCADE"))
+    job_id: Mapped[str | None] = mapped_column(ForeignKey(f"{SCHEMA}.jobs.id", ondelete="SET NULL"))
+    requested_by: Mapped[str] = mapped_column(String(128))
+    generated_at: Mapped[datetime]
+    #: ``ok`` or ``failed`` (no text after the retry).
+    status: Mapped[str] = mapped_column(String(16))
+    #: The commentary (Markdown).
+    body: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    tries: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    model: Mapped[str | None] = mapped_column(String(128))
+    #: The context as sent (optimiser notes, fact register, the run) and its SHA-1.
+    context: Mapped[str] = mapped_column(Text, default="", server_default="")
+    context_sha1: Mapped[str] = mapped_column(String(40))
+    #: SHA-1 of ``assets/burden_engine/optimiser_notes.md`` as sent, and the fact register version.
+    notes_sha1: Mapped[str | None] = mapped_column(String(40))
+    facts_version: Mapped[str | None] = mapped_column(String(16))
+    #: What the context lacked (the model check, today's charged blend, the live yard, ...).
+    missing: Mapped[list[str]] = mapped_column(JSON_DOC, default=list, server_default=EMPTY_JSON_LIST)
+
+    __table_args__ = (
+        CheckConstraint(_in("status", COMMENTARY_STATES), name="status"),
+        Index("ix_optimiser_commentary_generated_at", "generated_at"),
+        Index("ix_optimiser_commentary_run_id_generated_at", "run_id", "generated_at"),
     )
 
 
@@ -520,6 +556,7 @@ TIME_INDEXED = {
     "jobs": ("submitted_at", "finished_at", "scheduled_for"),
     "snapshot": ("window_end", "evaluated_at"),
     "optimiser_run": ("started_at",),
+    "optimiser_commentary": ("generated_at",),
     "plan_decision": ("decided_at",),
     "shift_record": ("shift_start",),
     "shift_report": ("shift_start", "generated_at"),

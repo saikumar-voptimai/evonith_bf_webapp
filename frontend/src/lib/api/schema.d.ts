@@ -554,6 +554,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/optimiser/runs/{run_id}/commentary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The latest commentary on a run */
+        get: operations["optimiser_get_commentary"];
+        put?: never;
+        /**
+         * Write the furnace commentary on a run
+         * @description Queue ``optimiser.commentary`` (page 11's commentary: optimiser notes, fact register and the run as context,
+         *     one LLM retry); read it with GET /api/optimiser/runs/{run_id}/commentary once the job is done.
+         */
+        post: operations["optimiser_start_commentary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/optimiser/runs/{run_id}/decision": {
         parameters: {
             query?: never;
@@ -568,6 +590,28 @@ export interface paths {
          * @description Append the decision, with its audit row (``plan.decide``), in the current shift. A later decision supersedes.
          */
         post: operations["optimiser_decide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/optimiser/runs/{run_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The typed result of a run
+         * @description Plan (blend, flux, cost split, coke ± σ, fuel, slag, charging, process, shaft efficiency and certainty, binding
+         *     limits), Step 2's ore + flux-only plan and today's charged blend, Step 1's highest output and frontier, the value
+         *     of limits, the critical assumptions and the network solves (``services.optimiser_results``).
+         */
+        get: operations["optimiser_run_result"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1382,6 +1426,29 @@ export interface components {
              */
             total: number;
         };
+        /** BindingLimit */
+        BindingLimit: {
+            /**
+             * Label
+             * @description Operator name of the limit
+             */
+            label: string;
+            /**
+             * Limit
+             * @description Engine name of the limit
+             */
+            limit: string;
+            /**
+             * Rs Thm Per Unit
+             * @description Shadow price: saving from relaxing one unit, Rs/tHM
+             */
+            rs_thm_per_unit: number;
+            /**
+             * Unit
+             * @description Unit the shadow price is per
+             */
+            unit: string;
+        };
         /** BlendChangeView */
         BlendChangeView: {
             /**
@@ -1432,6 +1499,38 @@ export interface components {
              * @enum {string}
              */
             zone: "above_cz" | "in_cz" | "below_cz" | "burnt";
+        };
+        /** BlendRow */
+        BlendRow: {
+            /**
+             * Dry Kg Thm
+             * @description Charged dry, kg/tHM
+             */
+            dry_kg_thm?: number | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @description sinter, ore or pellet (from the yard of the case)
+             */
+            kind?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Share Wet Pct
+             * @description Share of the ferrous burden, wet, %
+             */
+            share_wet_pct: number;
+            /**
+             * T D
+             * @description Charged wet per day, t/d
+             */
+            t_d?: number | null;
+            /**
+             * Wet Kg Thm
+             * @description Charged wet, kg/tHM
+             */
+            wet_kg_thm: number;
         };
         /** BmoAnchor */
         BmoAnchor: {
@@ -2401,6 +2500,132 @@ export interface components {
              */
             upper_kg_thm?: number | null;
         };
+        /** ChargingView */
+        ChargingView: {
+            /**
+             * Charges Per H
+             * @description Charges needed, charges/h
+             */
+            charges_per_h?: number | null;
+            /**
+             * Charging Cap T H
+             * @description Charging limit (charges/h × t per charge), t/h
+             */
+            charging_cap_t_h?: number | null;
+            /**
+             * Charging T H
+             * @description Non-coke burden charged, t/h
+             */
+            charging_t_h?: number | null;
+            /**
+             * Coke T D
+             * @description Coke as charged, t/d
+             */
+            coke_t_d: number;
+            /**
+             * Ferrous T D
+             * @description Ferrous burden wet, t/d
+             */
+            ferrous_t_d: number;
+            /**
+             * Flux Kg Thm
+             * @description Flux wet, kg/tHM
+             */
+            flux_kg_thm: number;
+            /**
+             * Hm Per Charge T
+             * @description Hot metal per charge, t
+             */
+            hm_per_charge_t?: number | null;
+            /**
+             * Nut Coke T D
+             * @description Nut coke, t/d
+             */
+            nut_coke_t_d: number;
+            /**
+             * Pci T D
+             * @description PCI, t/d
+             */
+            pci_t_d: number;
+        };
+        /** CommentaryView */
+        CommentaryView: {
+            /**
+             * Context
+             * @description The full context the model was given (with context=true)
+             */
+            context?: string | null;
+            /**
+             * Context Sha1
+             * @description SHA-1 of the context
+             */
+            context_sha1: string;
+            /**
+             * Error
+             * @description Error of each try (failed)
+             */
+            error?: string | null;
+            /**
+             * Facts Version
+             * @description Fact register version in the context
+             */
+            facts_version?: string | null;
+            /**
+             * Generated At
+             * Format: date-time
+             * @description UTC
+             */
+            generated_at: string;
+            /**
+             * Id
+             * @description Commentary id (UUID)
+             */
+            id: string;
+            /**
+             * Job Id
+             * @description Job that wrote it
+             */
+            job_id?: string | null;
+            /**
+             * Missing
+             * @description What the context lacked
+             */
+            missing?: string[];
+            /**
+             * Model
+             * @description Model that wrote it
+             */
+            model?: string | null;
+            /**
+             * Notes Sha1
+             * @description SHA-1 of the optimiser notes in the context
+             */
+            notes_sha1?: string | null;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * Run Id
+             * @description Run id (UUID)
+             */
+            run_id: string;
+            /**
+             * Status
+             * @description failed: no text after the LLM's retry
+             * @enum {string}
+             */
+            status: "ok" | "failed";
+            /**
+             * Text
+             * @description The commentary (Markdown), generated text
+             */
+            text?: string | null;
+            /**
+             * Tries
+             * @description LLM calls made, count
+             * @default 0
+             */
+            tries: number;
+        };
         /** ConversationCreate */
         ConversationCreate: {
             /**
@@ -2414,6 +2639,105 @@ export interface components {
              * @default
              */
             title: string;
+        };
+        /** CostSplit */
+        CostSplit: {
+            /**
+             * Coke Rs Thm
+             * @description Coke, Rs/tHM
+             */
+            coke_rs_thm: number;
+            /**
+             * Flux Rs Thm
+             * @description Flux, Rs/tHM
+             */
+            flux_rs_thm: number;
+            /**
+             * Fuel Rs Thm
+             * @description Coke + nut coke + PCI, Rs/tHM
+             */
+            fuel_rs_thm: number;
+            /**
+             * Gross Rs Thm
+             * @description Ore + flux + fuel before the slag credit, Rs/tHM
+             */
+            gross_rs_thm: number;
+            /**
+             * Nut Coke Rs Thm
+             * @description Nut coke, Rs/tHM
+             */
+            nut_coke_rs_thm: number;
+            /**
+             * Ore Rs Thm
+             * @description Ferrous materials, Rs/tHM
+             */
+            ore_rs_thm: number;
+            /**
+             * Pci Rs Thm
+             * @description PCI, Rs/tHM
+             */
+            pci_rs_thm: number;
+            /**
+             * Slag Credit Rs Thm
+             * @description Granulated slag sold (ASM-20), Rs/tHM
+             */
+            slag_credit_rs_thm: number;
+            /**
+             * Total Lakh Rs D
+             * @description Total at the plan's production, lakh Rs/d
+             */
+            total_lakh_rs_d: number;
+            /**
+             * Total Rs Thm
+             * @description Ore + flux + fuel − slag credit, Rs/tHM
+             */
+            total_rs_thm: number;
+            /**
+             * Total Sigma Rs Thm
+             * @description 1 sigma of the total (STRATA-ω coke), Rs/tHM
+             */
+            total_sigma_rs_thm?: number | null;
+        };
+        /** CriticalAssumption */
+        CriticalAssumption: {
+            /**
+             * Alternative
+             * @description Another credible value
+             */
+            alternative: string;
+            /** Assumption */
+            assumption: string;
+            /**
+             * Basis
+             * @default
+             */
+            basis: string;
+            /**
+             * Coke Effect Hi Kg Thm
+             * @description Coke effect, upper alternative, wet, kg/tHM
+             */
+            coke_effect_hi_kg_thm?: number | null;
+            /**
+             * Coke Effect Kg Thm
+             * @description Coke effect of the alternative, wet, kg/tHM
+             */
+            coke_effect_kg_thm?: number | null;
+            /**
+             * Coke Effect Lo Kg Thm
+             * @description Coke effect, lower alternative, wet, kg/tHM
+             */
+            coke_effect_lo_kg_thm?: number | null;
+            /**
+             * Symmetric
+             * @description The effect is ± coke_effect_kg_thm
+             * @default false
+             */
+            symmetric: boolean;
+            /**
+             * Value
+             * @description Value the model uses
+             */
+            value: string;
         };
         /** CurrentBlend */
         CurrentBlend: {
@@ -2936,6 +3260,23 @@ export interface components {
              * @description Stock in the yard, t
              */
             stock_mt?: number | null;
+        };
+        /** FluxRow */
+        FluxRow: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * T D
+             * @description Charged wet per day, t/d
+             */
+            t_d?: number | null;
+            /**
+             * Wet Kg Thm
+             * @description Charged wet, kg/tHM
+             */
+            wet_kg_thm: number;
         };
         /** FmArtifactEvent */
         FmArtifactEvent: {
@@ -3639,6 +3980,85 @@ export interface components {
              */
             window_days: number;
         };
+        /** FrontierPoint */
+        FrontierPoint: {
+            /**
+             * Binding
+             * @description Binding limits (share bounds left out)
+             * @default
+             */
+            binding: string;
+            /**
+             * Blast Nm3H
+             * @description Hot blast, Nm³/h
+             */
+            blast_nm3h?: number | null;
+            /**
+             * Charges Per H
+             * @description Charges needed, charges/h
+             */
+            charges_per_h?: number | null;
+            /**
+             * Coke Dry Kg Thm
+             * @description Coke rate, dry, kg/tHM
+             */
+            coke_dry_kg_thm?: number | null;
+            /**
+             * Cost Rs Thm
+             * @description Ore + flux + fuel − slag credit, Rs/tHM
+             */
+            cost_rs_thm: number;
+            /**
+             * Enrichment Tag Pct
+             * @description Plant enrichment tag, %
+             */
+            enrichment_tag_pct?: number | null;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Fuel rate, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Fuel Rs Thm
+             * @description Fuel, Rs/tHM
+             */
+            fuel_rs_thm?: number | null;
+            /**
+             * Hbt C
+             * @description Hot-blast temperature, °C
+             */
+            hbt_c?: number | null;
+            /**
+             * Hot Blast Pressure Needed Bar G
+             * @description Hot-blast pressure needed, bar g
+             */
+            hot_blast_pressure_needed_bar_g?: number | null;
+            /**
+             * Marginal Rs Per T
+             * @description Cost of each extra tonne of hot metal, Rs/t
+             */
+            marginal_rs_per_t?: number | null;
+            /**
+             * O2 Nm3H
+             * @description Oxygen, Nm³/h
+             */
+            o2_nm3h?: number | null;
+            /**
+             * Ore Flux Rs Thm
+             * @description Ore + flux, Rs/tHM
+             */
+            ore_flux_rs_thm?: number | null;
+            /**
+             * Production T D
+             * @description Hot metal, t/d
+             */
+            production_t_d: number;
+            /**
+             * Slag Kg Thm
+             * @description Slag rate, kg/tHM
+             */
+            slag_kg_thm?: number | null;
+        };
         /** FuelEditorInputs */
         FuelEditorInputs: {
             /**
@@ -3761,6 +4181,39 @@ export interface components {
              * @description Volatile matter of the ash analysis, %
              */
             vm_pct?: number | null;
+        };
+        /** FuelSplit */
+        FuelSplit: {
+            /**
+             * Coke Dry Kg Thm
+             * @description Coke rate, dry, kg/tHM
+             */
+            coke_dry_kg_thm: number;
+            /**
+             * Coke Sigma Kg Thm
+             * @description 1 sigma of the dry coke rate (STRATA-ω), kg/tHM
+             */
+            coke_sigma_kg_thm?: number | null;
+            /**
+             * Coke Wet Kg Thm
+             * @description Coke rate as charged, kg/tHM
+             */
+            coke_wet_kg_thm: number;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke wet + nut coke + PCI (BAND-01 520-600), kg/tHM
+             */
+            fuel_rate_kg_thm: number;
+            /**
+             * Nut Coke Kg Thm
+             * @description Nut coke as charged (fixed input), kg/tHM
+             */
+            nut_coke_kg_thm: number;
+            /**
+             * Pci Kg Thm
+             * @description PCI as injected (fixed input), kg/tHM
+             */
+            pci_kg_thm: number;
         };
         /** Health */
         Health: {
@@ -4499,6 +4952,42 @@ export interface components {
              */
             strata_trace_rmse_kg_thm?: number | null;
         };
+        /**
+         * NetworkSolves
+         * @description STRATA-Flow network solves behind a STRATA-ω plan.
+         */
+        NetworkSolves: {
+            /**
+             * Anchors
+             * @description Network states solved exactly (anchors), count
+             */
+            anchors?: number | null;
+            /**
+             * Exact
+             * @description Every state of the plan is a network solve
+             */
+            exact?: boolean | null;
+            /**
+             * Jacobian
+             * @description Where the network Jacobian came from (disk cache or solved)
+             */
+            jacobian?: string | null;
+            /**
+             * Max Distance
+             * @description Largest distance of the plan's states from a solve, scaled units, dimensionless
+             */
+            max_distance?: number | null;
+            /**
+             * Seconds
+             * @description Time of those solves, s
+             */
+            seconds?: number | null;
+            /**
+             * Solves
+             * @description Network solves of this calibration in the run's process, count
+             */
+            solves?: number | null;
+        };
         /** OmegaRow */
         OmegaRow: {
             /**
@@ -4708,6 +5197,212 @@ export interface components {
              */
             version?: number | null;
         };
+        /**
+         * OptimiserLimits
+         * @description Limits of a run that replace the fact register's defaults (ASM-11/12/13, FLOW-12) and the operator's saved slag
+         *     limits and charging. The fuel-rate band (BAND-01) is the register's and cannot be changed here. Unset fields keep
+         *     the default; the process rows apply to Step 1 and maximum production.
+         */
+        OptimiserLimits: {
+            /**
+             * Al2O3 Max Pct
+             * @description Al₂O₃ of the slag, upper limit, %
+             */
+            al2o3_max_pct?: number | null;
+            /**
+             * Blast Max Nm3H
+             * @description Hot-blast volume limit, Nm³/h
+             */
+            blast_max_nm3h?: number | null;
+            /**
+             * Cao Sio2 Max
+             * @description CaO/SiO₂ of the slag, upper limit, dimensionless
+             */
+            cao_sio2_max?: number | null;
+            /**
+             * Cao Sio2 Min
+             * @description CaO/SiO₂ of the slag, lower limit, dimensionless
+             */
+            cao_sio2_min?: number | null;
+            /**
+             * Charge T
+             * @description Non-coke burden per charge (ferrous + flux + nut coke), t
+             */
+            charge_t?: number | null;
+            /**
+             * Charges Per H
+             * @description Charging rate limit, charges/h
+             */
+            charges_per_h?: number | null;
+            /**
+             * Dp Max Bar
+             * @description Pressure drop limit, bar
+             */
+            dp_max_bar?: number | null;
+            /**
+             * Enrichment Max Pct
+             * @description Plant enrichment tag limit, %
+             */
+            enrichment_max_pct?: number | null;
+            /**
+             * Hbt Max C
+             * @description Hot-blast temperature limit, °C
+             */
+            hbt_max_c?: number | null;
+            /**
+             * Hot Blast Pressure Max Bar G
+             * @description Hot-blast pressure limit, bar g
+             */
+            hot_blast_pressure_max_bar_g?: number | null;
+            /**
+             * Mgo Al2O3 Min
+             * @description MgO/Al₂O₃ of the slag, lower limit, dimensionless
+             */
+            mgo_al2o3_min?: number | null;
+            /**
+             * Mgo Min Pct
+             * @description MgO of the slag, lower limit, %
+             */
+            mgo_min_pct?: number | null;
+            /**
+             * O2 Flow Max Nm3H
+             * @description Oxygen flow limit, Nm³/h
+             */
+            o2_flow_max_nm3h?: number | null;
+            /**
+             * Raft Max C
+             * @description RAFT, upper limit, °C
+             */
+            raft_max_c?: number | null;
+            /**
+             * Raft Min C
+             * @description RAFT, lower limit, °C
+             */
+            raft_min_c?: number | null;
+            /**
+             * Slag Max Kg Thm
+             * @description Slag rate cap, kg/tHM
+             */
+            slag_max_kg_thm?: number | null;
+            /**
+             * Top Gas Min C
+             * @description Top-gas temperature, lower limit, °C
+             */
+            top_gas_min_c?: number | null;
+            /**
+             * Top Pressure Max Bar G
+             * @description Top pressure, upper limit, bar g
+             */
+            top_pressure_max_bar_g?: number | null;
+            /**
+             * Top Pressure Min Bar G
+             * @description Top pressure, lower limit, bar g
+             */
+            top_pressure_min_bar_g?: number | null;
+        };
+        /** OptimiserResult */
+        OptimiserResult: {
+            /**
+             * Calibration
+             * @description Calibration source, window, ω and basis
+             */
+            calibration?: Record<string, unknown>;
+            /**
+             * Certainty
+             * @description Certainty tier of the plan: High, Medium, Low, Investigate
+             */
+            certainty?: string | null;
+            /**
+             * Critical Assumptions
+             * @description Coke effect of each critical assumption of a STRATA-ω plan, largest first
+             */
+            critical_assumptions?: components["schemas"]["CriticalAssumption"][];
+            /**
+             * Critical Assumptions Error
+             * @description Why the sensitivity is missing
+             */
+            critical_assumptions_error?: string | null;
+            /**
+             * Error
+             * @description Why there is no plan (infeasible or failed)
+             */
+            error?: string | null;
+            /**
+             * Finished At
+             * @description UTC
+             */
+            finished_at?: string | null;
+            /**
+             * Frontier
+             * @description Step 1: cheapest plan per level
+             */
+            frontier?: components["schemas"]["FrontierPoint"][];
+            /** @description Step 1: the highest production that is feasible */
+            highest_output_plan?: components["schemas"]["PlanView"] | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "step1" | "step2" | "max_production";
+            /**
+             * Omega Mode
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /** @description Step 2: ore + flux objective (page 9), same limits */
+            ore_flux_plan?: components["schemas"]["PlanView"] | null;
+            /** @description The plan the run reports */
+            plan?: components["schemas"]["PlanView"] | null;
+            /**
+             * Production Target T D
+             * @description Step 2 target, t/d
+             */
+            production_target_t_d?: number | null;
+            /**
+             * Run Id
+             * @description Run id (UUID)
+             */
+            run_id: string;
+            /**
+             * Run S
+             * @description Duration of the run, s
+             */
+            run_s?: number | null;
+            /**
+             * Saving Lakh Rs D
+             * @description The saving at the plan's production, lakh Rs/d
+             */
+            saving_lakh_rs_d?: number | null;
+            /**
+             * Saving Rs Thm
+             * @description Today's charged blend minus the plan, Rs/tHM
+             */
+            saving_rs_thm?: number | null;
+            /** @description STRATA-Flow network solves behind the plan */
+            solves?: components["schemas"]["NetworkSolves"] | null;
+            /**
+             * Started At
+             * @description UTC
+             */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "infeasible" | "failed";
+            /** @description Step 2: today's charged blend at the plan's production */
+            today_plan?: components["schemas"]["PlanView"] | null;
+            /**
+             * Value Of Limits
+             * @description Step 2: each limit one step
+             */
+            value_of_limits?: components["schemas"]["ValueOfLimit"][];
+            /**
+             * Yard Source
+             * @description live or reference
+             */
+            yard_source?: string | null;
+        };
         /** OptimiserRunDetail */
         OptimiserRunDetail: {
             /**
@@ -4816,7 +5511,8 @@ export interface components {
         };
         /**
          * OptimiserRunParams
-         * @description One Burden & Fuel Optimiser run with page 11's defaults (``services.optimiser.default_case``).
+         * @description One Burden & Fuel Optimiser run (``services.optimiser.default_case``): page 11's defaults, with the yard, the
+         *     calibration, the controls and the limits that a request names instead.
          */
         OptimiserRunParams: {
             /**
@@ -4827,11 +5523,11 @@ export interface components {
             auto: boolean;
             /**
              * Calibration
-             * @description Two-zone calibration: day = the one made at 02:30 on the 14 days before today (calibration.nightly; the live one while it is missing), live = page 11's, on the stable shifts balanced so far
+             * @description Two-zone calibration: day = the one made at 02:30 on the 14 days before today (calibration.nightly; the live one while it is missing), live = page 11's, on the stable shifts balanced so far, reference = the shipped Jul-Oct 2026 calibration
              * @default day
              * @enum {string}
              */
-            calibration: "day" | "live";
+            calibration: "day" | "live" | "reference";
             /**
              * Certainty
              * @description STRATA-ω certainty filter: low excludes Investigate plans (page 11's default)
@@ -4839,9 +5535,11 @@ export interface components {
              * @enum {string}
              */
             certainty: "low" | "any" | "medium" | "high";
+            /** @description Limits instead of the register's and the saved ones */
+            limits?: components["schemas"]["OptimiserLimits"] | null;
             /**
              * Mode
-             * @description step1: cheapest production level; step2: cheapest blend at a fixed production; max_production
+             * @description step1: cheapest production level and the frontier; step2: cheapest blend at a fixed production, with fuel in the objective and the ore + flux-only answer (page 9's objective); max_production
              * @enum {string}
              */
             mode: "step1" | "step2" | "max_production";
@@ -4863,6 +5561,15 @@ export interface components {
              * @default 0
              */
             risk_k: number;
+            /** @description Controls and thermal targets instead of the defaults */
+            settings?: components["schemas"]["OptimiserSettings"] | null;
+            /**
+             * Yard
+             * @description Yard: live = Neon chemistry and stock with the operator inputs in force (the reference yard when Neon is unavailable), reference = the yard of 16 Oct 2026 at the configured prices
+             * @default live
+             * @enum {string}
+             */
+            yard: "live" | "reference";
         };
         /** OptimiserRunSummary */
         OptimiserRunSummary: {
@@ -4950,6 +5657,59 @@ export interface components {
              */
             trigger: "schedule" | "user";
         };
+        /**
+         * OptimiserSettings
+         * @description Furnace controls and thermal targets of a run that replace page 11's defaults (the regime's medians, the page
+         *     config's targets, the regime's PCI and nut coke, today's Open-Meteo blast moisture). Unset fields keep the
+         *     default.
+         */
+        OptimiserSettings: {
+            /**
+             * Blast Moisture G Nm3
+             * @description Blast moisture (DATA-11), g/Nm³
+             */
+            blast_moisture_g_nm3?: number | null;
+            /**
+             * Hbt C
+             * @description Hot-blast temperature, °C
+             */
+            hbt_c?: number | null;
+            /**
+             * Hm Si Pct
+             * @description Hot-metal Si target (BAND-03), %
+             */
+            hm_si_pct?: number | null;
+            /**
+             * Hmt C
+             * @description Hot-metal temperature target (BAND-02), °C
+             */
+            hmt_c?: number | null;
+            /**
+             * Hot Blast Pressure Bar G
+             * @description Hot-blast pressure, bar g
+             */
+            hot_blast_pressure_bar_g?: number | null;
+            /**
+             * Nut Coke Kg Thm
+             * @description Nut coke as charged (fixed input), kg/tHM
+             */
+            nut_coke_kg_thm?: number | null;
+            /**
+             * O2 Per Air
+             * @description Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air
+             */
+            o2_per_air?: number | null;
+            /**
+             * Pci Kg Thm
+             * @description PCI as injected (fixed input), kg/tHM
+             */
+            pci_kg_thm?: number | null;
+            /**
+             * Top Pressure Bar G
+             * @description Top pressure, bar g
+             */
+            top_pressure_bar_g?: number | null;
+        };
         /** OreEditorInputs */
         OreEditorInputs: {
             /**
@@ -5024,6 +5784,69 @@ export interface components {
              */
             shift_key?: string | null;
         };
+        /** PlanView */
+        PlanView: {
+            /**
+             * Binding
+             * @description Binding limits, largest shadow price first
+             */
+            binding?: components["schemas"]["BindingLimit"][];
+            /**
+             * Blend
+             * @description Ferrous blend, largest share first
+             */
+            blend: components["schemas"]["BlendRow"][];
+            /**
+             * Burden Fe Wet Pct
+             * @description Fe of the ferrous burden, wet, %
+             */
+            burden_fe_wet_pct?: number | null;
+            charging: components["schemas"]["ChargingView"];
+            cost: components["schemas"]["CostSplit"];
+            /**
+             * Facts Version
+             * @description Fact register version of the engine
+             */
+            facts_version?: string | null;
+            /** Feasible */
+            feasible: boolean;
+            /**
+             * Ferrous Kg Thm
+             * @description Ferrous burden, wet, kg/tHM
+             */
+            ferrous_kg_thm?: number | null;
+            /**
+             * Flux
+             * @description Flux (above 0.5 kg/tHM)
+             */
+            flux: components["schemas"]["FluxRow"][];
+            fuel: components["schemas"]["FuelSplit"];
+            /**
+             * Label
+             * @description What the plan is
+             */
+            label: string;
+            process: components["schemas"]["ProcessView"];
+            /**
+             * Production T D
+             * @description Hot metal, t/d
+             */
+            production_t_d: number;
+            /**
+             * Production T H
+             * @description Hot metal, t/h
+             */
+            production_t_h: number;
+            shaft_efficiency: components["schemas"]["ShaftEfficiency"];
+            slag: components["schemas"]["SlagView"];
+            /**
+             * Violations
+             * @description Limits the plan breaks
+             */
+            violations?: components["schemas"]["Violation"][];
+            /** Warnings */
+            warnings?: string[];
+        };
         /** PlotlyPart */
         PlotlyPart: {
             /**
@@ -5089,6 +5912,79 @@ export interface components {
              * @default about:blank
              */
             type: string;
+        };
+        /** ProcessView */
+        ProcessView: {
+            /**
+             * Blast Ceiling Nm3H
+             * @description Blast at the set hot-blast pressure, Nm³/h
+             */
+            blast_ceiling_nm3h?: number | null;
+            /**
+             * Blast Moisture G Nm3
+             * @description Blast moisture, g/Nm³
+             */
+            blast_moisture_g_nm3?: number | null;
+            /**
+             * Blast Nm3H
+             * @description Hot blast, meter basis, Nm³/h
+             */
+            blast_nm3h?: number | null;
+            /**
+             * Dp Needed Bar
+             * @description Pressure drop needed, bar
+             */
+            dp_needed_bar?: number | null;
+            /**
+             * Enrichment Tag Pct
+             * @description Plant enrichment tag, %
+             */
+            enrichment_tag_pct?: number | null;
+            /**
+             * Eta Co Pct
+             * @description Gas utilisation ηCO, %
+             */
+            eta_co_pct?: number | null;
+            /**
+             * Hbt C
+             * @description Hot-blast temperature, °C
+             */
+            hbt_c?: number | null;
+            /**
+             * Hm Si Pct
+             * @description Hot-metal Si target, %
+             */
+            hm_si_pct?: number | null;
+            /**
+             * Hmt C
+             * @description Hot-metal temperature target, °C
+             */
+            hmt_c?: number | null;
+            /**
+             * Hot Blast Pressure Needed Bar G
+             * @description Hot-blast pressure needed, bar g
+             */
+            hot_blast_pressure_needed_bar_g?: number | null;
+            /**
+             * O2 Nm3H
+             * @description Oxygen, Nm³/h
+             */
+            o2_nm3h?: number | null;
+            /**
+             * Raft C
+             * @description RAFT (plant workbook), °C
+             */
+            raft_c?: number | null;
+            /**
+             * Top Gas C
+             * @description Top-gas temperature, °C
+             */
+            top_gas_c?: number | null;
+            /**
+             * Top Pressure Bar G
+             * @description Top pressure, bar g
+             */
+            top_pressure_bar_g?: number | null;
         };
         /** ReferencePoint */
         ReferencePoint: {
@@ -5515,6 +6411,57 @@ export interface components {
             user_id?: string | null;
             /** Username */
             username: string;
+        };
+        /** ShaftEfficiency */
+        ShaftEfficiency: {
+            /**
+             * Calibration Sigma Kg Thm
+             * @description Calibration error, not in sigma, kg/tHM
+             */
+            calibration_sigma_kg_thm?: number | null;
+            /**
+             * Certainty
+             * @description High, Medium, Low, Investigate (STRATA-ω); Held (Fixed-ω)
+             */
+            certainty?: string | null;
+            /**
+             * Day Sd Kg Thm
+             * @description Day-to-day spread, not in sigma, kg/tHM
+             */
+            day_sd_kg_thm?: number | null;
+            /**
+             * Investigate
+             * @description Why the plan is in the Investigate tier
+             */
+            investigate?: string[];
+            /**
+             * Mode
+             * @description fixed: Fixed-ω (ASM-01); blend: STRATA-ω (ASM-18)
+             * @enum {string}
+             */
+            mode: "fixed" | "blend";
+            /** @description Network solves behind the plan (STRATA-ω) */
+            network?: components["schemas"]["NetworkSolves"] | null;
+            /**
+             * Omega
+             * @description Shaft efficiency of the plan, dimensionless
+             */
+            omega?: number | null;
+            /**
+             * Omega Cal
+             * @description Shaft efficiency of the calibration, dimensionless
+             */
+            omega_cal?: number | null;
+            /**
+             * Omega Sigma
+             * @description 1 sigma of the shaft efficiency, dimensionless
+             */
+            omega_sigma?: number | null;
+            /**
+             * Outside
+             * @description Where the plan is outside what BF-2 has run
+             */
+            outside?: string[];
         };
         /**
          * ShiftReportDataView
@@ -6130,6 +7077,49 @@ export interface components {
              * @description Lower limit of the slag (CaO + MgO)/SiO₂, dimensionless
              */
             target_slag_t_basicity_min?: number | null;
+        };
+        /** SlagView */
+        SlagView: {
+            /**
+             * Al2O3 Pct
+             * @description Al₂O₃ of the slag, %
+             */
+            al2o3_pct?: number | null;
+            /**
+             * Cao Sio2
+             * @description CaO/SiO₂ (B2), dimensionless
+             */
+            cao_sio2?: number | null;
+            /**
+             * Ib4
+             * @description (CaO + MgO)/(SiO₂ + Al₂O₃), dimensionless
+             */
+            ib4?: number | null;
+            /**
+             * Mgo Al2O3
+             * @description MgO/Al₂O₃, dimensionless
+             */
+            mgo_al2o3?: number | null;
+            /**
+             * Mgo Pct
+             * @description MgO of the slag, %
+             */
+            mgo_pct?: number | null;
+            /**
+             * Rate Kg Thm
+             * @description Slag rate, kg/tHM
+             */
+            rate_kg_thm: number;
+            /**
+             * T Basicity
+             * @description (CaO + MgO)/SiO₂, dimensionless
+             */
+            t_basicity?: number | null;
+            /**
+             * T D
+             * @description Slag per day, t/d
+             */
+            t_d: number;
         };
         /** SlotProblem */
         SlotProblem: {
@@ -7829,6 +8819,25 @@ export interface components {
              */
             verdict_rule: string;
         };
+        /** ValueOfLimit */
+        ValueOfLimit: {
+            /**
+             * Binds After
+             * @description What binds after the change
+             * @default
+             */
+            binds_after: string;
+            /**
+             * Change
+             * @description The limit relaxed one step
+             */
+            change: string;
+            /**
+             * Saving Rs Thm
+             * @description Saving at the same production (null: infeasible), Rs/tHM
+             */
+            saving_rs_thm?: number | null;
+        };
         /** Version */
         Version: {
             /**
@@ -7857,6 +8866,18 @@ export interface components {
              * @description twin-api version
              */
             version: string;
+        };
+        /** Violation */
+        Violation: {
+            /**
+             * Amount
+             * @description By how much the plan breaks the limit, in the limit's unit
+             */
+            amount: number;
+            /** Label */
+            label: string;
+            /** Limit */
+            limit: string;
         };
         /** WorkerStatus */
         WorkerStatus: {
@@ -9147,6 +10168,89 @@ export interface operations {
             };
         };
     };
+    optimiser_get_commentary: {
+        parameters: {
+            query?: {
+                /** @description Include the full context the model was given */
+                context?: boolean;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentaryView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    optimiser_start_commentary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSubmitted"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     optimiser_decide: {
         parameters: {
             query?: never;
@@ -9169,6 +10273,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanDecisionView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    optimiser_run_result: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimiserResult"];
                 };
             };
             /** @description Client error (problem+json) */

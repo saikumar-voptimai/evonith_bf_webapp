@@ -43,8 +43,10 @@ TABLES = (
     "audit_log",
     "fm_conversation",
     "fm_message",
+    "optimiser_commentary",
 )
 FM_TABLES = {"fm_conversation", "fm_message"}  # twin_0006 (SV-5.1)
+COMMENTARY = {"optimiser_commentary"}  # twin_0007 (SV-3.2)
 T0 = datetime(2026, 10, 27, 0, 30, tzinfo=UTC)  # 06:00 IST, start of shift A
 H = timedelta(hours=1)
 ALICE = Actor("alice", "admin", "10.0.0.5")
@@ -106,21 +108,28 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
         config = alembic_config(url)
         command.upgrade(config, "head")
         assert twin_tables(url) == {*TABLES, "alembic_version"}
-        assert TwinStore.from_url(url).revision() == "twin_0006"
+        assert TwinStore.from_url(url).revision() == "twin_0007"
         assert {"scheduled_for", "run_s"} <= job_columns(url)
         assert {"before", "after"} <= job_columns(url, "audit_log")
 
+        command.downgrade(config, "-1")  # twin_0007: the optimiser commentaries (SV-3.2)
+        assert TwinStore.from_url(url).revision() == "twin_0006"
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY
+
         command.downgrade(config, "-1")  # twin_0006: the FurnaceMind conversations and messages (SV-5.1)
         assert TwinStore.from_url(url).revision() == "twin_0005"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FM_TABLES
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY - FM_TABLES
 
         command.downgrade(config, "-1")  # twin_0005: the versions of the operator inputs (SV-3.1)
         assert TwinStore.from_url(url).revision() == "twin_0004"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FM_TABLES - {"operator_inputs"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY - FM_TABLES - {"operator_inputs"}
 
         command.downgrade(config, "-1")  # twin_0004: the shift reports (SV-2.3)
         assert TwinStore.from_url(url).revision() == "twin_0003"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FM_TABLES - {"shift_report", "operator_inputs"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY - FM_TABLES - {
+            "shift_report",
+            "operator_inputs",
+        }
 
         command.downgrade(config, "-1")  # twin_0003: the values before and after of the audit log
         assert TwinStore.from_url(url).revision() == "twin_0002"
@@ -128,7 +137,10 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
 
         command.downgrade(config, "-1")  # twin_0002: the slot and execution time of the jobs
         assert TwinStore.from_url(url).revision() == "twin_0001"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - FM_TABLES - {"shift_report", "operator_inputs"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY - FM_TABLES - {
+            "shift_report",
+            "operator_inputs",
+        }
         assert not {"scheduled_for", "run_s"} & job_columns(url)
 
         command.downgrade(config, "base")
@@ -404,6 +416,31 @@ def test_runs_and_decisions_with_their_audit_rows(store) -> None:
         store.optimiser.decide(first.id, "maybe", SUPERVISOR)
     with pytest.raises(IntegrityError):  # ω mode outside strata / fixed
         store.optimiser.add(_run(T0, omega_mode="learned"))
+
+
+@needs_postgres
+def test_commentaries_of_a_run_latest_first(store) -> None:
+    run = store.optimiser.add(_run(T0))
+    common = {"run_id": run.id, "requested_by": "op", "context": "# PART 1", "context_sha1": "a" * 40}
+    store.optimiser.add_commentary({**common, "generated_at": T0 + H, "status": "failed", "error": "try 1: x"})
+    store.optimiser.add_commentary(
+        {
+            **common,
+            "generated_at": T0 + 2 * H,
+            "status": "ok",
+            "body": "Furnace and model today",
+            "tries": 2,
+            "missing": ["the model check (Coke Energy shift results)"],
+        }  # fmt: skip
+    )
+    latest = store.optimiser.commentary(run.id)
+    assert (latest.status, latest.tries, latest.missing) == ("ok", 2, ["the model check (Coke Energy shift results)"])
+    assert store.optimiser.commentary(str(run.id), status="failed").error == "try 1: x"
+    assert store.optimiser.commentary(uuid.uuid4()) is None
+    with pytest.raises(NotFound):
+        store.optimiser.add_commentary({**common, "run_id": uuid.uuid4(), "generated_at": T0, "status": "ok"})
+    with pytest.raises(IntegrityError):  # status outside ok / failed
+        store.optimiser.add_commentary({**common, "generated_at": T0, "status": "skipped"})
 
 
 @needs_postgres

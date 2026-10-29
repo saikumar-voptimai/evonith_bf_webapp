@@ -48,13 +48,74 @@ class SelfTestParams(BaseModel):
     cpu: bool = Field(True, description="Also run one task in the model-solve process pool")
 
 
+class OptimiserSettings(BaseModel):
+    """Furnace controls and thermal targets of a run that replace page 11's defaults (the regime's medians, the page
+    config's targets, the regime's PCI and nut coke, today's Open-Meteo blast moisture). Unset fields keep the
+    default."""
+
+    model_config = {"extra": "forbid"}
+
+    hmt_c: float | None = Field(None, ge=1400, le=1600, description="Hot-metal temperature target (BAND-02), °C")
+    hm_si_pct: float | None = Field(None, ge=0.1, le=1.5, description="Hot-metal Si target (BAND-03), %")
+    pci_kg_thm: float | None = Field(None, ge=0, le=260, description="PCI as injected (fixed input), kg/tHM")
+    nut_coke_kg_thm: float | None = Field(None, ge=0, le=150, description="Nut coke as charged (fixed input), kg/tHM")
+    blast_moisture_g_nm3: float | None = Field(None, ge=0, le=40, description="Blast moisture (DATA-11), g/Nm³")
+    hbt_c: float | None = Field(None, ge=900, le=1300, description="Hot-blast temperature, °C")
+    o2_per_air: float | None = Field(
+        None, ge=0, le=0.12, description="Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air"
+    )
+    hot_blast_pressure_bar_g: float | None = Field(None, ge=1, le=4, description="Hot-blast pressure, bar g")
+    top_pressure_bar_g: float | None = Field(None, ge=0.5, le=2.5, description="Top pressure, bar g")
+
+
+class OptimiserLimits(BaseModel):
+    """Limits of a run that replace the fact register's defaults (ASM-11/12/13, FLOW-12) and the operator's saved slag
+    limits and charging. The fuel-rate band (BAND-01) is the register's and cannot be changed here. Unset fields keep
+    the default; the process rows apply to Step 1 and maximum production."""
+
+    model_config = {"extra": "forbid"}
+
+    slag_max_kg_thm: float | None = Field(None, ge=200, le=500, description="Slag rate cap, kg/tHM")
+    cao_sio2_min: float | None = Field(
+        None, ge=0.8, le=1.5, description="CaO/SiO₂ of the slag, lower limit, dimensionless"
+    )
+    cao_sio2_max: float | None = Field(
+        None, ge=0.8, le=1.5, description="CaO/SiO₂ of the slag, upper limit, dimensionless"
+    )
+    al2o3_max_pct: float | None = Field(None, ge=10, le=30, description="Al₂O₃ of the slag, upper limit, %")
+    mgo_min_pct: float | None = Field(None, ge=3, le=15, description="MgO of the slag, lower limit, %")
+    mgo_al2o3_min: float | None = Field(
+        None, ge=0.1, le=1, description="MgO/Al₂O₃ of the slag, lower limit, dimensionless"
+    )
+    charge_t: float | None = Field(
+        None, ge=10, le=40, description="Non-coke burden per charge (ferrous + flux + nut coke), t"
+    )
+    charges_per_h: float | None = Field(None, ge=3, le=10, description="Charging rate limit, charges/h")
+    top_gas_min_c: float | None = Field(None, ge=50, le=250, description="Top-gas temperature, lower limit, °C")
+    hot_blast_pressure_max_bar_g: float | None = Field(None, ge=1, le=4, description="Hot-blast pressure limit, bar g")
+    dp_max_bar: float | None = Field(None, ge=0.5, le=2.5, description="Pressure drop limit, bar")
+    top_pressure_min_bar_g: float | None = Field(None, ge=0.5, le=2.5, description="Top pressure, lower limit, bar g")
+    top_pressure_max_bar_g: float | None = Field(None, ge=0.5, le=2.5, description="Top pressure, upper limit, bar g")
+    blast_max_nm3h: float | None = Field(None, ge=50_000, le=200_000, description="Hot-blast volume limit, Nm³/h")
+    o2_flow_max_nm3h: float | None = Field(None, ge=0, le=20_000, description="Oxygen flow limit, Nm³/h")
+    enrichment_max_pct: float | None = Field(None, ge=0, le=15, description="Plant enrichment tag limit, %")
+    hbt_max_c: float | None = Field(None, ge=900, le=1350, description="Hot-blast temperature limit, °C")
+    raft_min_c: float | None = Field(None, ge=1800, le=2600, description="RAFT, lower limit, °C")
+    raft_max_c: float | None = Field(None, ge=1800, le=2600, description="RAFT, upper limit, °C")
+
+
 class OptimiserRunParams(BaseModel):
-    """One Burden & Fuel Optimiser run with page 11's defaults (``services.optimiser.default_case``)."""
+    """One Burden & Fuel Optimiser run (``services.optimiser.default_case``): page 11's defaults, with the yard, the
+    calibration, the controls and the limits that a request names instead."""
 
     model_config = {"extra": "forbid"}
 
     mode: Literal["step1", "step2", "max_production"] = Field(
-        ..., description="step1: cheapest production level; step2: cheapest blend at a fixed production; max_production"
+        ...,
+        description=(
+            "step1: cheapest production level and the frontier; step2: cheapest blend at a fixed production, with fuel "
+            "in the objective and the ore + flux-only answer (page 9's objective); max_production"
+        ),
     )
     omega_mode: Literal["strata", "fixed"] = Field(
         "strata", description="Shaft efficiency: STRATA-ω (blend-dependent, ASM-18) or Fixed-ω (calibration, ASM-01)"
@@ -69,12 +130,34 @@ class OptimiserRunParams(BaseModel):
         0.0, ge=0, le=3, description="STRATA-ω risk aversion: objective = cost + k × σ(cost), dimensionless"
     )
     auto: bool = Field(False, description="Also run the three decision settings of auto mode (STRATA-ω)")
-    calibration: Literal["day", "live"] = Field(
+    calibration: Literal["day", "live", "reference"] = Field(
         "day",
         description=(
             "Two-zone calibration: day = the one made at 02:30 on the 14 days before today (calibration.nightly; "
-            "the live one while it is missing), live = page 11's, on the stable shifts balanced so far"
+            "the live one while it is missing), live = page 11's, on the stable shifts balanced so far, reference = "
+            "the shipped Jul-Oct 2026 calibration"
         ),
+    )
+    yard: Literal["live", "reference"] = Field(
+        "live",
+        description=(
+            "Yard: live = Neon chemistry and stock with the operator inputs in force (the reference yard when Neon is "
+            "unavailable), reference = the yard of 16 Oct 2026 at the configured prices"
+        ),
+    )
+    settings: OptimiserSettings | None = Field(None, description="Controls and thermal targets instead of the defaults")
+    limits: OptimiserLimits | None = Field(None, description="Limits instead of the register's and the saved ones")
+
+
+class OptimiserCommentaryParams(BaseModel):
+    """The furnace commentary on a stored optimiser run (``optimiser.commentary``)."""
+
+    model_config = {"extra": "forbid"}
+
+    run_id: str = Field(
+        ...,
+        pattern=r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$",
+        description="Optimiser run (UUID)",
     )
 
 
@@ -290,8 +373,10 @@ register(
         max_tries=1,
         params=OptimiserRunParams,
         description=(
-            "Runs the Burden & Fuel Optimiser with page 11's defaults (live yard and calibration, today's controls) in "
-            "the model-solve pool and stores the plan in twin.optimiser_run (SV-1.6)."
+            "Runs the Burden & Fuel Optimiser (Step 1, Step 2 with and without fuel, maximum production; Fixed-ω or "
+            "STRATA-ω) with page 11's defaults (live yard and calibration, today's controls) or the yard, calibration, "
+            "controls and limits of the request in the model-solve pool and stores the plan in twin.optimiser_run "
+            "(SV-1.6, SV-3.2)."
         ),
     )
 )
@@ -400,6 +485,20 @@ register(
         description=(
             "Step 1 (cheapest production level) with STRATA-ω: live yard and prices, the day's calibration; one run "
             "in twin.optimiser_run (SV-1.7)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="optimiser.commentary",
+        title="Optimiser commentary",
+        role="user",
+        timeout_s=330,  # two LLM calls of 120 s, 15 s apart, and the context
+        max_tries=1,  # the LLM's retry is inside the job; a failed commentary is stored with its errors
+        params=OptimiserCommentaryParams,
+        description=(
+            "Page 11's furnace commentary on a stored optimiser run: the optimiser notes, the fact register and the "
+            "run as context, one LLM retry; stored in twin.optimiser_commentary (SV-3.2)."
         ),
     )
 )

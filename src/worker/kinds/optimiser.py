@@ -3,15 +3,17 @@
 optimiser.run     one run with the requested mode and settings (``POST /api/optimiser/runs``)
 optimiser.step2   06:15, 14:15, 22:15: Step 2 with STRATA-ω and Fixed-ω in parallel, two runs
 optimiser.step1   06:30, 14:30, 22:30: Step 1 with STRATA-ω
+optimiser.commentary  page 11's furnace commentary on a stored run (``POST /api/optimiser/runs/{id}/commentary``)
 
 Every case is page 11's default case (``services.optimiser.default_case``: live yard and prices, today's controls)
 on the day's calibration (``services.day_calibration``, made at 02:30; the live one while it is missing) unless a
-request asks for the live one. Step 2 runs at the current production: the latest twin window's (at most 3 h old),
-else the median of the regime window. The cases are built in a thread, solved in the model-solve pool and stored in
-``twin.optimiser_run``: ok, infeasible (the LP or a plausibility band refused the case, with the reason) or failed.
-A scheduled run whose yard or calibration fell back to the shipped reference (Neon or the plant data unavailable) is
-tried again after 5 min; the last try runs on the reference, labelled, as page 11 does. Without a twin store the
-plans are returned in the job result only.
+request asks for the live or the shipped one; a request may also name the reference yard, controls and limits
+(SV-3.2), and STRATA-ω plans carry their critical assumptions. Step 2 runs at the current production: the latest
+twin window's (at most 3 h old), else the median of the regime window. The cases are built in a thread, solved in
+the model-solve pool and stored in ``twin.optimiser_run``: ok, infeasible (the LP or a plausibility band refused the
+case, with the reason) or failed. A scheduled run whose yard or calibration fell back to the shipped reference (Neon
+or the plant data unavailable) is tried again after 5 min; the last try runs on the reference, labelled, as page 11
+does. Without a twin store the plans are returned in the job result only.
 """
 
 from __future__ import annotations
@@ -21,8 +23,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from services import optimiser
-from services.jobs import NoParams, OptimiserRunParams
+from services import optimiser, optimiser_commentary
+from services.jobs import NoParams, OptimiserCommentaryParams, OptimiserRunParams
 from services.store import twin_store
 from utils.burden_engine import BandError, Infeasible
 from worker.runtime import JobContext, TransientJobError, handles
@@ -132,6 +134,9 @@ async def run(job: JobContext, params: OptimiserRunParams) -> dict[str, Any]:
         risk_k=params.risk_k,
         auto=params.auto,
         calibration_basis=params.calibration,
+        yard_basis=params.yard,
+        settings=params.settings.model_dump() if params.settings is not None else None,
+        limits=params.limits.model_dump() if params.limits is not None else None,
     )
     out = await _run_cases(job, [case], message=f"Optimising: {LABELS[params.mode]}, {OMEGA_LABELS[params.omega_mode]}")
     (first,) = out["runs"]
@@ -169,3 +174,46 @@ async def step2(job: JobContext, params: NoParams) -> dict[str, Any]:
 async def step1(job: JobContext, params: NoParams) -> dict[str, Any]:
     cases = await _scheduled_cases(job, "step1", ("strata",))
     return await _run_cases(job, cases, message="Optimising Step 1 (cheapest production level) with STRATA-ω")
+
+
+def _store_commentary(values: dict[str, Any], job_record: dict[str, Any] | None) -> str:
+    store = twin_store("twin-worker")
+    if job_record is not None:  # the commentary refers to its job; the archive may not have written it yet
+        store.jobs.upsert(job_record)
+    return str(store.optimiser.add_commentary(values).id)
+
+
+@handles("optimiser.commentary")
+async def commentary(job: JobContext, params: OptimiserCommentaryParams) -> dict[str, Any]:
+    """Page 11's furnace commentary on a stored run, one LLM retry; a commentary that fails twice is stored as
+    failed (the job still succeeds)."""
+    await job.progress(0.05, "Reading the run and building the context", force=True)
+    store = await asyncio.to_thread(twin_store, "twin-worker")
+    if store is None:
+        raise RuntimeError("the twin store is not configured: the commentary needs the stored run")
+    run_row = await asyncio.to_thread(store.optimiser.get, params.run_id)
+    if run_row is None:
+        raise ValueError(f"no optimiser run {params.run_id}")
+    loop = asyncio.get_running_loop()
+
+    def progress(fraction: float, message: str) -> None:  # called from the generating thread
+        asyncio.run_coroutine_threadsafe(job.progress(fraction, message, force=True), loop)
+
+    values = await asyncio.to_thread(optimiser_commentary.generate, run_row, progress=progress)
+    record = await job.store.get(job.job_id) if job.store is not None else None
+    values |= {
+        "job_id": job.job_id if record is not None else None,
+        "requested_by": record.submitted_by if record is not None else "unknown",
+    }
+    await job.progress(0.95, "Storing the commentary", force=True)
+    commentary_id = await asyncio.to_thread(
+        _store_commentary, values, record.model_dump() if record is not None else None
+    )
+    return {
+        "commentary_id": commentary_id,
+        "run_id": str(run_row.id),
+        "status": values["status"],
+        "tries": values["tries"],
+        "missing": values["missing"],
+        "error": values["error"],
+    }

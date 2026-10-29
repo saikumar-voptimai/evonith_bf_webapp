@@ -123,7 +123,8 @@ export const RUN_NOW: Schemas['OptimiserRunParams'] = {
 	calibration: 'day',
 	certainty: 'low',
 	risk_k: 0,
-	auto: false
+	auto: false,
+	yard: 'live'
 };
 
 /** Load state of one zone. */
