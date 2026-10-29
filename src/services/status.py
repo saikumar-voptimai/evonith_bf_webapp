@@ -37,6 +37,7 @@ from data.furnace_status.service import load_status_snapshot, load_trend_view
 from domain.furnace_status.formatting import format_reading
 from domain.furnace_status.time_ranges import FIXED_INTERVALS, RangeError, resolve_custom_range, resolve_fixed_range
 from domain.furnace_status.types import ParameterReading, ParameterSpec, StatusSnapshot, TrendViewData
+from services import source_health
 from services.events import TagValue
 from utils.memo import memo
 
@@ -376,13 +377,13 @@ def live_operating_state(level: str) -> Literal["normal", "reduced"] | None:
 def snapshot_view(
     snapshot: StatusSnapshot, computed_at: datetime, *, source: Literal["producer", "request"] = "request"
 ) -> StatusSnapshotView:
-    """The API view of a V-Board snapshot taken at ``computed_at``."""
+    """The API view of a V-Board snapshot taken at ``computed_at``; InfluxDB's health is recorded from it (SV-6.5)."""
     by_key = {reading.spec.key: reading for reading in snapshot.readings}
     policy = SETTINGS.operating_state
     deciding = by_key.get(policy.parameter)
     status = snapshot.status
     state = snapshot.operating_state
-    return StatusSnapshotView(
+    view = StatusSnapshotView(
         parameters=[parameter_view(reading) for reading in snapshot.readings],
         sections=list(SECTIONS),
         zones=_zones(),
@@ -411,14 +412,43 @@ def snapshot_view(
             source=source,
         ),
     )
+    source_health.observe_status_view(view)
+    return view
 
 
 def build_snapshot_view(
     now: datetime | None = None, *, source: Literal["producer", "request"] = "request"
 ) -> StatusSnapshotView:
-    """One snapshot query (the V-Board's ``load_status_snapshot``: one InfluxDB request per measurement) as the view."""
+    """One snapshot query (the V-Board's ``load_status_snapshot``: one InfluxDB request per measurement) as the view.
+    While InfluxDB is down the last good view of this process is served instead, its freshness offline (SV-6.5)."""
     at = now or clock()
-    return snapshot_view(load_status_snapshot(at), at, source=source)
+    view = snapshot_view(load_status_snapshot(at), at, source=source)
+    if source_health.HEALTH.failed("influxdb"):
+        last = source_health.HEALTH.last_value("influxdb")
+        if isinstance(last, StatusSnapshotView):
+            return stale_view(last, view)
+    return view
+
+
+def stale_view(last: StatusSnapshotView, failed: StatusSnapshotView) -> StatusSnapshotView:
+    """``last`` (the last good snapshot) with the freshness of ``failed``: computed now, telemetry offline, stale,
+    the last values' time and detail kept, the measurements that could not be read listed (SV-6.5)."""
+    fresh, now = last.freshness, failed.freshness.computed_at
+    age = (now - fresh.data_at).total_seconds() if fresh.data_at is not None else None
+    freshness = fresh.model_copy(
+        update={
+            "computed_at": now,
+            "age_s": age,
+            "stale": True,
+            "telemetry": "offline",
+            "telemetry_label": "Offline",
+            "detail": f"InfluxDB not reachable; last values kept ({fresh.detail})",
+            "coverage": 0.0,
+            "failed_sources": list(failed.freshness.failed_sources),
+            "source": failed.freshness.source,
+        }
+    )
+    return last.model_copy(update={"freshness": freshness})
 
 
 _current_lock = threading.Lock()

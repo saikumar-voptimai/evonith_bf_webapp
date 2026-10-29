@@ -1084,7 +1084,8 @@ export interface paths {
         };
         /**
          * Latest twin evaluation
-         * @description The latest stored evaluation, how far it lags the expected window and the number of open alarms.
+         * @description The latest stored evaluation, how far it lags the expected window and the number of open alarms. The sources
+         *     carry the live fetches of this process and of the worker's status producer (SV-6.5): one that failed is down.
          */
         get: operations["twin_now"];
         put?: never;
@@ -7641,6 +7642,22 @@ export interface components {
              * @description Newest time the source held at the evaluation (UTC)
              */
             data_end?: string | null;
+            /**
+             * Down
+             * @description The last fetch of the source failed (SV-6.5); stale at once
+             * @default false
+             */
+            down: boolean;
+            /**
+             * Error
+             * @description The error of the last fetch while down
+             */
+            error?: string | null;
+            /**
+             * Failed At
+             * @description Time of the failed fetch while down (UTC)
+             */
+            failed_at?: string | null;
             /**
              * Key
              * @enum {string}

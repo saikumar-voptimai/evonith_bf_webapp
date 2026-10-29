@@ -39,6 +39,23 @@ _prefer_local_furnace_data_package()
 REQUIRE_SERVICES = os.environ.get("BF_TEST_REQUIRE_SERVICES") == "1"
 
 
+@pytest.fixture(autouse=True)
+def _fresh_outage_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """SV-6.5: the source registry and the twin-store outbox are process-wide; a test starts with them empty and its
+    outbox file under its own tmp_path (never the repository's ``src/storage/twin``)."""
+    monkeypatch.setenv("BF_TWIN_OUTBOX", str(tmp_path / "twin_outbox.sqlite"))
+    try:
+        from services import outbox, source_health
+    except Exception:  # noqa: BLE001 - a test file that stubs these packages is not touched
+        yield
+        return
+    source_health.HEALTH.reset()
+    outbox.reset()
+    yield
+    source_health.HEALTH.reset()
+    outbox.reset()
+
+
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",

@@ -991,6 +991,18 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   user `bfapp`, `/opt/bf-webapp/releases` + `current`, `/etc/bf-webapp/env` root:bfapp 0640, 14-day logs) and
   `verify_base.sh` (offset < 100 ms, units back after a reboot, open-port list); name service units `bf-*` with
   `RequiresMountsFor=/var/lib/bf-webapp`; tests `tests/test_jetson_scripts.py` (bash via Git Bash on Windows).
+- Outages (SV-6.5): `services/source_health.py` (registry `HEALTH` of the five sources InfluxDB / hourly / HM-slag /
+  DPR / Open-Meteo: `record_ok` / `record_failure` from `services.twin.load_frames`, every status snapshot view, the
+  hourly-dataset refresh (`record_dataset_refresh`; the refresh returns its error) and the Si source's reads
+  (`forecasts.live_si_source`); a source that failed is `down` for `RETRY_AFTER_S` (5 min): `twin.evaluate`,
+  `forecast.si` and `forecast.charged_coke` skip (`worker.runtime.SkipJob(reason, source=)`: job `cancelled` with the
+  reason, the source's `source_stale` alarm instead of `job_failed`, a `skipped` forecast attempt) and do not retry;
+  the worker writes its registry to Redis every beat (`twin:sources:health`), `/api/twin/now` merges it and its
+  sources carry `down` / `error`, so the SPA shows "Down" at once). Twin-store writes of the worker (snapshots, job
+  upserts, the job archive) go through `services/outbox.py` (`BufferedTwinStore` over `data/twin/outbox.py`, SQLite WAL
+  + `synchronous=FULL` at `BF_TWIN_OUTBOX`, default `src/storage/twin/outbox.sqlite`): writes Neon cannot take are
+  queued and replayed in order by the heartbeat every 30 s, `twin.evaluate` and housekeeping; idempotent (upserts by
+  key), the entry is deleted after the Neon commit. Tests `tests/test_outbox.py`, `tests/test_source_health.py`.
 - Live Twin page (SV-1.9, `routes/+page.svelte`): state in `#lib/twin/live-twin.svelte.ts` (`LiveTwin.start()` returns
   the dispose; bounded buffers `MAX_ROWS` / `MAX_SAMPLES`), pure builders in `#lib/twin/live-twin.ts` tested on the
   recorded payloads of `#lib/twin/fixtures/payloads.ts`; API additions `/api/twin/now` sources and gaps,

@@ -7,6 +7,10 @@ forecast.si             one try: the next run is 5 min later. Publishes ``foreca
                         origin (a usable path, or the reason the inputs were not usable).
 forecast.charged_coke   retried every 5 min (at most 5 tries, to HH:27) while the build of the hour is not published;
                         publishes ``forecast.charged_coke`` when a new row is issued.
+
+Outages (SV-6.5): a run whose source is down (``SI_SOURCES`` / ``CHARGED_SOURCES`` failed within
+``source_health.RETRY_AFTER_S``, or failed during the run) skips with the reason (``SkipJob``, a ``skipped`` attempt in
+the forecast's attempt log); a charged-coke run whose refresh of the hourly dataset failed skips instead of retrying.
 """
 
 from __future__ import annotations
@@ -14,14 +18,31 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from services import forecasts
+from services import forecasts, source_health
 from services.jobs import NoParams
-from worker.runtime import JobContext, TransientJobError, handles
+from services.source_health import SourceDown
+from worker.runtime import JobContext, SkipJob, TransientJobError, handles
+
+SI_SOURCES = ("influxdb", "hm_slag")
+CHARGED_SOURCES = ("hourly",)
+
+
+async def _require(forecast: forecasts.Forecast, sources: tuple[str, ...]) -> None:
+    """Skip (with a ``skipped`` attempt) while one of ``sources`` is down."""
+    try:
+        source_health.HEALTH.require(*sources)
+    except SourceDown as exc:
+        await asyncio.to_thread(forecasts.record_skip, forecast, exc.reason)
+        raise SkipJob(exc.reason, source=exc.key) from exc
 
 
 @handles("forecast.si")
 async def si(job: JobContext, params: NoParams) -> dict[str, Any]:
-    out = await asyncio.to_thread(forecasts.issue_si)
+    await _require("si", SI_SOURCES)
+    try:
+        out = await asyncio.to_thread(forecasts.issue_si)
+    except SourceDown as exc:  # a read failed: the attempt is recorded as failed, the next runs skip
+        raise SkipJob(exc.reason, source=exc.key) from exc
     attempt, record = out["attempt"], out["record"]
     if record is not None and not attempt.get("existing"):
         await job.bus.publish("forecast.si", forecasts.si_event(attempt, record))
@@ -30,12 +51,15 @@ async def si(job: JobContext, params: NoParams) -> dict[str, Any]:
 
 @handles("forecast.charged_coke")
 async def charged_coke(job: JobContext, params: NoParams) -> dict[str, Any]:
+    await _require("charged_coke", CHARGED_SOURCES)
     out = await asyncio.to_thread(forecasts.issue_charged)
     attempt, record = out["attempt"], out["record"]
     if attempt.get("written"):
         event = forecasts.charged_event(record)
         if event is not None:
             await job.bus.publish("forecast.charged_coke", event)
+    if attempt.get("behind") and source_health.HEALTH.down("hourly"):  # the refresh failed: retries would too
+        raise SkipJob(source_health.HEALTH.reason("hourly") or "hourly dataset refresh failed", source="hourly")
     if attempt.get("behind") and job.attempt < job.kind.max_tries:
         raise TransientJobError(
             f"the hourly dataset of this hour is not published yet (latest build {attempt.get('built_at')}, "

@@ -8,7 +8,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from services import jobstats
+from services import jobstats, outbox
 from services.jobs import CATALOG, NoParams, SelfTestParams
 from worker.runtime import JobContext, handles
 
@@ -50,6 +50,16 @@ async def housekeeping(job: JobContext, params: NoParams) -> dict[str, Any]:
         except Exception as exc:
             result["archive_error"] = f"{type(exc).__name__}: {exc}"[:400]
     result["index_entries_removed"] = await job.store.trim()
+    replay = await asyncio.to_thread(outbox.replay_pending)  # buffered twin-store writes (SV-6.5)
+    health = await asyncio.to_thread(outbox.outbox_health)
+    if health is not None:
+        result["outbox"] = {
+            **({"replayed_now": replay.as_dict()} if replay is not None else {}),
+            "pending": health["pending"],
+            "oldest_queued_at": health["oldest_queued_at"].isoformat() if health["oldest_queued_at"] else None,
+            "down_since": health["down_since"].isoformat() if health["down_since"] else None,
+            "last_error": health["last_error"],
+        }
     end = datetime.now(UTC)
     start = end - timedelta(days=STATS_DAYS)
     rows: list[Any] = records

@@ -32,6 +32,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from services import source_health
 from services.events import TagValue
 from services.status import StatusSnapshotView, build_snapshot_view, latest_hot_metal, live_status_fields
 
@@ -115,7 +116,10 @@ async def read_latest(
         log.warning("live status: %s does not hold a snapshot view; ignored", LATEST_KEY)
         return None
     age = ((now or datetime.now(UTC)) - view.freshness.computed_at).total_seconds()
-    return view if age <= max_age_s else None
+    if age > max_age_s:
+        return None
+    source_health.observe_status_view(view)  # this process's registry follows the producer's finding (SV-6.5)
+    return view
 
 
 # ---------------------------------------------------------------- producer (worker)

@@ -9,19 +9,23 @@ kg/tHM dry, shaft efficiencies dimensionless, times UTC unless stated.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 import pandas as pd
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from api.auth import require_role
 from api.errors import ApiError
 from api.store import optional_twin_store, twin_store
 from data.twin.repositories import TwinStore
-from services import twin_alarms, twin_views
+from services import live_status, source_health, twin_alarms, twin_views
 from services.events import TwinSnapshotData
+
+log = logging.getLogger("api.twin")
 
 router = APIRouter(prefix="/api/twin", tags=["twin"], dependencies=[Depends(require_role("user"))])
 
@@ -37,6 +41,9 @@ class SourceAge(BaseModel):
     stale: bool = Field(..., description="age_h >= stale_after_h, or no time recorded")
     provisional: bool = Field(False, description="DPR: the window's date is carried forward from an earlier report")
     recorded_at: datetime | None = Field(None, description="When the evaluation recorded data_end (UTC)")
+    down: bool = Field(False, description="The last fetch of the source failed (SV-6.5); stale at once")
+    error: str | None = Field(None, description="The error of the last fetch while down")
+    failed_at: datetime | None = Field(None, description="Time of the failed fetch while down (UTC)")
 
 
 class ModelGaps(BaseModel):
@@ -173,26 +180,43 @@ def _aware(value: datetime | None, default: datetime) -> datetime:
 
 
 @router.get("/now", response_model=TwinNow, summary="Latest twin evaluation")
-def now(store: Annotated[TwinStore, Depends(twin_store)]) -> TwinNow:
-    """The latest stored evaluation, how far it lags the expected window and the number of open alarms."""
+async def now(request: Request, store: Annotated[TwinStore, Depends(twin_store)]) -> TwinNow:
+    """The latest stored evaluation, how far it lags the expected window and the number of open alarms. The sources
+    carry the live fetches of this process and of the worker's status producer (SV-6.5): one that failed is down."""
     from services import coke_energy as ce
 
-    latest = store.snapshots.latest()
+    await _follow_producer(request)
+    latest = await asyncio.to_thread(store.snapshots.latest)
     fresh = twin_views.freshness(latest)
     cfg = ce.config()
     gaps = None
     if latest is not None:
         alarm_settings = twin_alarms.AlarmSettings.from_config(cfg)
         days, at = alarm_settings.rmse_days, fresh["now"]
-        recent = store.snapshots.series(at - timedelta(days=days), at)
+        recent = await asyncio.to_thread(store.snapshots.series, at - timedelta(days=days), at)
         gaps = twin_views.model_gaps(recent, at, days=days, ratio=alarm_settings.ratio)
+    health = source_health.HEALTH.view(fresh["now"])
     return TwinNow(
         snapshot=TwinSnapshotData.model_validate(twin_views.snapshot_data(latest)) if latest is not None else None,
-        alarms_open=len(store.alarms.open_alarms()),
-        sources=twin_views.source_freshness(latest, fresh["now"], twin_views.freshness_limits(cfg)),
+        alarms_open=len(await asyncio.to_thread(store.alarms.open_alarms)),
+        sources=twin_views.source_freshness(latest, fresh["now"], twin_views.freshness_limits(cfg), health),
         gaps=gaps,
         **fresh,
     )
+
+
+async def _follow_producer(request: Request) -> None:
+    """Merge the worker's source registry (``source_health.follow``: the hourly dataset, HM/slag, DPR and Open-Meteo
+    failures its jobs found) and record InfluxDB from its latest status snapshot in Redis, when there are; Redis down
+    or absent changes nothing."""
+    redis = getattr(getattr(request.app.state, "live", None), "redis", None)
+    if redis is None:
+        return
+    try:
+        await source_health.follow(redis)
+        await live_status.read_latest(redis)
+    except Exception as exc:  # noqa: BLE001 - the registry keeps what this process saw
+        log.debug("source health not read from Redis (%s)", type(exc).__name__)
 
 
 @router.get("/window", response_model=TwinSnapshotData, summary="One stored window")

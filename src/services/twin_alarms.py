@@ -5,7 +5,9 @@ strata_trace_gap   |K_STRATA - K_TRACE| above ``ratio`` x its RMSE over the hour
                    in at least ``min_hours`` consecutive windows (``twin_views.model_gaps``; at least ``min_windows``
                    windows for the RMSE). Checked by ``twin.evaluate`` after each window.
 source_stale       one alarm per source (subject = influxdb, hourly, hm_slag, dpr, open_meteo) whose newest time, as
-                   the latest evaluation recorded it, is older than its limit (``twin_views.source_freshness``).
+                   the latest evaluation recorded it, is older than its limit (``twin_views.source_freshness``); also
+                   raised when a job skips because the source is down (``source_down``, SV-6.5), and cleared by the
+                   next evaluation that finds the source within its limit.
 implied_lag        the implied transit time, charging to burning (``services.transit.implied_lag`` on the last 14
                    days), outside [low_h, high_h]; an evaluation without a lag leaves the alarm as it is.
 job_failed         one alarm per scheduled job kind (subject = the kind) whose last run failed; the next run that
@@ -247,6 +249,18 @@ async def job_outcome(bus: EventBus | None, kind: str, status: str, message: str
     return await apply([condition], store.alarms, bus)
 
 
+async def source_down(bus: EventBus | None, key: str, reason: str) -> list[tuple[str, str, str]]:
+    """``source_stale`` for a source a job found down (``worker.runtime`` on a skip, SV-6.5); nothing without a twin
+    store."""
+    from services.store import twin_store
+
+    store = await asyncio.to_thread(twin_store, "twin-worker")
+    if store is None:
+        return []
+    condition = Condition("source_stale", True, subject=key, message=reason, details=dict(down=True, reason=reason))
+    return await apply([condition], store.alarms, bus)
+
+
 __all__ = [
     "CODES",
     "AlarmSettings",
@@ -258,4 +272,5 @@ __all__ = [
     "lag_condition",
     "run",
     "source_conditions",
+    "source_down",
 ]

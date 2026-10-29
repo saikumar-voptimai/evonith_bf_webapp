@@ -19,6 +19,8 @@ from typing import Any
 
 import pandas as pd
 
+from services import source_health
+
 PLANT_TZ = "Asia/Kolkata"
 EVALUATION_MINUTE = 15  # the window ending HH:00 is expected from HH:15 (run at HH:10, retried to HH:25)
 SHIFT_ENDS = {6: "C", 14: "A", 22: "B"}  # IST hour at which a shift window ends -> shift letter
@@ -135,13 +137,7 @@ def series_rows(
 
 
 # ------------------------------------------------------------------------------------- Live Twin (SV-1.9, #289)
-SOURCE_LABELS = {
-    "influxdb": "InfluxDB",
-    "hourly": "Hourly dataset",
-    "hm_slag": "HM/slag",
-    "dpr": "DPR",
-    "open_meteo": "Open-Meteo",
-}
+SOURCE_LABELS = source_health.SOURCE_LABELS
 STALE_AFTER_H = {"influxdb": 0.5, "hourly": 2.5, "hm_slag": 6.0, "dpr": 48.0, "open_meteo": 36.0}
 
 
@@ -152,20 +148,32 @@ def freshness_limits(cfg: Mapping[str, Any] | None) -> dict[str, float]:
 
 
 def source_freshness(
-    latest: Any | None, now: datetime | None = None, limits: Mapping[str, float] | None = None
+    latest: Any | None,
+    now: datetime | None = None,
+    limits: Mapping[str, float] | None = None,
+    health: Iterable[Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Data age of each source as the latest evaluation recorded it (snapshot ``flags.sources``): newest time, age at
     ``now`` and stale from ``limits`` (h); the DPR carries the evaluation's provisional flag (a date carried forward).
-    A source without a recorded time is stale."""
+    A source without a recorded time is stale. ``health`` (``source_health.SourceHealth.view()``, SV-6.5) brings the
+    live fetches: a newer time they recorded replaces the evaluation's, and a source whose last fetch failed is
+    ``down`` and stale at once, whatever its data age."""
     now = utc(now or datetime.now(UTC))
     lim = {**STALE_AFTER_H, **dict(limits or {})}
     flags = dict(_get(latest, "flags") or {}) if latest is not None else {}
     ends = dict(flags.get("sources") or {})
     recorded = utc(_get(latest, "evaluated_at")) if latest is not None else None
+    live = {str(h.get("key")): dict(h) for h in (health or [])}
     out = []
     for key, label in SOURCE_LABELS.items():
         end = utc(ends[key]) if ends.get(key) else None
+        at = recorded
+        seen = live.get(key) or {}
+        live_end = utc(seen.get("data_end"))
+        if live_end is not None and (end is None or live_end > end):
+            end, at = live_end, utc(seen.get("last_ok_at"))
         age = (now - end).total_seconds() / 3600.0 if end is not None else None
+        down = bool(seen.get("failed"))
         out.append(
             dict(
                 key=key,
@@ -173,9 +181,12 @@ def source_freshness(
                 data_end=end,
                 age_h=age,
                 stale_after_h=lim[key],
-                stale=age is None or age >= lim[key],
+                stale=down or age is None or age >= lim[key],
                 provisional=bool(flags.get("provisional_dpr")) if key == "dpr" else False,
-                recorded_at=recorded,
+                recorded_at=at,
+                down=down,
+                error=seen.get("last_error") if down else None,
+                failed_at=utc(seen.get("last_failure_at")) if down else None,
             )
         )
     return out

@@ -26,6 +26,10 @@ one is kept with its full record in ``latest_attempt.json``. A Si attempt whose 
 sample, too many missing inputs) writes no ledger record; page 9 shows that attempt's status from this file.
 ``gaps`` lists the intervals without a ledger record and the attempts made within them (acceptance check of #285: no
 gap above 10 min in the Si ledger over 7 days).
+
+Outages (SV-6.5): the Si source's InfluxDB and HM/slag reads and the charged-coke refresh of the hourly dataset record
+their source in ``services.source_health``; a worker run that skips because a source is down records a ``skipped``
+attempt with the reason (``record_skip``), so the gap check names it and page 9 keeps reading.
 """
 
 from __future__ import annotations
@@ -45,8 +49,10 @@ from typing import Any, Literal
 import pandas as pd
 
 from config.config_loader import load_config
+from data.bmo import si_forecast_context
 from data.bmo.si_forecast_context import LiveSiliconForecastSource
 from data.coke_energy import sources as dataset_sources
+from services import source_health
 from services.events import ChargedCokeForecastData, ChargedCokePoint, SiForecastData, SiForecastPoint
 from utils.bmo.charged_coke.bmo import _built_at
 from utils.bmo.charged_coke.contract import _naive_ist
@@ -284,13 +290,33 @@ def si_failure_record(origin: pd.Timestamp, exc: BaseException) -> dict[str, Any
     }
 
 
+HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
+
+
+def _observed_online(*args: Any, **kwargs: Any) -> pd.DataFrame:
+    """The Si source's InfluxDB read, recorded as ``influxdb`` (a failure raises ``SourceDown``)."""
+    return source_health.HEALTH.observe("influxdb", si_forecast_context.fetch_online_df, *args, **kwargs)
+
+
+def _observed_offline(*args: Any, **kwargs: Any) -> pd.DataFrame:
+    """The Si source's Neon reads; the HM/slag table is recorded as ``hm_slag``."""
+    if kwargs.get("table_name") == HM_SLAG_TABLE:
+        return source_health.HEALTH.observe("hm_slag", si_forecast_context.fetch_offline_data, *args, **kwargs)
+    return si_forecast_context.fetch_offline_data(*args, **kwargs)
+
+
+def live_si_source(**kwargs: Any) -> LiveSiliconForecastSource:
+    """``LiveSiliconForecastSource`` whose InfluxDB and HM/slag reads record their source's health (SV-6.5)."""
+    return LiveSiliconForecastSource(online_fetch=_observed_online, offline_fetch=_observed_offline, **kwargs)
+
+
 def issue_si(
     *,
     now: Any = None,
     origin: Any = None,
     cfg: Mapping[str, Any] | None = None,
     issued_by: Literal["worker", "page"] = "worker",
-    source_factory: Callable[..., Any] = LiveSiliconForecastSource,
+    source_factory: Callable[..., Any] = live_si_source,
 ) -> dict[str, Any]:
     """Issue (once per origin) the Si path and match matured outcomes, as page 9 did.
 
@@ -299,7 +325,8 @@ def issue_si(
         origin: The origin to issue (default: ``now`` floored to the active bundle's cadence in IST).
         cfg: The ``bmo`` settings (default: ``config/setting_bmo.yml``).
         issued_by: Recorded in the attempt log.
-        source_factory: ``LiveSiliconForecastSource`` or a test double with its constructor and ``fetch``.
+        source_factory: ``live_si_source`` (``LiveSiliconForecastSource`` recording the source health) or a test
+            double with its constructor and ``fetch``.
 
     Returns:
         ``{"attempt": ..., "record": ...}``; ``attempt["written"]`` says whether a ledger record was written. A
@@ -340,6 +367,31 @@ def issue_si(
     if issued_by == "worker" or written:  # page reruns that find the record are not logged
         attempts.record(attempt, record)
     return {"attempt": attempt, "record": record}
+
+
+def record_skip(
+    forecast: Forecast, reason: str, *, now: Any = None, cfg: Mapping[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """Record a worker run that skipped because a source is down (SV-6.5) as a ``skipped`` attempt with the reason
+    (a Si attempt carries the failure record page 9 shows for the origin); None in the legacy Si mode, which issues
+    nothing."""
+    at = _utc(now) if now is not None else pd.Timestamp.now(tz="UTC")
+    attempt: dict[str, Any] = {"forecast": forecast, "at": at, "issuer": "worker"}
+    record = None
+    if forecast == "si":
+        paths = si_paths(cfg)
+        if paths.mode == LEGACY_MODE:
+            return None
+        bundle = active_si_bundle(paths.storage_dir, paths.default_bundle)
+        origin = forecast_origin(at, cadence_minutes=si_cadence(bundle))
+        attempt.update(mode=paths.mode, key=origin, bundle=bundle.name)
+        record = si_failure_record(origin, source_health.SourceDown("", reason))
+        storage = paths.storage_dir
+    else:
+        storage = charged_paths(cfg).storage_dir
+    attempt.update(status="skipped", written=False, seconds=0.0, error=reason[:400])
+    AttemptLog(storage).record(attempt, record)
+    return attempt
 
 
 @dataclass(frozen=True)
@@ -472,6 +524,7 @@ def issue_charged(
             )
             attempt["refresh"] = {k: str(v) for k, v in dict(outcome or {}).items()}
             built = _build_time(paths.dataset_path)
+            source_health.record_dataset_refresh(outcome)  # a failed refresh marks the source (SV-6.5)
         if source is None:
             meta = _meta(paths.dataset_path)
             versioned = paths.dataset_path.parent / str(meta.get("csv_file") or "")
@@ -688,8 +741,10 @@ __all__ = [
     "issue_si",
     "issuer",
     "ledger_times",
+    "live_si_source",
     "page_issues",
     "read_charged_source",
+    "record_skip",
     "si_cadence",
     "si_event",
     "si_failure_record",
