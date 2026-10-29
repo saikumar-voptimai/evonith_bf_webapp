@@ -31,7 +31,7 @@
 
 	const reports = new ShiftReports({ onreport: (id) => show({ ...untrack(() => view), id }) });
 
-	$effect(() => reports.start());
+	$effect(() => untrack(() => reports.start()));
 	// The followed report job is done (stream or poll): open the report it wrote.
 	$effect(() => {
 		if (reports.tracker.record?.status === 'done') untrack(() => reports.jobFinished());
