@@ -2952,6 +2952,268 @@
         "title": "BmoSnapshotSummary",
         "type": "object"
       },
+      "BurdenAdminView": {
+        "properties": {
+          "at": {
+            "description": "Time the snapshot in force is read at (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BurdenSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Snapshot in force at `at` (null: none)"
+          },
+          "fields": {
+            "description": "Fields in table order",
+            "items": {
+              "$ref": "#/components/schemas/BurdenField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "history": {
+            "description": "Every snapshot, newest first",
+            "items": {
+              "$ref": "#/components/schemas/BurdenSnapshot"
+            },
+            "title": "History",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fields",
+          "at",
+          "current",
+          "history"
+        ],
+        "title": "BurdenAdminView",
+        "type": "object"
+      },
+      "BurdenChange": {
+        "properties": {
+          "effective_from": {
+            "description": "Time the values apply from, with its zone (ISO 8601)",
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Value per field as the form shows it: rings in rotations, angles in \u00b0, discharge times in s, text for patterns and purpose (null or empty: not set); fields equal to the snapshot in force are not written",
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "effective_from",
+          "values"
+        ],
+        "title": "BurdenChange",
+        "type": "object"
+      },
+      "BurdenField": {
+        "properties": {
+          "charge": {
+            "anyOf": [
+              {
+                "enum": [
+                  "coke",
+                  "non_coke"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charge the field belongs to (null: both)",
+            "title": "Charge"
+          },
+          "kind": {
+            "description": "number or text",
+            "enum": [
+              "number",
+              "text"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "description": "Label for the form",
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "description": "Column of ops_config.burden_history",
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chute position P01..P11 of a ring or angle field, count",
+            "title": "Position"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rings",
+                  "angles"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "rings or angles at the position",
+            "title": "Quantity"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unit of a number: rotations (rings: chute rotations at the position), \u00b0 (chute angle) or s (discharge time); null for text",
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "kind",
+          "unit",
+          "charge",
+          "position",
+          "quantity"
+        ],
+        "title": "BurdenField",
+        "type": "object"
+      },
+      "BurdenSnapshot": {
+        "properties": {
+          "date_time": {
+            "description": "Time the snapshot is effective from (UTC)",
+            "format": "date-time",
+            "title": "Date Time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Snapshot id (ops_config.burden_history)",
+            "title": "Id",
+            "type": "integer"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client address of the write",
+            "title": "Ip Address"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the snapshot came from, e.g. webapp",
+            "title": "Source Type"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Account that wrote it (identity.users UUID)",
+            "title": "User Id"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User name of that account",
+            "title": "User Name"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Value per field: rings in rotations, angles in \u00b0, discharge times in s, text as entered (null: not set)",
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "date_time",
+          "source_type",
+          "ip_address",
+          "user_id",
+          "user_name",
+          "values"
+        ],
+        "title": "BurdenSnapshot",
+        "type": "object"
+      },
       "BurntVsCharged": {
         "properties": {
           "age_s": {
@@ -9585,6 +9847,180 @@
         "title": "HeartbeatEvent",
         "type": "object"
       },
+      "HopperAdminView": {
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HopperSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mapping in force: the latest snapshot (null: none)"
+          },
+          "history": {
+            "description": "Every snapshot, newest first",
+            "items": {
+              "$ref": "#/components/schemas/HopperSnapshot"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "hoppers": {
+            "description": "Active hoppers in plant order",
+            "items": {
+              "$ref": "#/components/schemas/HopperSlot"
+            },
+            "title": "Hoppers",
+            "type": "array"
+          },
+          "materials": {
+            "description": "Materials an assignment can name: UNASSIGNED, then client names",
+            "items": {
+              "type": "string"
+            },
+            "title": "Materials",
+            "type": "array"
+          }
+        },
+        "required": [
+          "hoppers",
+          "materials",
+          "current",
+          "history"
+        ],
+        "title": "HopperAdminView",
+        "type": "object"
+      },
+      "HopperAssignment": {
+        "properties": {
+          "effective_from": {
+            "description": "Time the mapping applies from, with its zone (ISO 8601)",
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "materials": {
+            "additionalProperties": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "description": "Material per hopper as the form shows it (client name; UNASSIGNED: none); hoppers that equal the mapping in force are not written",
+            "title": "Materials",
+            "type": "object"
+          }
+        },
+        "required": [
+          "effective_from",
+          "materials"
+        ],
+        "title": "HopperAssignment",
+        "type": "object"
+      },
+      "HopperSlot": {
+        "properties": {
+          "code": {
+            "description": "Hopper code, hopper_01..hopper_19",
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "Name of the hopper on the plant",
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "display_name"
+        ],
+        "title": "HopperSlot",
+        "type": "object"
+      },
+      "HopperSnapshot": {
+        "properties": {
+          "date_time": {
+            "description": "Time the snapshot is effective from (UTC)",
+            "format": "date-time",
+            "title": "Date Time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Snapshot id (ops_config.hopper_raw_material_history)",
+            "title": "Id",
+            "type": "integer"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client address of the write",
+            "title": "Ip Address"
+          },
+          "materials": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Material per active hopper (client name; UNASSIGNED: none)",
+            "title": "Materials",
+            "type": "object"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the snapshot came from, e.g. webapp",
+            "title": "Source Type"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Account that wrote it (identity.users UUID)",
+            "title": "User Id"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User name of that account",
+            "title": "User Name"
+          }
+        },
+        "required": [
+          "id",
+          "date_time",
+          "source_type",
+          "ip_address",
+          "user_id",
+          "user_name",
+          "materials"
+        ],
+        "title": "HopperSnapshot",
+        "type": "object"
+      },
       "HotMetalChemistryInputs": {
         "additionalProperties": false,
         "properties": {
@@ -12226,6 +12662,41 @@
           }
         },
         "title": "NetworkStats",
+        "type": "object"
+      },
+      "NewUser": {
+        "properties": {
+          "password": {
+            "description": "Password (leading and trailing blanks are removed; stored as its SHA-256 digest, as the Streamlit sign-in reads it)",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "role": {
+            "default": "user",
+            "description": "Role of the account",
+            "enum": [
+              "user",
+              "supervisor",
+              "admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "description": "User name (leading and trailing blanks are removed)",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "NewUser",
         "type": "object"
       },
       "NightlyJob": {
@@ -18140,6 +18611,78 @@
         "title": "SlotProblem",
         "type": "object"
       },
+      "SnapshotWrite": {
+        "properties": {
+          "audit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Id of the audit row of the write (null: none written), count",
+            "title": "Audit Id"
+          },
+          "changed": {
+            "description": "Hoppers or burden fields the snapshot changes",
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Id of the new snapshot (null: none written)",
+            "title": "Id"
+          },
+          "written": {
+            "description": "A snapshot was added (false: no field differs from the one in force)",
+            "title": "Written",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "written",
+          "id",
+          "changed",
+          "audit_id"
+        ],
+        "title": "SnapshotWrite",
+        "type": "object"
+      },
+      "SnapshotsDeleted": {
+        "properties": {
+          "audit_id": {
+            "description": "Id of the audit row that keeps the deleted rows, count",
+            "title": "Audit Id",
+            "type": "integer"
+          },
+          "deleted": {
+            "description": "Ids of the history rows deleted",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Deleted",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deleted",
+          "audit_id"
+        ],
+        "title": "SnapshotsDeleted",
+        "type": "object"
+      },
       "SourceAge": {
         "properties": {
           "age_h": {
@@ -22394,6 +22937,123 @@
         "title": "TwinTransit",
         "type": "object"
       },
+      "UserCreated": {
+        "properties": {
+          "audit_id": {
+            "description": "Id of the audit row of the write, count",
+            "title": "Audit Id",
+            "type": "integer"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserView",
+            "description": "The new account"
+          }
+        },
+        "required": [
+          "user",
+          "audit_id"
+        ],
+        "title": "UserCreated",
+        "type": "object"
+      },
+      "UserView": {
+        "properties": {
+          "created_at": {
+            "description": "Time the account was created (UTC)",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "description": "Account id (identity.users UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "The account can sign in",
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "user",
+                  "supervisor",
+                  "admin"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Role the sign-in uses: user, supervisor or admin",
+            "title": "Role"
+          },
+          "roles": {
+            "description": "Role assignments (identity.user_roles)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "updated_at": {
+            "description": "Time the account last changed (UTC)",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "username": {
+            "description": "User name",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role",
+          "roles",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "UserView",
+        "type": "object"
+      },
+      "UsersView": {
+        "properties": {
+          "roles": {
+            "description": "Roles a new account can have, lowest first",
+            "items": {
+              "enum": [
+                "user",
+                "supervisor",
+                "admin"
+              ],
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "users": {
+            "description": "Every account, active or not, by user name",
+            "items": {
+              "$ref": "#/components/schemas/UserView"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "required": [
+          "roles",
+          "users"
+        ],
+        "title": "UsersView",
+        "type": "object"
+      },
       "Validation": {
         "properties": {
           "expanding": {
@@ -23623,6 +24283,158 @@
         ]
       }
     },
+    "/api/admin/burden": {
+      "get": {
+        "description": "The fields, the snapshot in force now and every snapshot.",
+        "operationId": "admin_burden_distribution",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BurdenAdminView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Burden distribution",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Add a snapshot with the fields that differ from the snapshot in force now, effective from\n``effective_from``, with its audit row (``burden.update``). ``written`` is false when nothing differs. 422 for\nan unknown field or a value of the wrong kind.",
+        "operationId": "admin_update_burden",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BurdenChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotWrite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Change the burden distribution",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/burden/history": {
+      "delete": {
+        "description": "Delete snapshots, with one audit row (``burden.delete``) that keeps them. 404 when an id does not exist\n(nothing is deleted).",
+        "operationId": "admin_delete_burden_history",
+        "parameters": [
+          {
+            "description": "Ids of the history rows to delete, count",
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "description": "Ids of the history rows to delete, count",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotsDeleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Delete burden snapshots",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/burnt-vs-charged": {
       "get": {
         "description": "Agreement per averaging window (CCC, Bland-Altman), the SD(W)\u00b2 split, the lag scan, the raw mass closure and the\nleak-water check of the latest build.",
@@ -24164,6 +24976,250 @@
           }
         },
         "summary": "Approve or reject a version",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/hoppers": {
+      "get": {
+        "description": "Active hoppers, the materials they can hold, the mapping in force and every snapshot.",
+        "operationId": "admin_hopper_mapping",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HopperAdminView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Hopper materials",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Add a snapshot with the hoppers that differ from the mapping in force, effective from ``effective_from``, with\nits audit row (``hopper.assign``). ``written`` is false when nothing differs. 422 for an unknown hopper or a\nmaterial not offered.",
+        "operationId": "admin_assign_hoppers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HopperAssignment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotWrite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Assign materials to hoppers",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/hoppers/history": {
+      "delete": {
+        "description": "Delete snapshots, with one audit row (``hopper.delete``) that keeps them. 404 when an id does not exist\n(nothing is deleted).",
+        "operationId": "admin_delete_hopper_history",
+        "parameters": [
+          {
+            "description": "Ids of the history rows to delete, count",
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "description": "Ids of the history rows to delete, count",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotsDeleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Delete hopper snapshots",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "description": "Every account of ``identity.users`` with its role assignments.",
+        "operationId": "admin_list_users",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsersView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "User accounts",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Add an account as the Streamlit register form does, with its audit row (``user.create``). 409 when the user\nname exists; 422 when the name or password is blank.",
+        "operationId": "admin_register_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewUser"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Register a user",
         "tags": [
           "admin"
         ]

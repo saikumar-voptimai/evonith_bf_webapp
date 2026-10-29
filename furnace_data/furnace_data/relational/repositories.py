@@ -135,15 +135,35 @@ class UserRepository:
             session.add(UserRoleAssignment(user_id=user.id, role=UserRole.ADMIN.value))
             session.commit()
 
+    @staticmethod
+    def create_user(
+        session: Session, *, username: str, password_hash: str, role: str
+    ) -> User:
+        """Add a user row and its role assignment in *session* (not committed).
+
+        The write of :meth:`add_user`, shared with the twin-api's user admin, which
+        commits it together with its audit row.
+
+        Raises:
+            ValueError: *role* is not a :class:`UserRole`.
+            IntegrityError: the username exists (raised by the flush).
+        """
+        role = UserRole(role).value
+        user = User(username=username, password_hash=password_hash, role=role)
+        session.add(user)
+        session.flush()
+        session.add(UserRoleAssignment(user_id=user.id, role=role))
+        session.flush()
+        return user
+
     def add_user(self, username: str, password_hash: str, role: str) -> None:
         """Create a user row."""
         role = UserRole(role).value
         with self._session_factory() as session:
-            user = User(username=username, password_hash=password_hash, role=role)
-            session.add(user)
             try:
-                session.flush()
-                session.add(UserRoleAssignment(user_id=user.id, role=role))
+                self.create_user(
+                    session, username=username, password_hash=password_hash, role=role
+                )
                 session.commit()
             except IntegrityError:
                 session.rollback()
@@ -162,16 +182,53 @@ class UserRepository:
             row = session.execute(stmt).first()
             return (row[0], row[1]) if row else None
 
+    @staticmethod
+    def user_id_in(session: Session, username: str | None) -> UUID | None:
+        """Return the identity UUID of the active user *username* read in *session*."""
+        if not username:
+            return None
+        stmt = select(User.id).where(User.username == username, User.is_active.is_(True))
+        row = session.execute(stmt).first()
+        return row[0] if row else None
+
     def get_user_id(self, username: str | None) -> UUID | None:
         """Return the identity UUID for *username*, if present."""
         if not username:
             return None
         with self._session_factory() as session:
-            stmt = select(User.id).where(
-                User.username == username, User.is_active.is_(True)
-            )
-            row = session.execute(stmt).first()
-            return row[0] if row else None
+            return self.user_id_in(session, username)
+
+    def list_users(self) -> list[dict[str, Any]]:
+        """Return every user (active or not) with its role assignments, by username."""
+        with self._session_factory() as session:
+            users = session.execute(select(User).order_by(User.username.asc())).scalars().all()
+            assigned: dict[UUID, list[str]] = {}
+            for user_id, role in session.execute(
+                select(UserRoleAssignment.user_id, UserRoleAssignment.role).order_by(
+                    UserRoleAssignment.role.asc()
+                )
+            ).all():
+                assigned.setdefault(user_id, []).append(role)
+            return [
+                {
+                    "id": str(user.id),
+                    "username": user.username,
+                    "role": user.role,
+                    "roles": assigned.get(user.id, []),
+                    "is_active": user.is_active,
+                    "created_at": user.created_at,
+                    "updated_at": user.updated_at,
+                }
+                for user in users
+            ]
+
+    def usernames_by_id(self) -> dict[str, str]:
+        """Return usernames keyed by identity UUID text (active or not)."""
+        with self._session_factory() as session:
+            return {
+                str(user_id): username
+                for user_id, username in session.execute(select(User.id, User.username)).all()
+            }
 
 
 class PlantMasterRepository:
@@ -245,8 +302,9 @@ class HopperHistoryRepository:
             return {column: None for column in HOPPER_COLUMNS}
         return {column: getattr(row, column) for column in HOPPER_COLUMNS}
 
-    def _latest_row(
-        self, session: Session, ts: datetime | None = None
+    @staticmethod
+    def latest_row(
+        session: Session, ts: datetime | None = None
     ) -> HopperRawMaterialHistory | None:
         """Return the latest hopper snapshot at or before the timestamp."""
         stmt = select(HopperRawMaterialHistory)
@@ -258,6 +316,46 @@ class HopperHistoryRepository:
         ).limit(1)
         return session.execute(stmt).scalar_one_or_none()
 
+    @classmethod
+    def add_snapshot(
+        cls,
+        session: Session,
+        *,
+        hopper_material_codes: dict[str, str | None],
+        from_time: datetime,
+        user_id: UUID | None,
+        ip_address: str | None,
+        source_type: str = "webapp",
+    ) -> tuple[HopperRawMaterialHistory | None, HopperRawMaterialHistory]:
+        """Add one full hopper-material snapshot in *session* (not committed).
+
+        The snapshot copies the latest one at or before *from_time* and sets the
+        given hoppers (SCD Type-2 as wide snapshots: earlier rows are kept). The
+        write of :meth:`update_hopper_snapshot`, shared with the twin-api's hopper
+        admin. A naive *from_time* is read as UTC.
+
+        Returns:
+            ``(base, row)``: the snapshot copied (None for the first one) and the
+            new row, flushed (its id is set).
+        """
+        from_time = _as_aware_utc(from_time)
+        base = cls.latest_row(session, from_time)
+        snapshot = cls._row_to_codes(base)
+        for hopper, material_code in hopper_material_codes.items():
+            if hopper not in HOPPER_COLUMNS:
+                raise ValueError(f"Invalid hopper: {hopper}")
+            snapshot[hopper] = material_code
+        row = HopperRawMaterialHistory(
+            date_time=from_time,
+            ip_address=ip_address,
+            user_modified=user_id,
+            source_type=source_type,
+            **snapshot,
+        )
+        session.add(row)
+        session.flush()
+        return base, row
+
     def update_hopper_snapshot(
         self,
         *,
@@ -268,36 +366,42 @@ class HopperHistoryRepository:
         source_type: str = "webapp",
     ) -> None:
         """Insert one full hopper-material snapshot."""
-        from_time = _as_aware_utc(from_time)
         with self._session_factory() as session:
-            snapshot = self._row_to_codes(self._latest_row(session, from_time))
-            for hopper, material_code in hopper_material_codes.items():
-                if hopper not in HOPPER_COLUMNS:
-                    raise ValueError(f"Invalid hopper: {hopper}")
-                snapshot[hopper] = material_code
-            session.add(
-                HopperRawMaterialHistory(
-                    date_time=from_time,
-                    ip_address=ip_address,
-                    user_modified=user_id,
-                    source_type=source_type,
-                    **snapshot,
-                )
+            self.add_snapshot(
+                session,
+                hopper_material_codes=hopper_material_codes,
+                from_time=from_time,
+                user_id=user_id,
+                ip_address=ip_address,
+                source_type=source_type,
             )
             session.commit()
 
     def get_current_hopper_material_codes(self) -> dict[str, str | None]:
         """Return current hopper to material-code map."""
         with self._session_factory() as session:
-            return self._row_to_codes(self._latest_row(session))
+            return self._row_to_codes(self.latest_row(session))
 
     def get_hopper_material_code_at(self, hopper: str, ts: datetime) -> str | None:
         """Return assigned material code for hopper at timestamp."""
         if hopper not in HOPPER_COLUMNS:
             raise ValueError(f"Invalid hopper: {hopper}")
         with self._session_factory() as session:
-            row = self._latest_row(session, ts)
+            row = self.latest_row(session, ts)
             return getattr(row, hopper) if row else None
+
+    @classmethod
+    def row_payload(cls, row: HopperRawMaterialHistory) -> dict[str, Any]:
+        """Return a history row as the mapping of :meth:`get_hopper_material_history`."""
+        payload = {
+            "id": row.id,
+            "date_time": row.date_time,
+            "source_type": row.source_type,
+            "ip_address": row.ip_address,
+            "user_modified": str(row.user_modified) if row.user_modified else None,
+        }
+        payload.update(cls._row_to_codes(row))
+        return payload
 
     def get_hopper_material_history(self) -> list[dict[str, Any]]:
         """Return complete hopper snapshot history rows."""
@@ -307,33 +411,46 @@ class HopperHistoryRepository:
                 HopperRawMaterialHistory.id.desc(),
             )
             rows = session.execute(stmt).scalars().all()
-            out = []
-            for row in rows:
-                payload = {
-                    "id": row.id,
-                    "date_time": row.date_time,
-                    "source_type": row.source_type,
-                    "ip_address": row.ip_address,
-                    "user_modified": (
-                        str(row.user_modified) if row.user_modified else None
-                    ),
-                }
-                payload.update(
-                    {column: getattr(row, column) for column in HOPPER_COLUMNS}
+            return [self.row_payload(row) for row in rows]
+
+    @staticmethod
+    def delete_rows(
+        session: Session, record_ids: list[int]
+    ) -> list[HopperRawMaterialHistory]:
+        """Delete hopper snapshot rows by IDs in *session* (not committed).
+
+        The write of :meth:`delete_hopper_material_history`, shared with the
+        twin-api's hopper admin. Returns the rows deleted (locked before the
+        delete), oldest first.
+        """
+        if not record_ids:
+            return []
+        rows = (
+            session.execute(
+                select(HopperRawMaterialHistory)
+                .where(HopperRawMaterialHistory.id.in_(record_ids))
+                .order_by(
+                    HopperRawMaterialHistory.date_time.asc(),
+                    HopperRawMaterialHistory.id.asc(),
                 )
-                out.append(payload)
-            return out
+                .with_for_update()
+            )
+            .scalars()
+            .all()
+        )
+        session.execute(
+            delete(HopperRawMaterialHistory).where(
+                HopperRawMaterialHistory.id.in_(record_ids)
+            )
+        )
+        return list(rows)
 
     def delete_hopper_material_history(self, record_ids: list[int]) -> None:
         """Delete hopper snapshot rows by IDs."""
         if not record_ids:
             return
         with self._session_factory() as session:
-            session.execute(
-                delete(HopperRawMaterialHistory).where(
-                    HopperRawMaterialHistory.id.in_(record_ids)
-                )
-            )
+            self.delete_rows(session, record_ids)
             session.commit()
 
 
@@ -357,8 +474,9 @@ class BurdenHistoryRepository:
         """Return the wide burden snapshot fields tracked by the app."""
         return list(BURDEN_VALUE_COLUMNS)
 
-    def _latest_row(
-        self, session: Session, ts: datetime | None = None
+    @staticmethod
+    def latest_row(
+        session: Session, ts: datetime | None = None
     ) -> BurdenHistory | None:
         """Return the latest burden snapshot at or before the timestamp."""
         stmt = select(BurdenHistory)
@@ -393,6 +511,57 @@ class BurdenHistoryRepository:
             ip=ip,
         )
 
+    @classmethod
+    def stored_value(cls, field: str, value: Any) -> Any:
+        """Return *value* as a snapshot stores it: ``""`` becomes None, text fields
+        keep their value, other fields become floats."""
+        if value == "":
+            return None
+        if field in cls.TEXT_FIELDS or value is None:
+            return value
+        return float(value)
+
+    @classmethod
+    def add_snapshot(
+        cls,
+        session: Session,
+        *,
+        row_values: dict[str, Any],
+        timestamp: datetime,
+        user_id: UUID | None = None,
+        ip: str = "",
+        source_type: str = "webapp",
+    ) -> tuple[BurdenHistory | None, BurdenHistory]:
+        """Add one full burden snapshot in *session* (not committed).
+
+        The snapshot copies the latest one at or before *timestamp* and sets the
+        given fields (:meth:`stored_value`); earlier rows are kept (SCD Type-2 as
+        wide snapshots). The write of :meth:`update_burden_row`, shared with the
+        twin-api's burden admin. A naive *timestamp* is read as UTC.
+
+        Returns:
+            ``(base, row)``: the snapshot copied (None for the first one) and the
+            new row, flushed (its id is set).
+        """
+        timestamp = _as_aware_utc(timestamp)
+        unknown = sorted(set(row_values) - set(BURDEN_VALUE_COLUMNS))
+        if unknown:
+            raise ValueError(f"Invalid burden field(s): {unknown}")
+        base = cls.latest_row(session, timestamp)
+        snapshot = cls._row_to_values(base)
+        for field, value in row_values.items():
+            snapshot[field] = cls.stored_value(field, value)
+        row = BurdenHistory(
+            date_time=timestamp,
+            source_type=source_type,
+            ip_address=ip,
+            user_modified=user_id,
+            **snapshot,
+        )
+        session.add(row)
+        session.flush()
+        return base, row
+
     def update_burden_row(
         self,
         *,
@@ -403,30 +572,29 @@ class BurdenHistoryRepository:
         source_type: str = "webapp",
     ) -> None:
         """Insert one full burden snapshot copied from latest prior row plus edits."""
-        timestamp = _as_aware_utc(timestamp)
-        unknown = sorted(set(row_values) - set(BURDEN_VALUE_COLUMNS))
-        if unknown:
-            raise ValueError(f"Invalid burden field(s): {unknown}")
-
         with self._session_factory() as session:
-            snapshot = self._row_to_values(self._latest_row(session, timestamp))
-            for field, value in row_values.items():
-                if value == "":
-                    snapshot[field] = None
-                elif field in self.TEXT_FIELDS or value is None:
-                    snapshot[field] = value
-                else:
-                    snapshot[field] = float(value)
-            session.add(
-                BurdenHistory(
-                    date_time=timestamp,
-                    source_type=source_type,
-                    ip_address=ip,
-                    user_modified=user_id,
-                    **snapshot,
-                )
+            self.add_snapshot(
+                session,
+                row_values=row_values,
+                timestamp=timestamp,
+                user_id=user_id,
+                ip=ip,
+                source_type=source_type,
             )
             session.commit()
+
+    @classmethod
+    def row_payload(cls, row: BurdenHistory) -> dict[str, Any]:
+        """Return a history row as the mapping of :meth:`get_burden_history`."""
+        payload = {
+            "id": row.id,
+            "date_time": row.date_time,
+            "source_type": row.source_type,
+            "ip_address": row.ip_address,
+            "user_modified": str(row.user_modified) if row.user_modified else None,
+        }
+        payload.update(cls._row_to_values(row))
+        return payload
 
     def get_burden_history(self) -> list[dict[str, Any]]:
         """Return full burden snapshot history."""
@@ -436,34 +604,42 @@ class BurdenHistoryRepository:
                 BurdenHistory.id.desc(),
             )
             rows = session.execute(stmt).scalars().all()
-            out = []
-            for row in rows:
-                payload = {
-                    "id": row.id,
-                    "date_time": row.date_time,
-                    "source_type": row.source_type,
-                    "ip_address": row.ip_address,
-                    "user_modified": (
-                        str(row.user_modified) if row.user_modified else None
-                    ),
-                }
-                payload.update(self._row_to_values(row))
-                out.append(payload)
-            return out
+            return [self.row_payload(row) for row in rows]
 
     def get_all_current_burden_values(self, ts: datetime) -> dict[str, Any]:
         """Return active burden values at timestamp."""
         with self._session_factory() as session:
-            return self._row_to_values(self._latest_row(session, ts))
+            return self._row_to_values(self.latest_row(session, ts))
+
+    @staticmethod
+    def delete_rows(session: Session, record_ids: list[int]) -> list[BurdenHistory]:
+        """Delete burden snapshot rows by IDs in *session* (not committed).
+
+        The write of :meth:`delete_burden_history`, shared with the twin-api's
+        burden admin. Returns the rows deleted (locked before the delete), oldest
+        first.
+        """
+        if not record_ids:
+            return []
+        rows = (
+            session.execute(
+                select(BurdenHistory)
+                .where(BurdenHistory.id.in_(record_ids))
+                .order_by(BurdenHistory.date_time.asc(), BurdenHistory.id.asc())
+                .with_for_update()
+            )
+            .scalars()
+            .all()
+        )
+        session.execute(delete(BurdenHistory).where(BurdenHistory.id.in_(record_ids)))
+        return list(rows)
 
     def delete_burden_history(self, record_ids: list[int]) -> None:
         """Delete burden snapshot rows by IDs."""
         if not record_ids:
             return
         with self._session_factory() as session:
-            session.execute(
-                delete(BurdenHistory).where(BurdenHistory.id.in_(record_ids))
-            )
+            self.delete_rows(session, record_ids)
             session.commit()
 
     def fetch_distribution_frame(
@@ -475,7 +651,7 @@ class BurdenHistoryRepository:
         )
         window_end = datetime.combine(end_date, time.max).replace(tzinfo=timezone.utc)
         with self._session_factory() as session:
-            prior = self._latest_row(session, window_start)
+            prior = self.latest_row(session, window_start)
             stmt = (
                 select(BurdenHistory)
                 .where(BurdenHistory.date_time >= window_start)

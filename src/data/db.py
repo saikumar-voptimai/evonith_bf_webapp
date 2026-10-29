@@ -13,6 +13,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
 from data.material_mapping import MaterialNameMapper
 from furnace_data.relational import (
@@ -28,15 +29,30 @@ load_dotenv()
 
 
 class _RelationalService:
-    """Base class that owns a PostgreSQL engine and session factory."""
+    """Base class that owns a PostgreSQL engine and session factory.
 
-    def __init__(self, db_url: str | None = None) -> None:
+    With ``session_factory`` the service works on that factory's database and
+    owns no engine (the twin-api passes the twin store's sessions, so a write and
+    its audit row share one transaction).
+    """
+
+    def __init__(
+        self,
+        db_url: str | None = None,
+        *,
+        session_factory: sessionmaker[Session] | None = None,
+    ) -> None:
+        if session_factory is not None:
+            self.engine = None
+            self._session_factory = session_factory
+            return
         self.engine = build_relational_engine(db_url=db_url)
         self._session_factory = build_relational_session_factory(self.engine)
 
     def dispose(self) -> None:
-        """Dispose the underlying SQLAlchemy engine."""
-        self.engine.dispose()
+        """Dispose the underlying SQLAlchemy engine (none with a given session factory)."""
+        if self.engine is not None:
+            self.engine.dispose()
 
 
 def password_digest(password: str) -> str:
@@ -47,8 +63,14 @@ def password_digest(password: str) -> str:
 class UserDataService(_RelationalService):
     """User registration and credential validation service."""
 
-    def __init__(self, db_url: str | None = None, *, seed_defaults: bool = True) -> None:
-        super().__init__(db_url=db_url)
+    def __init__(
+        self,
+        db_url: str | None = None,
+        *,
+        seed_defaults: bool = True,
+        session_factory: sessionmaker[Session] | None = None,
+    ) -> None:
+        super().__init__(db_url=db_url, session_factory=session_factory)
         self._user_repository = UserRepository(self._session_factory)
         if seed_defaults:
             self._seed_defaults()
@@ -94,8 +116,13 @@ class UserDataService(_RelationalService):
 class PlantMasterService(_RelationalService):
     """Plant master lookup service used by hopper/material workflows."""
 
-    def __init__(self, db_url: str | None = None) -> None:
-        super().__init__(db_url=db_url)
+    def __init__(
+        self,
+        db_url: str | None = None,
+        *,
+        session_factory: sessionmaker[Session] | None = None,
+    ) -> None:
+        super().__init__(db_url=db_url, session_factory=session_factory)
         self._plant_master_repository = PlantMasterRepository(self._session_factory)
         self._material_mapper = MaterialNameMapper.from_file()
         self.refresh()
@@ -146,8 +173,13 @@ class PlantMasterService(_RelationalService):
 class HopperConfigService(PlantMasterService):
     """Hopper-material snapshot service."""
 
-    def __init__(self, db_url: str | None = None) -> None:
-        super().__init__(db_url=db_url)
+    def __init__(
+        self,
+        db_url: str | None = None,
+        *,
+        session_factory: sessionmaker[Session] | None = None,
+    ) -> None:
+        super().__init__(db_url=db_url, session_factory=session_factory)
         self._user_repository = UserRepository(self._session_factory)
         self._hopper_repository = HopperHistoryRepository(self._session_factory)
 
@@ -177,19 +209,26 @@ class HopperConfigService(PlantMasterService):
         ip_address: str,
     ) -> None:
         """Record one full hopper-material snapshot from client material names."""
-        unknown_hoppers = sorted(set(hopper_materials) - set(self.hoppers))
-        if unknown_hoppers:
-            raise ValueError(f"Invalid hopper(s): {unknown_hoppers}")
-        codes = {
-            hopper: self.client_material_to_code(material)
-            for hopper, material in hopper_materials.items()
-        }
         self._hopper_repository.update_hopper_snapshot(
-            hopper_material_codes=codes,
+            hopper_material_codes=self.material_codes(hopper_materials),
             from_time=from_time,
             user_id=self._user_repository.get_user_id(modifier),
             ip_address=ip_address,
         )
+
+    def material_codes(self, hopper_materials: dict[str, str]) -> dict[str, str | None]:
+        """Material codes of client material names by hopper (``UNASSIGNED``: None).
+
+        Raises:
+            ValueError: an inactive hopper or an unknown / inactive material.
+        """
+        unknown_hoppers = sorted(set(hopper_materials) - set(self.hoppers))
+        if unknown_hoppers:
+            raise ValueError(f"Invalid hopper(s): {unknown_hoppers}")
+        return {
+            hopper: self.client_material_to_code(material)
+            for hopper, material in hopper_materials.items()
+        }
 
     def get_current_hopper_materials(self) -> dict[str, str]:
         """Return current hopper-to-client-material mapping."""
@@ -222,8 +261,13 @@ class HopperConfigService(PlantMasterService):
 class BurdenConfigService(_RelationalService):
     """Burden distribution snapshot service."""
 
-    def __init__(self, db_url: str | None = None) -> None:
-        super().__init__(db_url=db_url)
+    def __init__(
+        self,
+        db_url: str | None = None,
+        *,
+        session_factory: sessionmaker[Session] | None = None,
+    ) -> None:
+        super().__init__(db_url=db_url, session_factory=session_factory)
         self._user_repository = UserRepository(self._session_factory)
         self._burden_repository = BurdenHistoryRepository(self._session_factory)
         self.burden_fields = self._burden_repository.burden_fields()

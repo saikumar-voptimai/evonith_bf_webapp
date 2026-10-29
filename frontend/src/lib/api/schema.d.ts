@@ -25,6 +25,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/burden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Burden distribution
+         * @description The fields, the snapshot in force now and every snapshot.
+         */
+        get: operations["admin_burden_distribution"];
+        put?: never;
+        /**
+         * Change the burden distribution
+         * @description Add a snapshot with the fields that differ from the snapshot in force now, effective from
+         *     ``effective_from``, with its audit row (``burden.update``). ``written`` is false when nothing differs. 422 for
+         *     an unknown field or a value of the wrong kind.
+         */
+        post: operations["admin_update_burden"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/burden/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete burden snapshots
+         * @description Delete snapshots, with one audit row (``burden.delete``) that keeps them. 404 when an id does not exist
+         *     (nothing is deleted).
+         */
+        delete: operations["admin_delete_burden_history"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/burnt-vs-charged": {
         parameters: {
             query?: never;
@@ -194,6 +241,78 @@ export interface paths {
          *     it changes a status and the reviewer proposed it, or (approval) when it was not made from the version in force.
          */
         post: operations["admin_review_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/hoppers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hopper materials
+         * @description Active hoppers, the materials they can hold, the mapping in force and every snapshot.
+         */
+        get: operations["admin_hopper_mapping"];
+        put?: never;
+        /**
+         * Assign materials to hoppers
+         * @description Add a snapshot with the hoppers that differ from the mapping in force, effective from ``effective_from``, with
+         *     its audit row (``hopper.assign``). ``written`` is false when nothing differs. 422 for an unknown hopper or a
+         *     material not offered.
+         */
+        post: operations["admin_assign_hoppers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/hoppers/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete hopper snapshots
+         * @description Delete snapshots, with one audit row (``hopper.delete``) that keeps them. 404 when an id does not exist
+         *     (nothing is deleted).
+         */
+        delete: operations["admin_delete_hopper_history"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * User accounts
+         * @description Every account of ``identity.users`` with its role assignments.
+         */
+        get: operations["admin_list_users"];
+        put?: never;
+        /**
+         * Register a user
+         * @description Add an account as the Streamlit register form does, with its audit row (``user.create``). 409 when the user
+         *     name exists; 422 when the name or password is blank.
+         */
+        post: operations["admin_register_user"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2901,6 +3020,123 @@ export interface components {
              * @description Limits broken, count
              */
             violations?: number | null;
+        };
+        /** BurdenAdminView */
+        BurdenAdminView: {
+            /**
+             * At
+             * Format: date-time
+             * @description Time the snapshot in force is read at (UTC)
+             */
+            at: string;
+            /** @description Snapshot in force at `at` (null: none) */
+            current: components["schemas"]["BurdenSnapshot"] | null;
+            /**
+             * Fields
+             * @description Fields in table order
+             */
+            fields: components["schemas"]["BurdenField"][];
+            /**
+             * History
+             * @description Every snapshot, newest first
+             */
+            history: components["schemas"]["BurdenSnapshot"][];
+        };
+        /** BurdenChange */
+        BurdenChange: {
+            /**
+             * Effective From
+             * Format: date-time
+             * @description Time the values apply from, with its zone (ISO 8601)
+             */
+            effective_from: string;
+            /**
+             * Values
+             * @description Value per field as the form shows it: rings in rotations, angles in °, discharge times in s, text for patterns and purpose (null or empty: not set); fields equal to the snapshot in force are not written
+             */
+            values: {
+                [key: string]: number | string | null;
+            };
+        };
+        /** BurdenField */
+        BurdenField: {
+            /**
+             * Charge
+             * @description Charge the field belongs to (null: both)
+             */
+            charge: ("coke" | "non_coke") | null;
+            /**
+             * Kind
+             * @description number or text
+             * @enum {string}
+             */
+            kind: "number" | "text";
+            /**
+             * Label
+             * @description Label for the form
+             */
+            label: string;
+            /**
+             * Name
+             * @description Column of ops_config.burden_history
+             */
+            name: string;
+            /**
+             * Position
+             * @description Chute position P01..P11 of a ring or angle field, count
+             */
+            position: number | null;
+            /**
+             * Quantity
+             * @description rings or angles at the position
+             */
+            quantity: ("rings" | "angles") | null;
+            /**
+             * Unit
+             * @description Unit of a number: rotations (rings: chute rotations at the position), ° (chute angle) or s (discharge time); null for text
+             */
+            unit: string | null;
+        };
+        /** BurdenSnapshot */
+        BurdenSnapshot: {
+            /**
+             * Date Time
+             * Format: date-time
+             * @description Time the snapshot is effective from (UTC)
+             */
+            date_time: string;
+            /**
+             * Id
+             * @description Snapshot id (ops_config.burden_history)
+             */
+            id: number;
+            /**
+             * Ip Address
+             * @description Client address of the write
+             */
+            ip_address: string | null;
+            /**
+             * Source Type
+             * @description Where the snapshot came from, e.g. webapp
+             */
+            source_type: string | null;
+            /**
+             * User Id
+             * @description Account that wrote it (identity.users UUID)
+             */
+            user_id: string | null;
+            /**
+             * User Name
+             * @description User name of that account
+             */
+            user_name: string | null;
+            /**
+             * Values
+             * @description Value per field: rings in rotations, angles in °, discharge times in s, text as entered (null: not set)
+             */
+            values: {
+                [key: string]: number | string | null;
+            };
         };
         /** BurntVsCharged */
         BurntVsCharged: {
@@ -6301,6 +6537,96 @@ export interface components {
              */
             type: "heartbeat";
         };
+        /** HopperAdminView */
+        HopperAdminView: {
+            /** @description Mapping in force: the latest snapshot (null: none) */
+            current: components["schemas"]["HopperSnapshot"] | null;
+            /**
+             * History
+             * @description Every snapshot, newest first
+             */
+            history: components["schemas"]["HopperSnapshot"][];
+            /**
+             * Hoppers
+             * @description Active hoppers in plant order
+             */
+            hoppers: components["schemas"]["HopperSlot"][];
+            /**
+             * Materials
+             * @description Materials an assignment can name: UNASSIGNED, then client names
+             */
+            materials: string[];
+        };
+        /** HopperAssignment */
+        HopperAssignment: {
+            /**
+             * Effective From
+             * Format: date-time
+             * @description Time the mapping applies from, with its zone (ISO 8601)
+             */
+            effective_from: string;
+            /**
+             * Materials
+             * @description Material per hopper as the form shows it (client name; UNASSIGNED: none); hoppers that equal the mapping in force are not written
+             */
+            materials: {
+                [key: string]: string;
+            };
+        };
+        /** HopperSlot */
+        HopperSlot: {
+            /**
+             * Code
+             * @description Hopper code, hopper_01..hopper_19
+             */
+            code: string;
+            /**
+             * Display Name
+             * @description Name of the hopper on the plant
+             */
+            display_name: string;
+        };
+        /** HopperSnapshot */
+        HopperSnapshot: {
+            /**
+             * Date Time
+             * Format: date-time
+             * @description Time the snapshot is effective from (UTC)
+             */
+            date_time: string;
+            /**
+             * Id
+             * @description Snapshot id (ops_config.hopper_raw_material_history)
+             */
+            id: number;
+            /**
+             * Ip Address
+             * @description Client address of the write
+             */
+            ip_address: string | null;
+            /**
+             * Materials
+             * @description Material per active hopper (client name; UNASSIGNED: none)
+             */
+            materials: {
+                [key: string]: string;
+            };
+            /**
+             * Source Type
+             * @description Where the snapshot came from, e.g. webapp
+             */
+            source_type: string | null;
+            /**
+             * User Id
+             * @description Account that wrote it (identity.users UUID)
+             */
+            user_id: string | null;
+            /**
+             * User Name
+             * @description User name of that account
+             */
+            user_name: string | null;
+        };
         /** HotMetalChemistryInputs */
         HotMetalChemistryInputs: {
             /**
@@ -7570,6 +7896,26 @@ export interface components {
              * @description Network solves of the job's process, count
              */
             solves?: number | null;
+        };
+        /** NewUser */
+        NewUser: {
+            /**
+             * Password
+             * @description Password (leading and trailing blanks are removed; stored as its SHA-256 digest, as the Streamlit sign-in reads it)
+             */
+            password: string;
+            /**
+             * Role
+             * @description Role of the account
+             * @default user
+             * @enum {string}
+             */
+            role: "user" | "supervisor" | "admin";
+            /**
+             * Username
+             * @description User name (leading and trailing blanks are removed)
+             */
+            username: string;
         };
         /** NightlyJob */
         NightlyJob: {
@@ -10437,6 +10783,42 @@ export interface components {
              */
             state: "failed" | "cancelled" | "running" | "skipped" | "missed";
         };
+        /** SnapshotWrite */
+        SnapshotWrite: {
+            /**
+             * Audit Id
+             * @description Id of the audit row of the write (null: none written), count
+             */
+            audit_id: number | null;
+            /**
+             * Changed
+             * @description Hoppers or burden fields the snapshot changes
+             */
+            changed: string[];
+            /**
+             * Id
+             * @description Id of the new snapshot (null: none written)
+             */
+            id: number | null;
+            /**
+             * Written
+             * @description A snapshot was added (false: no field differs from the one in force)
+             */
+            written: boolean;
+        };
+        /** SnapshotsDeleted */
+        SnapshotsDeleted: {
+            /**
+             * Audit Id
+             * @description Id of the audit row that keeps the deleted rows, count
+             */
+            audit_id: number;
+            /**
+             * Deleted
+             * @description Ids of the history rows deleted
+             */
+            deleted: number[];
+        };
         /** SourceAge */
         SourceAge: {
             /**
@@ -12638,6 +13020,69 @@ export interface components {
              */
             tau_raceway_rate_h?: number | null;
         };
+        /** UserCreated */
+        UserCreated: {
+            /**
+             * Audit Id
+             * @description Id of the audit row of the write, count
+             */
+            audit_id: number;
+            /** @description The new account */
+            user: components["schemas"]["UserView"];
+        };
+        /** UserView */
+        UserView: {
+            /**
+             * Created At
+             * Format: date-time
+             * @description Time the account was created (UTC)
+             */
+            created_at: string;
+            /**
+             * Id
+             * @description Account id (identity.users UUID)
+             */
+            id: string;
+            /**
+             * Is Active
+             * @description The account can sign in
+             */
+            is_active: boolean;
+            /**
+             * Role
+             * @description Role the sign-in uses: user, supervisor or admin
+             */
+            role: ("user" | "supervisor" | "admin") | string;
+            /**
+             * Roles
+             * @description Role assignments (identity.user_roles)
+             */
+            roles: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Time the account last changed (UTC)
+             */
+            updated_at: string;
+            /**
+             * Username
+             * @description User name
+             */
+            username: string;
+        };
+        /** UsersView */
+        UsersView: {
+            /**
+             * Roles
+             * @description Roles a new account can have, lowest first
+             */
+            roles: ("user" | "supervisor" | "admin")[];
+            /**
+             * Users
+             * @description Every account, active or not, by user name
+             */
+            users: components["schemas"]["UserView"][];
+        };
         /** Validation */
         Validation: {
             /** @description 2026 expanding-window test (parameters from earlier days) */
@@ -13194,6 +13639,127 @@ export interface operations {
             };
         };
     };
+    admin_burden_distribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BurdenAdminView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_update_burden: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BurdenChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotWrite"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_delete_burden_history: {
+        parameters: {
+            query: {
+                /** @description Ids of the history rows to delete, count */
+                ids: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotsDeleted"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     admin_burnt_vs_charged: {
         parameters: {
             query?: {
@@ -13547,6 +14113,207 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactsVersionView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_hopper_mapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HopperAdminView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_assign_hoppers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HopperAssignment"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotWrite"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_delete_hopper_history: {
+        parameters: {
+            query: {
+                /** @description Ids of the history rows to delete, count */
+                ids: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotsDeleted"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_list_users: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsersView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_register_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewUser"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserCreated"];
                 };
             };
             /** @description Client error (problem+json) */

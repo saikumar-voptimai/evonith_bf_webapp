@@ -1,0 +1,936 @@
+{
+	"users": {
+		"roles": ["user", "supervisor", "admin"],
+		"users": [
+			{
+				"id": "f406575a-e0d5-4564-a9e7-b21e0cf91945",
+				"username": "adm",
+				"role": "admin",
+				"roles": ["admin"],
+				"is_active": true,
+				"created_at": "2026-10-29T17:36:03.571178Z",
+				"updated_at": "2026-10-29T17:36:03.571178Z"
+			},
+			{
+				"id": "f230737d-938d-4d7e-b85d-0f5da0039b8a",
+				"username": "admin",
+				"role": "admin",
+				"roles": ["admin"],
+				"is_active": true,
+				"created_at": "2026-10-29T17:36:03.523030Z",
+				"updated_at": "2026-10-29T17:36:03.523030Z"
+			},
+			{
+				"id": "597b2ec8-597e-40e3-96b9-8b9313212787",
+				"username": "shift.engineer",
+				"role": "supervisor",
+				"roles": ["supervisor"],
+				"is_active": true,
+				"created_at": "2026-10-29T17:36:03.683779Z",
+				"updated_at": "2026-10-29T17:36:03.683779Z"
+			}
+		]
+	},
+	"hoppers": {
+		"hoppers": [
+			{
+				"code": "hopper_01",
+				"display_name": "Bin 1"
+			},
+			{
+				"code": "hopper_02",
+				"display_name": "Bin 2"
+			},
+			{
+				"code": "hopper_03",
+				"display_name": "Bin 3"
+			},
+			{
+				"code": "hopper_04",
+				"display_name": "Bin 4"
+			},
+			{
+				"code": "hopper_05",
+				"display_name": "Bin 5"
+			},
+			{
+				"code": "hopper_06",
+				"display_name": "Bin 6"
+			},
+			{
+				"code": "hopper_07",
+				"display_name": "Bin 7"
+			},
+			{
+				"code": "hopper_08",
+				"display_name": "Bin 8"
+			},
+			{
+				"code": "hopper_09",
+				"display_name": "Bin 9"
+			},
+			{
+				"code": "hopper_10",
+				"display_name": "Bin 10"
+			},
+			{
+				"code": "hopper_11",
+				"display_name": "Bin 11"
+			},
+			{
+				"code": "hopper_12",
+				"display_name": "Bin 12"
+			},
+			{
+				"code": "hopper_13",
+				"display_name": "Bin 13"
+			},
+			{
+				"code": "hopper_14",
+				"display_name": "Bin 14"
+			},
+			{
+				"code": "hopper_15",
+				"display_name": "Bin 15"
+			},
+			{
+				"code": "hopper_16",
+				"display_name": "Bin 16"
+			},
+			{
+				"code": "hopper_17",
+				"display_name": "Bin 17"
+			},
+			{
+				"code": "hopper_18",
+				"display_name": "Bin 18"
+			}
+		],
+		"materials": [
+			"UNASSIGNED",
+			"Coke Online",
+			"Coke Offline",
+			"Nut Coke",
+			"Sinter",
+			"Lloyds Pellet",
+			"Dolomite",
+			"Quartz",
+			"Lime Stone",
+			"Lloyds CLO",
+			"Lloyds Metals Iron Fines Oversize (+10MM)",
+			"LLOYDS FINES OVER SIZE",
+			"NMDC Limited (Donimalai)",
+			"NMDC Limited (Donimalai) Iron Fines Oversize (+10MM)",
+			"Donimalai Fines Over size",
+			"NMDC Limited Crushed ROM (10-40MM) (Kirandul)",
+			"NMDC Limited Lumps (10-150 MM) (Kirandul)",
+			"ACORE INDUSTRIES PRIVATE LIMITED (MANGANESE ORE LUMP)",
+			"MN Ore",
+			"TITANI FERROUS CLO",
+			"Geomin CLO",
+			"Bacheli oversize CLO",
+			"GOMTI",
+			"JAYASWAL NECO INDUSTRIES LIMITED",
+			"JRS Ventures",
+			"Sarda Energy & Minerals Limited"
+		],
+		"current": {
+			"id": 3,
+			"date_time": "2025-07-05T00:30:00Z",
+			"source_type": "webapp",
+			"ip_address": "10.0.0.5",
+			"user_id": "f406575a-e0d5-4564-a9e7-b21e0cf91945",
+			"user_name": "adm",
+			"materials": {
+				"hopper_01": "Sinter",
+				"hopper_02": "Sinter",
+				"hopper_03": "Lloyds CLO",
+				"hopper_04": "Quartz",
+				"hopper_05": "UNASSIGNED",
+				"hopper_06": "UNASSIGNED",
+				"hopper_07": "Lloyds Metals Iron Fines Oversize (+10MM)",
+				"hopper_08": "UNASSIGNED",
+				"hopper_09": "UNASSIGNED",
+				"hopper_10": "UNASSIGNED",
+				"hopper_11": "UNASSIGNED",
+				"hopper_12": "UNASSIGNED",
+				"hopper_13": "UNASSIGNED",
+				"hopper_14": "UNASSIGNED",
+				"hopper_15": "UNASSIGNED",
+				"hopper_16": "UNASSIGNED",
+				"hopper_17": "UNASSIGNED",
+				"hopper_18": "UNASSIGNED"
+			}
+		},
+		"history": [
+			{
+				"id": 3,
+				"date_time": "2025-07-05T00:30:00Z",
+				"source_type": "webapp",
+				"ip_address": "10.0.0.5",
+				"user_id": "f406575a-e0d5-4564-a9e7-b21e0cf91945",
+				"user_name": "adm",
+				"materials": {
+					"hopper_01": "Sinter",
+					"hopper_02": "Sinter",
+					"hopper_03": "Lloyds CLO",
+					"hopper_04": "Quartz",
+					"hopper_05": "UNASSIGNED",
+					"hopper_06": "UNASSIGNED",
+					"hopper_07": "Lloyds Metals Iron Fines Oversize (+10MM)",
+					"hopper_08": "UNASSIGNED",
+					"hopper_09": "UNASSIGNED",
+					"hopper_10": "UNASSIGNED",
+					"hopper_11": "UNASSIGNED",
+					"hopper_12": "UNASSIGNED",
+					"hopper_13": "UNASSIGNED",
+					"hopper_14": "UNASSIGNED",
+					"hopper_15": "UNASSIGNED",
+					"hopper_16": "UNASSIGNED",
+					"hopper_17": "UNASSIGNED",
+					"hopper_18": "UNASSIGNED"
+				}
+			},
+			{
+				"id": 2,
+				"date_time": "2025-07-01T08:30:00Z",
+				"source_type": "webapp",
+				"ip_address": "10.0.0.5",
+				"user_id": "f406575a-e0d5-4564-a9e7-b21e0cf91945",
+				"user_name": "adm",
+				"materials": {
+					"hopper_01": "Sinter",
+					"hopper_02": "Sinter",
+					"hopper_03": "Lloyds CLO",
+					"hopper_04": "UNASSIGNED",
+					"hopper_05": "UNASSIGNED",
+					"hopper_06": "UNASSIGNED",
+					"hopper_07": "Lloyds Metals Iron Fines Oversize (+10MM)",
+					"hopper_08": "UNASSIGNED",
+					"hopper_09": "UNASSIGNED",
+					"hopper_10": "UNASSIGNED",
+					"hopper_11": "UNASSIGNED",
+					"hopper_12": "UNASSIGNED",
+					"hopper_13": "UNASSIGNED",
+					"hopper_14": "UNASSIGNED",
+					"hopper_15": "UNASSIGNED",
+					"hopper_16": "UNASSIGNED",
+					"hopper_17": "UNASSIGNED",
+					"hopper_18": "UNASSIGNED"
+				}
+			},
+			{
+				"id": 1,
+				"date_time": "2025-06-28T00:30:00Z",
+				"source_type": "import",
+				"ip_address": null,
+				"user_id": null,
+				"user_name": null,
+				"materials": {
+					"hopper_01": "Sinter",
+					"hopper_02": "Coke Online",
+					"hopper_03": "Lloyds CLO",
+					"hopper_04": "UNASSIGNED",
+					"hopper_05": "Dolomite",
+					"hopper_06": "UNASSIGNED",
+					"hopper_07": "Quartz",
+					"hopper_08": "UNASSIGNED",
+					"hopper_09": "UNASSIGNED",
+					"hopper_10": "UNASSIGNED",
+					"hopper_11": "UNASSIGNED",
+					"hopper_12": "UNASSIGNED",
+					"hopper_13": "UNASSIGNED",
+					"hopper_14": "UNASSIGNED",
+					"hopper_15": "UNASSIGNED",
+					"hopper_16": "UNASSIGNED",
+					"hopper_17": "UNASSIGNED",
+					"hopper_18": "UNASSIGNED"
+				}
+			}
+		]
+	},
+	"burden": {
+		"fields": [
+			{
+				"name": "coke_p01_rings",
+				"label": "Coke P01 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 1,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p02_rings",
+				"label": "Coke P02 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 2,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p03_rings",
+				"label": "Coke P03 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 3,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p04_rings",
+				"label": "Coke P04 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 4,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p05_rings",
+				"label": "Coke P05 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 5,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p06_rings",
+				"label": "Coke P06 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 6,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p07_rings",
+				"label": "Coke P07 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 7,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p08_rings",
+				"label": "Coke P08 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 8,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p09_rings",
+				"label": "Coke P09 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 9,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p10_rings",
+				"label": "Coke P10 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 10,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p11_rings",
+				"label": "Coke P11 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "coke",
+				"position": 11,
+				"quantity": "rings"
+			},
+			{
+				"name": "coke_p01_angles",
+				"label": "Coke P01 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 1,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p02_angles",
+				"label": "Coke P02 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 2,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p03_angles",
+				"label": "Coke P03 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 3,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p04_angles",
+				"label": "Coke P04 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 4,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p05_angles",
+				"label": "Coke P05 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 5,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p06_angles",
+				"label": "Coke P06 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 6,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p07_angles",
+				"label": "Coke P07 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 7,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p08_angles",
+				"label": "Coke P08 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 8,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p09_angles",
+				"label": "Coke P09 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 9,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p10_angles",
+				"label": "Coke P10 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 10,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_p11_angles",
+				"label": "Coke P11 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "coke",
+				"position": 11,
+				"quantity": "angles"
+			},
+			{
+				"name": "coke_discharge_time",
+				"label": "Coke discharge time",
+				"kind": "number",
+				"unit": "s",
+				"charge": "coke",
+				"position": null,
+				"quantity": null
+			},
+			{
+				"name": "coke_charge_pattern",
+				"label": "Coke charge pattern",
+				"kind": "text",
+				"unit": null,
+				"charge": "coke",
+				"position": null,
+				"quantity": null
+			},
+			{
+				"name": "noncoke_p01_rings",
+				"label": "Non-coke P01 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 1,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p02_rings",
+				"label": "Non-coke P02 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 2,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p03_rings",
+				"label": "Non-coke P03 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 3,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p04_rings",
+				"label": "Non-coke P04 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 4,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p05_rings",
+				"label": "Non-coke P05 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 5,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p06_rings",
+				"label": "Non-coke P06 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 6,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p07_rings",
+				"label": "Non-coke P07 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 7,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p08_rings",
+				"label": "Non-coke P08 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 8,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p09_rings",
+				"label": "Non-coke P09 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 9,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p10_rings",
+				"label": "Non-coke P10 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 10,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p11_rings",
+				"label": "Non-coke P11 rings",
+				"kind": "number",
+				"unit": "rotations",
+				"charge": "non_coke",
+				"position": 11,
+				"quantity": "rings"
+			},
+			{
+				"name": "noncoke_p01_angles",
+				"label": "Non-coke P01 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 1,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p02_angles",
+				"label": "Non-coke P02 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 2,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p03_angles",
+				"label": "Non-coke P03 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 3,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p04_angles",
+				"label": "Non-coke P04 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 4,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p05_angles",
+				"label": "Non-coke P05 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 5,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p06_angles",
+				"label": "Non-coke P06 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 6,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p07_angles",
+				"label": "Non-coke P07 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 7,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p08_angles",
+				"label": "Non-coke P08 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 8,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p09_angles",
+				"label": "Non-coke P09 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 9,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p10_angles",
+				"label": "Non-coke P10 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 10,
+				"quantity": "angles"
+			},
+			{
+				"name": "noncoke_p11_angles",
+				"label": "Non-coke P11 angles",
+				"kind": "number",
+				"unit": "°",
+				"charge": "non_coke",
+				"position": 11,
+				"quantity": "angles"
+			},
+			{
+				"name": "non_coke_discharge_time",
+				"label": "Non coke discharge time",
+				"kind": "number",
+				"unit": "s",
+				"charge": "non_coke",
+				"position": null,
+				"quantity": null
+			},
+			{
+				"name": "non_coke_charge_pattern",
+				"label": "Non coke charge pattern",
+				"kind": "text",
+				"unit": null,
+				"charge": "non_coke",
+				"position": null,
+				"quantity": null
+			},
+			{
+				"name": "burden_changing_purpose",
+				"label": "Burden changing purpose",
+				"kind": "text",
+				"unit": null,
+				"charge": null,
+				"position": null,
+				"quantity": null
+			}
+		],
+		"at": "2025-07-06T00:30:00Z",
+		"current": {
+			"id": 2,
+			"date_time": "2025-07-05T00:30:00Z",
+			"source_type": "webapp",
+			"ip_address": "10.0.0.5",
+			"user_id": "f406575a-e0d5-4564-a9e7-b21e0cf91945",
+			"user_name": "adm",
+			"values": {
+				"coke_p01_rings": 2.0,
+				"coke_p02_rings": 3.0,
+				"coke_p03_rings": 1.0,
+				"coke_p04_rings": 2.0,
+				"coke_p05_rings": 3.0,
+				"coke_p06_rings": 1.0,
+				"coke_p07_rings": 2.0,
+				"coke_p08_rings": 3.0,
+				"coke_p09_rings": 1.0,
+				"coke_p10_rings": 2.0,
+				"coke_p11_rings": null,
+				"coke_p01_angles": 38.0,
+				"coke_p02_angles": 36.0,
+				"coke_p03_angles": 31.5,
+				"coke_p04_angles": 32.0,
+				"coke_p05_angles": 30.0,
+				"coke_p06_angles": 28.0,
+				"coke_p07_angles": 26.0,
+				"coke_p08_angles": 24.0,
+				"coke_p09_angles": 22.0,
+				"coke_p10_angles": 20.0,
+				"coke_p11_angles": null,
+				"coke_discharge_time": 92.0,
+				"coke_charge_pattern": "C 4 3 2",
+				"noncoke_p01_rings": 3.0,
+				"noncoke_p02_rings": 2.0,
+				"noncoke_p03_rings": 3.0,
+				"noncoke_p04_rings": 2.0,
+				"noncoke_p05_rings": 3.0,
+				"noncoke_p06_rings": 2.0,
+				"noncoke_p07_rings": 3.0,
+				"noncoke_p08_rings": 2.0,
+				"noncoke_p09_rings": 3.0,
+				"noncoke_p10_rings": 2.0,
+				"noncoke_p11_rings": null,
+				"noncoke_p01_angles": 39.5,
+				"noncoke_p02_angles": 37.5,
+				"noncoke_p03_angles": 35.5,
+				"noncoke_p04_angles": 33.5,
+				"noncoke_p05_angles": 31.5,
+				"noncoke_p06_angles": 29.5,
+				"noncoke_p07_angles": 27.5,
+				"noncoke_p08_angles": 25.5,
+				"noncoke_p09_angles": 23.5,
+				"noncoke_p10_angles": 21.5,
+				"noncoke_p11_angles": null,
+				"non_coke_discharge_time": 68.0,
+				"non_coke_charge_pattern": null,
+				"burden_changing_purpose": "Open the centre"
+			}
+		},
+		"history": [
+			{
+				"id": 3,
+				"date_time": "2125-06-11T00:30:00Z",
+				"source_type": "webapp",
+				"ip_address": "10.0.0.5",
+				"user_id": "f406575a-e0d5-4564-a9e7-b21e0cf91945",
+				"user_name": "adm",
+				"values": {
+					"coke_p01_rings": 2.0,
+					"coke_p02_rings": 3.0,
+					"coke_p03_rings": 1.0,
+					"coke_p04_rings": 2.0,
+					"coke_p05_rings": 3.0,
+					"coke_p06_rings": 1.0,
+					"coke_p07_rings": 2.0,
+					"coke_p08_rings": 3.0,
+					"coke_p09_rings": 1.0,
+					"coke_p10_rings": 2.0,
+					"coke_p11_rings": null,
+					"coke_p01_angles": 38.0,
+					"coke_p02_angles": 36.0,
+					"coke_p03_angles": 32.0,
+					"coke_p04_angles": 32.0,
+					"coke_p05_angles": 30.0,
+					"coke_p06_angles": 28.0,
+					"coke_p07_angles": 26.0,
+					"coke_p08_angles": 24.0,
+					"coke_p09_angles": 22.0,
+					"coke_p10_angles": 20.0,
+					"coke_p11_angles": null,
+					"coke_discharge_time": 92.0,
+					"coke_charge_pattern": "C 4 3 2",
+					"noncoke_p01_rings": 3.0,
+					"noncoke_p02_rings": 2.0,
+					"noncoke_p03_rings": 3.0,
+					"noncoke_p04_rings": 2.0,
+					"noncoke_p05_rings": 3.0,
+					"noncoke_p06_rings": 2.0,
+					"noncoke_p07_rings": 3.0,
+					"noncoke_p08_rings": 2.0,
+					"noncoke_p09_rings": 3.0,
+					"noncoke_p10_rings": 2.0,
+					"noncoke_p11_rings": null,
+					"noncoke_p01_angles": 39.5,
+					"noncoke_p02_angles": 37.5,
+					"noncoke_p03_angles": 35.5,
+					"noncoke_p04_angles": 33.5,
+					"noncoke_p05_angles": 31.5,
+					"noncoke_p06_angles": 29.5,
+					"noncoke_p07_angles": 27.5,
+					"noncoke_p08_angles": 25.5,
+					"noncoke_p09_angles": 23.5,
+					"noncoke_p10_angles": 21.5,
+					"noncoke_p11_angles": null,
+					"non_coke_discharge_time": 68.0,
+					"non_coke_charge_pattern": null,
+					"burden_changing_purpose": "Open the centre"
+				}
+			},
+			{
+				"id": 2,
+				"date_time": "2025-07-05T00:30:00Z",
+				"source_type": "webapp",
+				"ip_address": "10.0.0.5",
+				"user_id": "f406575a-e0d5-4564-a9e7-b21e0cf91945",
+				"user_name": "adm",
+				"values": {
+					"coke_p01_rings": 2.0,
+					"coke_p02_rings": 3.0,
+					"coke_p03_rings": 1.0,
+					"coke_p04_rings": 2.0,
+					"coke_p05_rings": 3.0,
+					"coke_p06_rings": 1.0,
+					"coke_p07_rings": 2.0,
+					"coke_p08_rings": 3.0,
+					"coke_p09_rings": 1.0,
+					"coke_p10_rings": 2.0,
+					"coke_p11_rings": null,
+					"coke_p01_angles": 38.0,
+					"coke_p02_angles": 36.0,
+					"coke_p03_angles": 31.5,
+					"coke_p04_angles": 32.0,
+					"coke_p05_angles": 30.0,
+					"coke_p06_angles": 28.0,
+					"coke_p07_angles": 26.0,
+					"coke_p08_angles": 24.0,
+					"coke_p09_angles": 22.0,
+					"coke_p10_angles": 20.0,
+					"coke_p11_angles": null,
+					"coke_discharge_time": 92.0,
+					"coke_charge_pattern": "C 4 3 2",
+					"noncoke_p01_rings": 3.0,
+					"noncoke_p02_rings": 2.0,
+					"noncoke_p03_rings": 3.0,
+					"noncoke_p04_rings": 2.0,
+					"noncoke_p05_rings": 3.0,
+					"noncoke_p06_rings": 2.0,
+					"noncoke_p07_rings": 3.0,
+					"noncoke_p08_rings": 2.0,
+					"noncoke_p09_rings": 3.0,
+					"noncoke_p10_rings": 2.0,
+					"noncoke_p11_rings": null,
+					"noncoke_p01_angles": 39.5,
+					"noncoke_p02_angles": 37.5,
+					"noncoke_p03_angles": 35.5,
+					"noncoke_p04_angles": 33.5,
+					"noncoke_p05_angles": 31.5,
+					"noncoke_p06_angles": 29.5,
+					"noncoke_p07_angles": 27.5,
+					"noncoke_p08_angles": 25.5,
+					"noncoke_p09_angles": 23.5,
+					"noncoke_p10_angles": 21.5,
+					"noncoke_p11_angles": null,
+					"non_coke_discharge_time": 68.0,
+					"non_coke_charge_pattern": null,
+					"burden_changing_purpose": "Open the centre"
+				}
+			},
+			{
+				"id": 1,
+				"date_time": "2025-06-28T00:30:00Z",
+				"source_type": "import",
+				"ip_address": null,
+				"user_id": null,
+				"user_name": null,
+				"values": {
+					"coke_p01_rings": 2.0,
+					"coke_p02_rings": 3.0,
+					"coke_p03_rings": 1.0,
+					"coke_p04_rings": 2.0,
+					"coke_p05_rings": 3.0,
+					"coke_p06_rings": 1.0,
+					"coke_p07_rings": 2.0,
+					"coke_p08_rings": 3.0,
+					"coke_p09_rings": 1.0,
+					"coke_p10_rings": 2.0,
+					"coke_p11_rings": null,
+					"coke_p01_angles": 38.0,
+					"coke_p02_angles": 36.0,
+					"coke_p03_angles": 34.0,
+					"coke_p04_angles": 32.0,
+					"coke_p05_angles": 30.0,
+					"coke_p06_angles": 28.0,
+					"coke_p07_angles": 26.0,
+					"coke_p08_angles": 24.0,
+					"coke_p09_angles": 22.0,
+					"coke_p10_angles": 20.0,
+					"coke_p11_angles": null,
+					"coke_discharge_time": 92.0,
+					"coke_charge_pattern": "C 3 2 2",
+					"noncoke_p01_rings": 3.0,
+					"noncoke_p02_rings": 2.0,
+					"noncoke_p03_rings": 3.0,
+					"noncoke_p04_rings": 2.0,
+					"noncoke_p05_rings": 3.0,
+					"noncoke_p06_rings": 2.0,
+					"noncoke_p07_rings": 3.0,
+					"noncoke_p08_rings": 2.0,
+					"noncoke_p09_rings": 3.0,
+					"noncoke_p10_rings": 2.0,
+					"noncoke_p11_rings": null,
+					"noncoke_p01_angles": 39.5,
+					"noncoke_p02_angles": 37.5,
+					"noncoke_p03_angles": 35.5,
+					"noncoke_p04_angles": 33.5,
+					"noncoke_p05_angles": 31.5,
+					"noncoke_p06_angles": 29.5,
+					"noncoke_p07_angles": 27.5,
+					"noncoke_p08_angles": 25.5,
+					"noncoke_p09_angles": 23.5,
+					"noncoke_p10_angles": 21.5,
+					"noncoke_p11_angles": null,
+					"non_coke_discharge_time": 68.0,
+					"non_coke_charge_pattern": null,
+					"burden_changing_purpose": null
+				}
+			}
+		]
+	}
+}

@@ -10,7 +10,8 @@
  * Needs Playwright with Chromium (`pnpm dlx playwright install chromium` on a dev machine). The script answers
  * /api/health, /api/stream, /api/auth/* (account `auditor`, password `correct-horse`), /api/admin/audit
  * (`scripts/fixtures/audit-page.json`, checked against the API model by tests/test_api_admin.py), /api/admin/calibration
- * (`scripts/fixtures/calibration-console.json`, checked by tests/test_api_calibration.py) and the STRATA page's
+ * (`scripts/fixtures/calibration-console.json`, checked by tests/test_api_calibration.py), /api/admin/users, /hoppers and
+ * /burden (`scripts/fixtures/plant-admin.json`, checked by tests/test_api_plant_admin.py) and the STRATA page's
  * /api/strata/* (`strata-mock.mjs`) itself, so the audit does not need the twin-api. Exit code 1 on a critical or
  * serious axe violation, a horizontal overflow or a failed behaviour check.
  */
@@ -40,6 +41,9 @@ const AUDIT_PAGE = JSON.parse(readFileSync(join(ROOT, 'scripts', 'fixtures', 'au
 const CALIBRATION = JSON.parse(
 	readFileSync(join(ROOT, 'scripts', 'fixtures', 'calibration-console.json'), 'utf8')
 );
+// GET /api/admin/users, /hoppers, /burden: three accounts, three hopper and three burden snapshots, one of them later
+// (SV-4.7, #310).
+const PLANT_ADMIN = JSON.parse(readFileSync(join(ROOT, 'scripts', 'fixtures', 'plant-admin.json'), 'utf8'));
 const PORT = 4179;
 let base = arg('base', null);
 
@@ -56,6 +60,9 @@ const ROUTES = [
 	{ name: 'admin', path: '/admin' },
 	{ name: 'admin-audit', path: '/admin/audit' },
 	{ name: 'admin-calibration', path: '/admin/calibration' },
+	{ name: 'admin-users', path: '/admin/users' },
+	{ name: 'admin-hoppers', path: '/admin/users?tab=hoppers' },
+	{ name: 'admin-burden', path: '/admin/users?tab=burden' },
 	{ name: 'not-found', path: '/no-such-page' }
 ];
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
@@ -216,6 +223,15 @@ try {
 		const body = { ...CALIBRATION, calibration: { ...CALIBRATION.calibration, made_at: madeAt } };
 		return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 	});
+	// User, hopper and burden admin mock (GET only): the fixture.
+	await context.route(/\/api\/admin\/(users|hoppers|burden)(\?.*)?$/, (route) => {
+		const key = new URL(route.request().url()).pathname.split('/').pop();
+		return route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify(PLANT_ADMIN[key])
+		});
+	});
 	// TRACE page (SV-1.10, #290): synthetic answers shaped as the API's response models.
 	const trace = traceFixture();
 	await context.route(/\/api\/trace(\/series|\/agreement)?(\?.*)?$/, (route) => {
@@ -249,7 +265,8 @@ try {
 				path: join(OUT, `${route.name}-${vp.name}.png`),
 				fullPage: route.name === 'catalogue'
 			});
-			if (new URL(page.url()).pathname !== route.path) fail(`${label}: landed on ${page.url()}`);
+			if (new URL(page.url()).pathname !== new URL(route.path, base).pathname)
+				fail(`${label}: landed on ${page.url()}`);
 			report.pages.push({ label, violations, overflow: o });
 		}
 	}
