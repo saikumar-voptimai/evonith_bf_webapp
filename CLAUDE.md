@@ -1011,6 +1011,14 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   files); import the module under test with `tests/module_stubs.import_with_stubs`. Tests that need a service use
   the `requires_service` marker (`needs_postgres`, `needs_redis`). `tests/conftest.py` sets placeholder
   `QDRANT_URL` and `OPENROUTER_API_KEY` for the import-time validation of `utils.settings`.
+- Optimiser API (SV-3.2): `POST /api/optimiser/runs` (`OptimiserRunParams`: mode, ω mode, `calibration`
+  day / live / reference, `yard` live / reference, `settings` / `limits` overrides in API names →
+  `services.optimiser.SETTINGS_FIELDS` / `LIMITS_FIELDS`, applied last; BAND-01 stays the register's);
+  `GET /runs/{id}/result` = `services.optimiser_results.result_view` (typed plan from `scenarios.plan_tiles`, ore +
+  flux plan, today's blend, frontier, value of limits, critical assumptions, network solves);
+  `POST|GET /runs/{id}/commentary` = job `optimiser.commentary` (`services.optimiser_commentary`: page 11's
+  `build_context` on the stored case, one LLM retry) into `twin.optimiser_commentary` (twin_0007). The case report is
+  reproduced through the API in `tests/test_api_optimiser.py`.
 
 ## Environment Variables
 

@@ -39,6 +39,7 @@ from data.twin.models import (
     FmMessage,
     Job,
     OperatorInputs,
+    OptimiserCommentary,
     OptimiserRun,
     PlanDecision,
     ShiftRecord,
@@ -421,6 +422,30 @@ class OptimiserRunRepository(_Repository):
         )
         with self._sessions() as session:
             return list(session.scalars(query))
+
+    def add_commentary(self, values: Mapping[str, Any]) -> OptimiserCommentary:
+        """Store a commentary on a run (``NotFound`` when the run does not exist)."""
+        data = _checked(OptimiserCommentary, values)
+        data["run_id"] = uuid.UUID(str(data["run_id"]))
+        with self._sessions.begin() as session:
+            if session.get(OptimiserRun, data["run_id"]) is None:
+                raise NotFound(f"optimiser run {data['run_id']}")
+            row = OptimiserCommentary(**data)
+            session.add(row)
+        return row
+
+    def commentary(self, run_id: uuid.UUID | str, *, status: str | None = None) -> OptimiserCommentary | None:
+        """The latest commentary on the run (with ``status``: the latest of that status)."""
+        query = (
+            select(OptimiserCommentary)
+            .where(OptimiserCommentary.run_id == uuid.UUID(str(run_id)))
+            .order_by(OptimiserCommentary.generated_at.desc())
+            .limit(1)
+        )
+        if status:
+            query = query.where(OptimiserCommentary.status == status)
+        with self._sessions() as session:
+            return session.scalars(query).one_or_none()
 
 
 class ShiftRecordRepository(_Repository):

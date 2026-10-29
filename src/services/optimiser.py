@@ -333,6 +333,14 @@ class Case:
     production_source: str = ""
     #: The operator inputs the yard was built with: source, version, valid_from, author (SV-3.1).
     operator_inputs: dict[str, Any] = field(default_factory=dict)
+    #: Today's operating point (the regime window's medians), None on the shipped calibration.
+    regime: dict[str, Any] | None = None
+    #: The yard rows the engine inputs were built from: materials (carried or not), fluxes, fuel prices (SV-3.2).
+    yard: dict[str, Any] = field(default_factory=dict)
+    #: When today's charged blend was charged (IST), for Step 2.
+    today_window: str = ""
+    #: What the request set instead of the defaults, in the API's names (SV-3.2).
+    overrides: dict[str, Any] = field(default_factory=dict)
 
     def summary(self) -> dict[str, Any]:
         """The case as stored with the run (``optimiser_run.inputs``): settings, limits, target and sources."""
@@ -354,22 +362,80 @@ class Case:
             operator_inputs=self.operator_inputs,
             calibration=self.calibration,
             today_shares=self.today_shares,
+            today_window=self.today_window,
             materials=self.names,
+            regime=self.regime,
+            yard=self.yard,
+            overrides=self.overrides,
         )
 
 
-CALIBRATION_BASES = ("day", "live")
+CALIBRATION_BASES = ("day", "live", "reference")
+YARD_BASES = ("live", "reference")
+
+#: Settings of a request (``services.jobs.OptimiserSettings``) -> ``Settings`` fields.
+SETTINGS_FIELDS = {
+    "hmt_c": "HMT",
+    "hm_si_pct": "hm_Si",
+    "pci_kg_thm": "pci_plant",
+    "nut_coke_kg_thm": "nut_plant",
+    "blast_moisture_g_nm3": "humidity_g",
+    "hbt_c": "HBT",
+    "o2_per_air": "O2_per_air",
+    "hot_blast_pressure_bar_g": "Pb",
+    "top_pressure_bar_g": "Pt",
+}
+#: Limits of a request (``services.jobs.OptimiserLimits``) -> ``Limits`` fields.
+LIMITS_FIELDS = {
+    "slag_max_kg_thm": "slag_max",
+    "cao_sio2_min": "B2_min",
+    "cao_sio2_max": "B2_max",
+    "al2o3_max_pct": "Al2O3_max",
+    "mgo_min_pct": "MgO_min",
+    "mgo_al2o3_min": "MgO_Al2O3_min",
+    "charge_t": "charge_t",
+    "charges_per_h": "charges_per_h",
+    "top_gas_min_c": "T_top_min",
+    "hot_blast_pressure_max_bar_g": "Pb_max",
+    "dp_max_bar": "dP_max",
+    "top_pressure_min_bar_g": "Pt_min",
+    "top_pressure_max_bar_g": "Pt_max",
+    "blast_max_nm3h": "V_max",
+    "o2_flow_max_nm3h": "O2_flow_max",
+    "enrichment_max_pct": "enrich_max",
+    "hbt_max_c": "HBT_max",
+    "raft_min_c": "RAFT_min",
+    "raft_max_c": "RAFT_max",
+}
+
+
+def engine_overrides(values: Mapping[str, Any] | None, fields: Mapping[str, str], what: str) -> dict[str, float]:
+    """A request's settings or limits (API names, None = keep the default) as engine field values."""
+    out: dict[str, float] = {}
+    for key, value in dict(values or {}).items():
+        if key not in fields:
+            raise ValueError(f"unknown {what} {key!r}")
+        if value is not None:
+            out[fields[key]] = float(value)
+    return out
 
 
 def case_calibration(
     cfg: Mapping[str, Any], nonce: int = 0, basis: str = "day", day: Any = None
 ) -> tuple[CalibrationInfo, dict[str, Any]]:
     """(CalibrationInfo, how it was chosen). ``basis`` day: the calibration ``calibration.nightly`` made for ``day``
-    (default today, IST; ``services.day_calibration``), the live one while there is none; live: page 11's."""
+    (default today, IST; ``services.day_calibration``), the live one while there is none; live: page 11's; reference:
+    the shipped Jul-Oct 2026 calibration (``calibration.fallback_path`` of the page config)."""
     from services import day_calibration
 
     if basis not in CALIBRATION_BASES:
         raise ValueError(f"calibration must be one of {', '.join(CALIBRATION_BASES)}")
+    if basis == "reference":
+        path = dict(cfg.get("calibration") or {}).get("fallback_path")
+        message = "The shipped Jul-Oct 2026 calibration was requested."
+        return CalibrationInfo(fallback_calibration(path), None, "fallback", ("", ""), 0, message), dict(
+            basis="reference"
+        )
     if basis == "day":
         d = day or day_calibration.today()
         doc = day_calibration.read(d)
@@ -393,6 +459,9 @@ def default_case(
     risk_k: float = 0.0,
     auto: bool = False,
     calibration_basis: str = "live",
+    yard_basis: str = "live",
+    settings: Mapping[str, Any] | None = None,
+    limits: Mapping[str, Any] | None = None,
     nonce: int = 0,
     cfg: Mapping[str, Any] | None = None,
 ) -> Case:
@@ -402,16 +471,25 @@ def default_case(
     production (``production_t_d`` overrides it; ``production_source`` says where it came from) with the controls held
     as page 11 starts them, against today's charged blend; Step 1 and maximum production searching oxygen.
     ``omega_mode`` strata (default, certainty filter and risk aversion as given) or fixed. ``calibration_basis`` live
-    (page 11's) or day (the calibration of 02:30, ``case_calibration``)."""
+    (page 11's), day (the calibration of 02:30) or reference (the shipped one, ``case_calibration``); ``yard_basis``
+    live (else the reference yard) or reference. ``settings`` and ``limits`` (``SETTINGS_FIELDS``,
+    ``LIMITS_FIELDS``: the API's names) replace the defaults last, so a request's controls are held as given."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {', '.join(MODES)}")
     if omega_mode not in OMEGA_MODES:
         raise ValueError(f"omega_mode must be one of {', '.join(OMEGA_MODES)}")
     if certainty not in CERTAINTY_FILTERS:
         raise ValueError(f"certainty must be one of {', '.join(CERTAINTY_FILTERS)}")
+    if yard_basis not in YARD_BASES:
+        raise ValueError(f"yard must be one of {', '.join(YARD_BASES)}")
+    s_over = engine_overrides(settings, SETTINGS_FIELDS, "setting")
+    l_over = engine_overrides(limits, LIMITS_FIELDS, "limit")
     cfg = page_config(config_mtime("burden_optimiser.yml")) if cfg is None else cfg
     reg = load_register()
-    yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce, operator_inputs.token())
+    if yard_basis == "reference":
+        yard_rows, yard_source, yard_message = reference_yard(cfg), "reference", "The reference yard was requested."
+    else:
+        yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce, operator_inputs.token())
     info, chosen = case_calibration(cfg, nonce, calibration_basis)
     regime = info.regime
     engine_mode = MODES[mode]
@@ -435,7 +513,7 @@ def default_case(
         nut_plant=float(th.get("nut_kg_thm", 70.0)),
         humidity_g=round(float(humidity_g), 1),
     )
-    limits = limits_from(reg, yard_rows.get("slag"), dict(cfg.get("charging", {})))
+    limits_ = limits_from(reg, yard_rows.get("slag"), dict(cfg.get("charging", {})), **l_over)
     s = dict(settings_from_regime(regime, thermal_cfg, info.cal).__dict__, **thermal)
     if omega_mode == "fixed":
         s.update(omega_mode="fixed", certainty="any", risk_k=0.0)
@@ -444,6 +522,7 @@ def default_case(
     if engine_mode == "fixed":  # the controls held for the plan start as page 11 shows them
         hy = Engine(cal=info.cal).hy
         s.update(HBT=float(round(s["HBT"])), O2_per_air=hy.o2_per_air_from_tag(float(hy.enrich_tag(s["O2_per_air"]))))
+    s.update(s_over)
     materials = [m for m in yard_rows["materials"] if m.get("carried", True)]
     fu = dict(yard_rows["fuel"])
     fuel = dict(
@@ -468,7 +547,7 @@ def default_case(
         as_json(inputs),
         as_json(info.cal),
         s,
-        limits.__dict__ | {"process": process},
+        limits_.__dict__ | {"process": process},
         target,
         process,  # page 11 searches oxygen in the process modes by default
         int(prod_cfg.get("o2_levels", 9)),
@@ -489,12 +568,27 @@ def default_case(
         yard_source=yard_source,
         yard_message=yard_message,
         calibration=dict(
-            source=info.source, window=cal_window, omega=info.cal.get("omega"), message=info.message, **chosen
+            source=info.source,
+            window=cal_window,
+            omega=info.cal.get("omega"),
+            Q_LZ_GJh=info.cal.get("Q_LZ_GJh"),
+            Q_UZ_GJh=info.cal.get("Q_UZ_GJh"),
+            message=info.message,
+            **chosen,
         ),
         names=names,
         today_shares=shares,
         production_source=source,
         operator_inputs=dict(yard_rows.get("operator_inputs") or {}),
+        regime=dict(regime) if regime else None,
+        yard=dict(materials=yard_rows["materials"], fluxes=yard_rows["fluxes"], fuel=fuel),
+        today_window=(
+            "from {} to {} IST".format(*today["window"]) if shares and len(today.get("window") or ()) == 2 else ""
+        ),
+        overrides=dict(
+            settings={k: v for k, v in dict(settings or {}).items() if v is not None},
+            limits={k: v for k, v in dict(limits or {}).items() if v is not None},
+        ),
     )
 
 

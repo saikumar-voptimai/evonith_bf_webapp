@@ -1,4 +1,5 @@
-"""Optimiser runs for the Live Twin plan card: start a run, read runs, accept or reject a plan (SV-1.6, #286).
+"""Optimiser runs for the Live Twin plan card and the Burden & Fuel Optimiser: start a run, read runs and their typed
+results, accept or reject a plan (SV-1.6, #286), write and read the furnace commentary (SV-3.2, #299).
 
 A run is the job ``optimiser.run`` (page 11's default case, ``services.optimiser.default_case``); the worker stores
 its plan in ``twin.optimiser_run``. A decision is appended to ``twin.plan_decision`` with its audit row in the same
@@ -23,9 +24,10 @@ from api.errors import ApiError
 from api.live import job_store, live_state
 from api.store import twin_store
 from data.twin.repositories import Actor, NotFound, TwinStore
-from services import twin_views
+from services import optimiser_commentary, twin_views
 from services.auth import Principal
 from services.jobs import JobRecord, JobStore, OptimiserRunParams
+from services.optimiser_results import OptimiserResult, result_view
 
 router = APIRouter(prefix="/api/optimiser", tags=["optimiser"], dependencies=[Depends(require_role("user"))])
 
@@ -78,6 +80,24 @@ class RunSubmitted(BaseModel):
 class RunLookup(BaseModel):
     job: JobRecord | None = Field(None, description="The job (records are kept 7 days)")
     run: OptimiserRunDetail | None = Field(None, description="The stored run, once the job has finished")
+
+
+class CommentaryView(BaseModel):
+    id: str = Field(..., description="Commentary id (UUID)")
+    run_id: str = Field(..., description="Run id (UUID)")
+    job_id: str | None = Field(None, description="Job that wrote it")
+    requested_by: str
+    generated_at: datetime = Field(..., description="UTC")
+    status: Literal["ok", "failed"] = Field(..., description="failed: no text after the LLM's retry")
+    text: str | None = Field(None, description="The commentary (Markdown), generated text")
+    error: str | None = Field(None, description="Error of each try (failed)")
+    tries: int = Field(0, description="LLM calls made, count")
+    model: str | None = Field(None, description="Model that wrote it")
+    missing: list[str] = Field(default_factory=list, description="What the context lacked")
+    notes_sha1: str | None = Field(None, description="SHA-1 of the optimiser notes in the context")
+    facts_version: str | None = Field(None, description="Fact register version in the context")
+    context_sha1: str = Field(..., description="SHA-1 of the context")
+    context: str | None = Field(None, description="The full context the model was given (with context=true)")
 
 
 class DecisionRequest(BaseModel):
@@ -151,6 +171,62 @@ async def get_run(run_or_job_id: str, request: Request, store: Annotated[TwinSto
         raise ApiError(404, "No optimiser run or job with this id.")
     run = await asyncio.to_thread(_summary, store, row, detail=True) if row is not None else None
     return RunLookup(job=job, run=run)
+
+
+def _run_row(store: TwinStore, run_id: str) -> Any:
+    key = _uuid(run_id)
+    if key is None:
+        raise ApiError(422, "run_id must be a run id (UUID).")
+    row = store.optimiser.get(key)
+    if row is None:
+        raise ApiError(404, "No optimiser run with this id.")
+    return row
+
+
+@router.get("/runs/{run_id}/result", response_model=OptimiserResult, summary="The typed result of a run")
+def run_result(run_id: str, store: Annotated[TwinStore, Depends(twin_store)]) -> OptimiserResult:
+    """Plan (blend, flux, cost split, coke ± σ, fuel, slag, charging, process, shaft efficiency and certainty, binding
+    limits), Step 2's ore + flux-only plan and today's charged blend, Step 1's highest output and frontier, the value
+    of limits, the critical assumptions and the network solves (``services.optimiser_results``)."""
+    return result_view(_run_row(store, run_id))
+
+
+@router.post(
+    "/runs/{run_id}/commentary",
+    response_model=RunSubmitted,
+    status_code=202,
+    summary="Write the furnace commentary on a run",
+)
+async def start_commentary(
+    run_id: str,
+    request: Request,
+    store: Annotated[TwinStore, Depends(twin_store)],
+    jobs: Annotated[JobStore, Depends(job_store)],
+) -> RunSubmitted:
+    """Queue ``optimiser.commentary`` (page 11's commentary: optimiser notes, fact register and the run as context,
+    one LLM retry); read it with GET /api/optimiser/runs/{run_id}/commentary once the job is done."""
+    row = await asyncio.to_thread(_run_row, store, run_id)
+    if row.status != "ok":
+        raise ApiError(409, f"The run has no plan to comment on (status {row.status}).")
+    principal: Principal = request.state.principal
+    record, duplicate = await jobs.submit("optimiser.commentary", {"run_id": str(row.id)}, principal.username)
+    return RunSubmitted(job=record, duplicate=duplicate)
+
+
+@router.get("/runs/{run_id}/commentary", response_model=CommentaryView, summary="The latest commentary on a run")
+def get_commentary(
+    run_id: str,
+    store: Annotated[TwinStore, Depends(twin_store)],
+    context: Annotated[bool, Query(description="Include the full context the model was given")] = False,
+) -> CommentaryView:
+    row = _run_row(store, run_id)
+    found = store.optimiser.commentary(row.id)
+    if found is None:
+        raise ApiError(404, "No commentary on this run yet.")
+    data = optimiser_commentary.view(found)
+    if not context:
+        data["context"] = None
+    return CommentaryView.model_validate(data)
 
 
 @router.get("/latest", response_model=OptimiserRunDetail, summary="Latest optimiser plan")

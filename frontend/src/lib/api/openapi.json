@@ -736,6 +736,38 @@
         "title": "AuditPage",
         "type": "object"
       },
+      "BindingLimit": {
+        "properties": {
+          "label": {
+            "description": "Operator name of the limit",
+            "title": "Label",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Engine name of the limit",
+            "title": "Limit",
+            "type": "string"
+          },
+          "rs_thm_per_unit": {
+            "description": "Shadow price: saving from relaxing one unit, Rs/tHM",
+            "title": "Rs Thm Per Unit",
+            "type": "number"
+          },
+          "unit": {
+            "description": "Unit the shadow price is per",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "limit",
+          "label",
+          "rs_thm_per_unit",
+          "unit"
+        ],
+        "title": "BindingLimit",
+        "type": "object"
+      },
       "BlendChangeView": {
         "properties": {
           "after_pct": {
@@ -805,6 +837,72 @@
           "zone"
         ],
         "title": "BlendChangeView",
+        "type": "object"
+      },
+      "BlendRow": {
+        "properties": {
+          "dry_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged dry, kg/tHM",
+            "title": "Dry Kg Thm"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "sinter, ore or pellet (from the yard of the case)",
+            "title": "Kind"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "share_wet_pct": {
+            "description": "Share of the ferrous burden, wet, %",
+            "title": "Share Wet Pct",
+            "type": "number"
+          },
+          "t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged wet per day, t/d",
+            "title": "T D"
+          },
+          "wet_kg_thm": {
+            "description": "Charged wet, kg/tHM",
+            "title": "Wet Kg Thm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "share_wet_pct",
+          "wet_kg_thm"
+        ],
+        "title": "BlendRow",
         "type": "object"
       },
       "BmoAnchor": {
@@ -2926,6 +3024,238 @@
         "title": "ChargedCokePoint",
         "type": "object"
       },
+      "ChargingView": {
+        "properties": {
+          "charges_per_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charges needed, charges/h",
+            "title": "Charges Per H"
+          },
+          "charging_cap_t_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charging limit (charges/h \u00d7 t per charge), t/h",
+            "title": "Charging Cap T H"
+          },
+          "charging_t_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Non-coke burden charged, t/h",
+            "title": "Charging T H"
+          },
+          "coke_t_d": {
+            "description": "Coke as charged, t/d",
+            "title": "Coke T D",
+            "type": "number"
+          },
+          "ferrous_t_d": {
+            "description": "Ferrous burden wet, t/d",
+            "title": "Ferrous T D",
+            "type": "number"
+          },
+          "flux_kg_thm": {
+            "description": "Flux wet, kg/tHM",
+            "title": "Flux Kg Thm",
+            "type": "number"
+          },
+          "hm_per_charge_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot metal per charge, t",
+            "title": "Hm Per Charge T"
+          },
+          "nut_coke_t_d": {
+            "description": "Nut coke, t/d",
+            "title": "Nut Coke T D",
+            "type": "number"
+          },
+          "pci_t_d": {
+            "description": "PCI, t/d",
+            "title": "Pci T D",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coke_t_d",
+          "nut_coke_t_d",
+          "pci_t_d",
+          "ferrous_t_d",
+          "flux_kg_thm"
+        ],
+        "title": "ChargingView",
+        "type": "object"
+      },
+      "CommentaryView": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The full context the model was given (with context=true)",
+            "title": "Context"
+          },
+          "context_sha1": {
+            "description": "SHA-1 of the context",
+            "title": "Context Sha1",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Error of each try (failed)",
+            "title": "Error"
+          },
+          "facts_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fact register version in the context",
+            "title": "Facts Version"
+          },
+          "generated_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "id": {
+            "description": "Commentary id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that wrote it",
+            "title": "Job Id"
+          },
+          "missing": {
+            "description": "What the context lacked",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model that wrote it",
+            "title": "Model"
+          },
+          "notes_sha1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SHA-1 of the optimiser notes in the context",
+            "title": "Notes Sha1"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "run_id": {
+            "description": "Run id (UUID)",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "failed: no text after the LLM's retry",
+            "enum": [
+              "ok",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The commentary (Markdown), generated text",
+            "title": "Text"
+          },
+          "tries": {
+            "default": 0,
+            "description": "LLM calls made, count",
+            "title": "Tries",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "requested_by",
+          "generated_at",
+          "status",
+          "context_sha1"
+        ],
+        "title": "CommentaryView",
+        "type": "object"
+      },
       "ConversationCreate": {
         "additionalProperties": false,
         "properties": {
@@ -2955,6 +3285,158 @@
           }
         },
         "title": "ConversationCreate",
+        "type": "object"
+      },
+      "CostSplit": {
+        "properties": {
+          "coke_rs_thm": {
+            "description": "Coke, Rs/tHM",
+            "title": "Coke Rs Thm",
+            "type": "number"
+          },
+          "flux_rs_thm": {
+            "description": "Flux, Rs/tHM",
+            "title": "Flux Rs Thm",
+            "type": "number"
+          },
+          "fuel_rs_thm": {
+            "description": "Coke + nut coke + PCI, Rs/tHM",
+            "title": "Fuel Rs Thm",
+            "type": "number"
+          },
+          "gross_rs_thm": {
+            "description": "Ore + flux + fuel before the slag credit, Rs/tHM",
+            "title": "Gross Rs Thm",
+            "type": "number"
+          },
+          "nut_coke_rs_thm": {
+            "description": "Nut coke, Rs/tHM",
+            "title": "Nut Coke Rs Thm",
+            "type": "number"
+          },
+          "ore_rs_thm": {
+            "description": "Ferrous materials, Rs/tHM",
+            "title": "Ore Rs Thm",
+            "type": "number"
+          },
+          "pci_rs_thm": {
+            "description": "PCI, Rs/tHM",
+            "title": "Pci Rs Thm",
+            "type": "number"
+          },
+          "slag_credit_rs_thm": {
+            "description": "Granulated slag sold (ASM-20), Rs/tHM",
+            "title": "Slag Credit Rs Thm",
+            "type": "number"
+          },
+          "total_lakh_rs_d": {
+            "description": "Total at the plan's production, lakh Rs/d",
+            "title": "Total Lakh Rs D",
+            "type": "number"
+          },
+          "total_rs_thm": {
+            "description": "Ore + flux + fuel \u2212 slag credit, Rs/tHM",
+            "title": "Total Rs Thm",
+            "type": "number"
+          },
+          "total_sigma_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the total (STRATA-\u03c9 coke), Rs/tHM",
+            "title": "Total Sigma Rs Thm"
+          }
+        },
+        "required": [
+          "ore_rs_thm",
+          "flux_rs_thm",
+          "fuel_rs_thm",
+          "coke_rs_thm",
+          "nut_coke_rs_thm",
+          "pci_rs_thm",
+          "gross_rs_thm",
+          "slag_credit_rs_thm",
+          "total_rs_thm",
+          "total_lakh_rs_d"
+        ],
+        "title": "CostSplit",
+        "type": "object"
+      },
+      "CriticalAssumption": {
+        "properties": {
+          "alternative": {
+            "description": "Another credible value",
+            "title": "Alternative",
+            "type": "string"
+          },
+          "assumption": {
+            "title": "Assumption",
+            "type": "string"
+          },
+          "basis": {
+            "default": "",
+            "title": "Basis",
+            "type": "string"
+          },
+          "coke_effect_hi_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke effect, upper alternative, wet, kg/tHM",
+            "title": "Coke Effect Hi Kg Thm"
+          },
+          "coke_effect_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke effect of the alternative, wet, kg/tHM",
+            "title": "Coke Effect Kg Thm"
+          },
+          "coke_effect_lo_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke effect, lower alternative, wet, kg/tHM",
+            "title": "Coke Effect Lo Kg Thm"
+          },
+          "symmetric": {
+            "default": false,
+            "description": "The effect is \u00b1 coke_effect_kg_thm",
+            "title": "Symmetric",
+            "type": "boolean"
+          },
+          "value": {
+            "description": "Value the model uses",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assumption",
+          "value",
+          "alternative"
+        ],
+        "title": "CriticalAssumption",
         "type": "object"
       },
       "CurrentBlend": {
@@ -4036,6 +4518,42 @@
           }
         },
         "title": "FluxInputRow",
+        "type": "object"
+      },
+      "FluxRow": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged wet per day, t/d",
+            "title": "T D"
+          },
+          "wet_kg_thm": {
+            "description": "Charged wet, kg/tHM",
+            "title": "Wet Kg Thm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "wet_kg_thm"
+        ],
+        "title": "FluxRow",
         "type": "object"
       },
       "FmArtifactEvent": {
@@ -5378,6 +5896,176 @@
         "title": "ForgeViewInfo",
         "type": "object"
       },
+      "FrontierPoint": {
+        "properties": {
+          "binding": {
+            "default": "",
+            "description": "Binding limits (share bounds left out)",
+            "title": "Binding",
+            "type": "string"
+          },
+          "blast_nm3h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot blast, Nm\u00b3/h",
+            "title": "Blast Nm3H"
+          },
+          "charges_per_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charges needed, charges/h",
+            "title": "Charges Per H"
+          },
+          "coke_dry_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate, dry, kg/tHM",
+            "title": "Coke Dry Kg Thm"
+          },
+          "cost_rs_thm": {
+            "description": "Ore + flux + fuel \u2212 slag credit, Rs/tHM",
+            "title": "Cost Rs Thm",
+            "type": "number"
+          },
+          "enrichment_tag_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Plant enrichment tag, %",
+            "title": "Enrichment Tag Pct"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fuel rate, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "fuel_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fuel, Rs/tHM",
+            "title": "Fuel Rs Thm"
+          },
+          "hbt_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast temperature, \u00b0C",
+            "title": "Hbt C"
+          },
+          "hot_blast_pressure_needed_bar_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast pressure needed, bar g",
+            "title": "Hot Blast Pressure Needed Bar G"
+          },
+          "marginal_rs_per_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cost of each extra tonne of hot metal, Rs/t",
+            "title": "Marginal Rs Per T"
+          },
+          "o2_nm3h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen, Nm\u00b3/h",
+            "title": "O2 Nm3H"
+          },
+          "ore_flux_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + flux, Rs/tHM",
+            "title": "Ore Flux Rs Thm"
+          },
+          "production_t_d": {
+            "description": "Hot metal, t/d",
+            "title": "Production T D",
+            "type": "number"
+          },
+          "slag_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag rate, kg/tHM",
+            "title": "Slag Kg Thm"
+          }
+        },
+        "required": [
+          "production_t_d",
+          "cost_rs_thm"
+        ],
+        "title": "FrontierPoint",
+        "type": "object"
+      },
       "FuelEditorInputs": {
         "additionalProperties": false,
         "properties": {
@@ -5662,6 +6350,56 @@
           }
         },
         "title": "FuelInputRow",
+        "type": "object"
+      },
+      "FuelSplit": {
+        "properties": {
+          "coke_dry_kg_thm": {
+            "description": "Coke rate, dry, kg/tHM",
+            "title": "Coke Dry Kg Thm",
+            "type": "number"
+          },
+          "coke_sigma_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the dry coke rate (STRATA-\u03c9), kg/tHM",
+            "title": "Coke Sigma Kg Thm"
+          },
+          "coke_wet_kg_thm": {
+            "description": "Coke rate as charged, kg/tHM",
+            "title": "Coke Wet Kg Thm",
+            "type": "number"
+          },
+          "fuel_rate_kg_thm": {
+            "description": "Coke wet + nut coke + PCI (BAND-01 520-600), kg/tHM",
+            "title": "Fuel Rate Kg Thm",
+            "type": "number"
+          },
+          "nut_coke_kg_thm": {
+            "description": "Nut coke as charged (fixed input), kg/tHM",
+            "title": "Nut Coke Kg Thm",
+            "type": "number"
+          },
+          "pci_kg_thm": {
+            "description": "PCI as injected (fixed input), kg/tHM",
+            "title": "Pci Kg Thm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coke_dry_kg_thm",
+          "coke_wet_kg_thm",
+          "nut_coke_kg_thm",
+          "pci_kg_thm",
+          "fuel_rate_kg_thm"
+        ],
+        "title": "FuelSplit",
         "type": "object"
       },
       "Health": {
@@ -7224,6 +7962,85 @@
         "title": "ModelGaps",
         "type": "object"
       },
+      "NetworkSolves": {
+        "description": "STRATA-Flow network solves behind a STRATA-\u03c9 plan.",
+        "properties": {
+          "anchors": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Network states solved exactly (anchors), count",
+            "title": "Anchors"
+          },
+          "exact": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Every state of the plan is a network solve",
+            "title": "Exact"
+          },
+          "jacobian": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the network Jacobian came from (disk cache or solved)",
+            "title": "Jacobian"
+          },
+          "max_distance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest distance of the plan's states from a solve, scaled units, dimensionless",
+            "title": "Max Distance"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of those solves, s",
+            "title": "Seconds"
+          },
+          "solves": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Network solves of this calibration in the run's process, count",
+            "title": "Solves"
+          }
+        },
+        "title": "NetworkSolves",
+        "type": "object"
+      },
       "OmegaRow": {
         "properties": {
           "band_high": {
@@ -7761,6 +8578,529 @@
         "title": "OperatorInputsView",
         "type": "object"
       },
+      "OptimiserLimits": {
+        "additionalProperties": false,
+        "description": "Limits of a run that replace the fact register's defaults (ASM-11/12/13, FLOW-12) and the operator's saved slag\nlimits and charging. The fuel-rate band (BAND-01) is the register's and cannot be changed here. Unset fields keep\nthe default; the process rows apply to Step 1 and maximum production.",
+        "properties": {
+          "al2o3_max_pct": {
+            "anyOf": [
+              {
+                "maximum": 30.0,
+                "minimum": 10.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Al\u2082O\u2083 of the slag, upper limit, %",
+            "title": "Al2O3 Max Pct"
+          },
+          "blast_max_nm3h": {
+            "anyOf": [
+              {
+                "maximum": 200000.0,
+                "minimum": 50000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast volume limit, Nm\u00b3/h",
+            "title": "Blast Max Nm3H"
+          },
+          "cao_sio2_max": {
+            "anyOf": [
+              {
+                "maximum": 1.5,
+                "minimum": 0.8,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CaO/SiO\u2082 of the slag, upper limit, dimensionless",
+            "title": "Cao Sio2 Max"
+          },
+          "cao_sio2_min": {
+            "anyOf": [
+              {
+                "maximum": 1.5,
+                "minimum": 0.8,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CaO/SiO\u2082 of the slag, lower limit, dimensionless",
+            "title": "Cao Sio2 Min"
+          },
+          "charge_t": {
+            "anyOf": [
+              {
+                "maximum": 40.0,
+                "minimum": 10.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Non-coke burden per charge (ferrous + flux + nut coke), t",
+            "title": "Charge T"
+          },
+          "charges_per_h": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 3.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charging rate limit, charges/h",
+            "title": "Charges Per H"
+          },
+          "dp_max_bar": {
+            "anyOf": [
+              {
+                "maximum": 2.5,
+                "minimum": 0.5,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pressure drop limit, bar",
+            "title": "Dp Max Bar"
+          },
+          "enrichment_max_pct": {
+            "anyOf": [
+              {
+                "maximum": 15.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Plant enrichment tag limit, %",
+            "title": "Enrichment Max Pct"
+          },
+          "hbt_max_c": {
+            "anyOf": [
+              {
+                "maximum": 1350.0,
+                "minimum": 900.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast temperature limit, \u00b0C",
+            "title": "Hbt Max C"
+          },
+          "hot_blast_pressure_max_bar_g": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast pressure limit, bar g",
+            "title": "Hot Blast Pressure Max Bar G"
+          },
+          "mgo_al2o3_min": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MgO/Al\u2082O\u2083 of the slag, lower limit, dimensionless",
+            "title": "Mgo Al2O3 Min"
+          },
+          "mgo_min_pct": {
+            "anyOf": [
+              {
+                "maximum": 15.0,
+                "minimum": 3.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MgO of the slag, lower limit, %",
+            "title": "Mgo Min Pct"
+          },
+          "o2_flow_max_nm3h": {
+            "anyOf": [
+              {
+                "maximum": 20000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen flow limit, Nm\u00b3/h",
+            "title": "O2 Flow Max Nm3H"
+          },
+          "raft_max_c": {
+            "anyOf": [
+              {
+                "maximum": 2600.0,
+                "minimum": 1800.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RAFT, upper limit, \u00b0C",
+            "title": "Raft Max C"
+          },
+          "raft_min_c": {
+            "anyOf": [
+              {
+                "maximum": 2600.0,
+                "minimum": 1800.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RAFT, lower limit, \u00b0C",
+            "title": "Raft Min C"
+          },
+          "slag_max_kg_thm": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": 200.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag rate cap, kg/tHM",
+            "title": "Slag Max Kg Thm"
+          },
+          "top_gas_min_c": {
+            "anyOf": [
+              {
+                "maximum": 250.0,
+                "minimum": 50.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top-gas temperature, lower limit, \u00b0C",
+            "title": "Top Gas Min C"
+          },
+          "top_pressure_max_bar_g": {
+            "anyOf": [
+              {
+                "maximum": 2.5,
+                "minimum": 0.5,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top pressure, upper limit, bar g",
+            "title": "Top Pressure Max Bar G"
+          },
+          "top_pressure_min_bar_g": {
+            "anyOf": [
+              {
+                "maximum": 2.5,
+                "minimum": 0.5,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top pressure, lower limit, bar g",
+            "title": "Top Pressure Min Bar G"
+          }
+        },
+        "title": "OptimiserLimits",
+        "type": "object"
+      },
+      "OptimiserResult": {
+        "properties": {
+          "calibration": {
+            "description": "Calibration source, window, \u03c9 and basis",
+            "title": "Calibration",
+            "type": "object"
+          },
+          "certainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Certainty tier of the plan: High, Medium, Low, Investigate",
+            "title": "Certainty"
+          },
+          "critical_assumptions": {
+            "description": "Coke effect of each critical assumption of a STRATA-\u03c9 plan, largest first",
+            "items": {
+              "$ref": "#/components/schemas/CriticalAssumption"
+            },
+            "title": "Critical Assumptions",
+            "type": "array"
+          },
+          "critical_assumptions_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the sensitivity is missing",
+            "title": "Critical Assumptions Error"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why there is no plan (infeasible or failed)",
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "UTC",
+            "title": "Finished At"
+          },
+          "frontier": {
+            "description": "Step 1: cheapest plan per level",
+            "items": {
+              "$ref": "#/components/schemas/FrontierPoint"
+            },
+            "title": "Frontier",
+            "type": "array"
+          },
+          "highest_output_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Step 1: the highest production that is feasible"
+          },
+          "mode": {
+            "enum": [
+              "step1",
+              "step2",
+              "max_production"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "omega_mode": {
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "ore_flux_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Step 2: ore + flux objective (page 9), same limits"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The plan the run reports"
+          },
+          "production_target_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Step 2 target, t/d",
+            "title": "Production Target T D"
+          },
+          "run_id": {
+            "description": "Run id (UUID)",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Duration of the run, s",
+            "title": "Run S"
+          },
+          "saving_lakh_rs_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The saving at the plan's production, lakh Rs/d",
+            "title": "Saving Lakh Rs D"
+          },
+          "saving_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Today's charged blend minus the plan, Rs/tHM",
+            "title": "Saving Rs Thm"
+          },
+          "solves": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkSolves"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA-Flow network solves behind the plan"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "UTC",
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "infeasible",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "today_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Step 2: today's charged blend at the plan's production"
+          },
+          "value_of_limits": {
+            "description": "Step 2: each limit one step",
+            "items": {
+              "$ref": "#/components/schemas/ValueOfLimit"
+            },
+            "title": "Value Of Limits",
+            "type": "array"
+          },
+          "yard_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "live or reference",
+            "title": "Yard Source"
+          }
+        },
+        "required": [
+          "run_id",
+          "mode",
+          "omega_mode",
+          "status"
+        ],
+        "title": "OptimiserResult",
+        "type": "object"
+      },
       "OptimiserRunDetail": {
         "properties": {
           "certainty": {
@@ -7966,7 +9306,7 @@
       },
       "OptimiserRunParams": {
         "additionalProperties": false,
-        "description": "One Burden & Fuel Optimiser run with page 11's defaults (``services.optimiser.default_case``).",
+        "description": "One Burden & Fuel Optimiser run (``services.optimiser.default_case``): page 11's defaults, with the yard, the\ncalibration, the controls and the limits that a request names instead.",
         "properties": {
           "auto": {
             "default": false,
@@ -7976,10 +9316,11 @@
           },
           "calibration": {
             "default": "day",
-            "description": "Two-zone calibration: day = the one made at 02:30 on the 14 days before today (calibration.nightly; the live one while it is missing), live = page 11's, on the stable shifts balanced so far",
+            "description": "Two-zone calibration: day = the one made at 02:30 on the 14 days before today (calibration.nightly; the live one while it is missing), live = page 11's, on the stable shifts balanced so far, reference = the shipped Jul-Oct 2026 calibration",
             "enum": [
               "day",
-              "live"
+              "live",
+              "reference"
             ],
             "title": "Calibration",
             "type": "string"
@@ -7996,8 +9337,19 @@
             "title": "Certainty",
             "type": "string"
           },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptimiserLimits"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Limits instead of the register's and the saved ones"
+          },
           "mode": {
-            "description": "step1: cheapest production level; step2: cheapest blend at a fixed production; max_production",
+            "description": "step1: cheapest production level and the frontier; step2: cheapest blend at a fixed production, with fuel in the objective and the ore + flux-only answer (page 9's objective); max_production",
             "enum": [
               "step1",
               "step2",
@@ -8037,6 +9389,27 @@
             "minimum": 0.0,
             "title": "Risk K",
             "type": "number"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptimiserSettings"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Controls and thermal targets instead of the defaults"
+          },
+          "yard": {
+            "default": "live",
+            "description": "Yard: live = Neon chemistry and stock with the operator inputs in force (the reference yard when Neon is unavailable), reference = the yard of 16 Oct 2026 at the configured prices",
+            "enum": [
+              "live",
+              "reference"
+            ],
+            "title": "Yard",
+            "type": "string"
           }
         },
         "required": [
@@ -8225,6 +9598,140 @@
         "title": "OptimiserRunSummary",
         "type": "object"
       },
+      "OptimiserSettings": {
+        "additionalProperties": false,
+        "description": "Furnace controls and thermal targets of a run that replace page 11's defaults (the regime's medians, the page\nconfig's targets, the regime's PCI and nut coke, today's Open-Meteo blast moisture). Unset fields keep the\ndefault.",
+        "properties": {
+          "blast_moisture_g_nm3": {
+            "anyOf": [
+              {
+                "maximum": 40.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blast moisture (DATA-11), g/Nm\u00b3",
+            "title": "Blast Moisture G Nm3"
+          },
+          "hbt_c": {
+            "anyOf": [
+              {
+                "maximum": 1300.0,
+                "minimum": 900.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast temperature, \u00b0C",
+            "title": "Hbt C"
+          },
+          "hm_si_pct": {
+            "anyOf": [
+              {
+                "maximum": 1.5,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal Si target (BAND-03), %",
+            "title": "Hm Si Pct"
+          },
+          "hmt_c": {
+            "anyOf": [
+              {
+                "maximum": 1600.0,
+                "minimum": 1400.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal temperature target (BAND-02), \u00b0C",
+            "title": "Hmt C"
+          },
+          "hot_blast_pressure_bar_g": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast pressure, bar g",
+            "title": "Hot Blast Pressure Bar G"
+          },
+          "nut_coke_kg_thm": {
+            "anyOf": [
+              {
+                "maximum": 150.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut coke as charged (fixed input), kg/tHM",
+            "title": "Nut Coke Kg Thm"
+          },
+          "o2_per_air": {
+            "anyOf": [
+              {
+                "maximum": 0.12,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen enrichment on the model basis, Nm\u00b3 O\u2082 per Nm\u00b3 air",
+            "title": "O2 Per Air"
+          },
+          "pci_kg_thm": {
+            "anyOf": [
+              {
+                "maximum": 260.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI as injected (fixed input), kg/tHM",
+            "title": "Pci Kg Thm"
+          },
+          "top_pressure_bar_g": {
+            "anyOf": [
+              {
+                "maximum": 2.5,
+                "minimum": 0.5,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top pressure, bar g",
+            "title": "Top Pressure Bar G"
+          }
+        },
+        "title": "OptimiserSettings",
+        "type": "object"
+      },
       "OreEditorInputs": {
         "additionalProperties": false,
         "properties": {
@@ -8379,6 +9886,138 @@
         "title": "PlanDecisionView",
         "type": "object"
       },
+      "PlanView": {
+        "properties": {
+          "binding": {
+            "description": "Binding limits, largest shadow price first",
+            "items": {
+              "$ref": "#/components/schemas/BindingLimit"
+            },
+            "title": "Binding",
+            "type": "array"
+          },
+          "blend": {
+            "description": "Ferrous blend, largest share first",
+            "items": {
+              "$ref": "#/components/schemas/BlendRow"
+            },
+            "title": "Blend",
+            "type": "array"
+          },
+          "burden_fe_wet_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fe of the ferrous burden, wet, %",
+            "title": "Burden Fe Wet Pct"
+          },
+          "charging": {
+            "$ref": "#/components/schemas/ChargingView"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/CostSplit"
+          },
+          "facts_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fact register version of the engine",
+            "title": "Facts Version"
+          },
+          "feasible": {
+            "title": "Feasible",
+            "type": "boolean"
+          },
+          "ferrous_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ferrous burden, wet, kg/tHM",
+            "title": "Ferrous Kg Thm"
+          },
+          "flux": {
+            "description": "Flux (above 0.5 kg/tHM)",
+            "items": {
+              "$ref": "#/components/schemas/FluxRow"
+            },
+            "title": "Flux",
+            "type": "array"
+          },
+          "fuel": {
+            "$ref": "#/components/schemas/FuelSplit"
+          },
+          "label": {
+            "description": "What the plan is",
+            "title": "Label",
+            "type": "string"
+          },
+          "process": {
+            "$ref": "#/components/schemas/ProcessView"
+          },
+          "production_t_d": {
+            "description": "Hot metal, t/d",
+            "title": "Production T D",
+            "type": "number"
+          },
+          "production_t_h": {
+            "description": "Hot metal, t/h",
+            "title": "Production T H",
+            "type": "number"
+          },
+          "shaft_efficiency": {
+            "$ref": "#/components/schemas/ShaftEfficiency"
+          },
+          "slag": {
+            "$ref": "#/components/schemas/SlagView"
+          },
+          "violations": {
+            "description": "Limits the plan breaks",
+            "items": {
+              "$ref": "#/components/schemas/Violation"
+            },
+            "title": "Violations",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label",
+          "feasible",
+          "production_t_d",
+          "production_t_h",
+          "blend",
+          "flux",
+          "cost",
+          "fuel",
+          "slag",
+          "charging",
+          "process",
+          "shaft_efficiency"
+        ],
+        "title": "PlanView",
+        "type": "object"
+      },
       "PlotlyPart": {
         "properties": {
           "bytes": {
@@ -8493,6 +10132,180 @@
           "status"
         ],
         "title": "ProblemDetail",
+        "type": "object"
+      },
+      "ProcessView": {
+        "properties": {
+          "blast_ceiling_nm3h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blast at the set hot-blast pressure, Nm\u00b3/h",
+            "title": "Blast Ceiling Nm3H"
+          },
+          "blast_moisture_g_nm3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blast moisture, g/Nm\u00b3",
+            "title": "Blast Moisture G Nm3"
+          },
+          "blast_nm3h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot blast, meter basis, Nm\u00b3/h",
+            "title": "Blast Nm3H"
+          },
+          "dp_needed_bar": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pressure drop needed, bar",
+            "title": "Dp Needed Bar"
+          },
+          "enrichment_tag_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Plant enrichment tag, %",
+            "title": "Enrichment Tag Pct"
+          },
+          "eta_co_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gas utilisation \u03b7CO, %",
+            "title": "Eta Co Pct"
+          },
+          "hbt_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast temperature, \u00b0C",
+            "title": "Hbt C"
+          },
+          "hm_si_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal Si target, %",
+            "title": "Hm Si Pct"
+          },
+          "hmt_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal temperature target, \u00b0C",
+            "title": "Hmt C"
+          },
+          "hot_blast_pressure_needed_bar_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast pressure needed, bar g",
+            "title": "Hot Blast Pressure Needed Bar G"
+          },
+          "o2_nm3h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen, Nm\u00b3/h",
+            "title": "O2 Nm3H"
+          },
+          "raft_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RAFT (plant workbook), \u00b0C",
+            "title": "Raft C"
+          },
+          "top_gas_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top-gas temperature, \u00b0C",
+            "title": "Top Gas C"
+          },
+          "top_pressure_bar_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top pressure, bar g",
+            "title": "Top Pressure Bar G"
+          }
+        },
+        "title": "ProcessView",
         "type": "object"
       },
       "ReferencePoint": {
@@ -9259,6 +11072,123 @@
           "role"
         ],
         "title": "SessionUser",
+        "type": "object"
+      },
+      "ShaftEfficiency": {
+        "properties": {
+          "calibration_sigma_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Calibration error, not in sigma, kg/tHM",
+            "title": "Calibration Sigma Kg Thm"
+          },
+          "certainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "High, Medium, Low, Investigate (STRATA-\u03c9); Held (Fixed-\u03c9)",
+            "title": "Certainty"
+          },
+          "day_sd_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Day-to-day spread, not in sigma, kg/tHM",
+            "title": "Day Sd Kg Thm"
+          },
+          "investigate": {
+            "description": "Why the plan is in the Investigate tier",
+            "items": {
+              "type": "string"
+            },
+            "title": "Investigate",
+            "type": "array"
+          },
+          "mode": {
+            "description": "fixed: Fixed-\u03c9 (ASM-01); blend: STRATA-\u03c9 (ASM-18)",
+            "enum": [
+              "fixed",
+              "blend"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkSolves"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Network solves behind the plan (STRATA-\u03c9)"
+          },
+          "omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency of the plan, dimensionless",
+            "title": "Omega"
+          },
+          "omega_cal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency of the calibration, dimensionless",
+            "title": "Omega Cal"
+          },
+          "omega_sigma": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the shaft efficiency, dimensionless",
+            "title": "Omega Sigma"
+          },
+          "outside": {
+            "description": "Where the plan is outside what BF-2 has run",
+            "items": {
+              "type": "string"
+            },
+            "title": "Outside",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "ShaftEfficiency",
         "type": "object"
       },
       "ShiftReportDataView": {
@@ -10519,6 +12449,98 @@
           }
         },
         "title": "SlagChargingInputs",
+        "type": "object"
+      },
+      "SlagView": {
+        "properties": {
+          "al2o3_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Al\u2082O\u2083 of the slag, %",
+            "title": "Al2O3 Pct"
+          },
+          "cao_sio2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CaO/SiO\u2082 (B2), dimensionless",
+            "title": "Cao Sio2"
+          },
+          "ib4": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(CaO + MgO)/(SiO\u2082 + Al\u2082O\u2083), dimensionless",
+            "title": "Ib4"
+          },
+          "mgo_al2o3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MgO/Al\u2082O\u2083, dimensionless",
+            "title": "Mgo Al2O3"
+          },
+          "mgo_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MgO of the slag, %",
+            "title": "Mgo Pct"
+          },
+          "rate_kg_thm": {
+            "description": "Slag rate, kg/tHM",
+            "title": "Rate Kg Thm",
+            "type": "number"
+          },
+          "t_basicity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(CaO + MgO)/SiO\u2082, dimensionless",
+            "title": "T Basicity"
+          },
+          "t_d": {
+            "description": "Slag per day, t/d",
+            "title": "T D",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rate_kg_thm",
+          "t_d"
+        ],
+        "title": "SlagView",
         "type": "object"
       },
       "SlotProblem": {
@@ -13822,6 +15844,38 @@
         "title": "Validation",
         "type": "object"
       },
+      "ValueOfLimit": {
+        "properties": {
+          "binds_after": {
+            "default": "",
+            "description": "What binds after the change",
+            "title": "Binds After",
+            "type": "string"
+          },
+          "change": {
+            "description": "The limit relaxed one step",
+            "title": "Change",
+            "type": "string"
+          },
+          "saving_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Saving at the same production (null: infeasible), Rs/tHM",
+            "title": "Saving Rs Thm"
+          }
+        },
+        "required": [
+          "change"
+        ],
+        "title": "ValueOfLimit",
+        "type": "object"
+      },
       "Version": {
         "properties": {
           "environment": {
@@ -13859,6 +15913,30 @@
           "started_at"
         ],
         "title": "Version",
+        "type": "object"
+      },
+      "Violation": {
+        "properties": {
+          "amount": {
+            "description": "By how much the plan breaks the limit, in the limit's unit",
+            "title": "Amount",
+            "type": "number"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "limit",
+          "label",
+          "amount"
+        ],
+        "title": "Violation",
         "type": "object"
       },
       "WorkerStatus": {
@@ -15806,6 +17884,121 @@
         ]
       }
     },
+    "/api/optimiser/runs/{run_id}/commentary": {
+      "get": {
+        "operationId": "optimiser_get_commentary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include the full context the model was given",
+            "in": "query",
+            "name": "context",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include the full context the model was given",
+              "title": "Context",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentaryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "The latest commentary on a run",
+        "tags": [
+          "optimiser"
+        ]
+      },
+      "post": {
+        "description": "Queue ``optimiser.commentary`` (page 11's commentary: optimiser notes, fact register and the run as context,\none LLM retry); read it with GET /api/optimiser/runs/{run_id}/commentary once the job is done.",
+        "operationId": "optimiser_start_commentary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Write the furnace commentary on a run",
+        "tags": [
+          "optimiser"
+        ]
+      }
+    },
     "/api/optimiser/runs/{run_id}/decision": {
       "post": {
         "description": "Append the decision, with its audit row (``plan.decide``), in the current shift. A later decision supersedes.",
@@ -15864,6 +18057,59 @@
           }
         },
         "summary": "Accept or reject a plan",
+        "tags": [
+          "optimiser"
+        ]
+      }
+    },
+    "/api/optimiser/runs/{run_id}/result": {
+      "get": {
+        "description": "Plan (blend, flux, cost split, coke \u00b1 \u03c3, fuel, slag, charging, process, shaft efficiency and certainty, binding\nlimits), Step 2's ore + flux-only plan and today's charged blend, Step 1's highest output and frontier, the value\nof limits, the critical assumptions and the network solves (``services.optimiser_results``).",
+        "operationId": "optimiser_run_result",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptimiserResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "The typed result of a run",
         "tags": [
           "optimiser"
         ]

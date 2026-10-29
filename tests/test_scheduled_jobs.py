@@ -216,7 +216,7 @@ def test_the_dataset_is_fetched_only_when_it_lacks_the_row_and_predates_this_hou
 
 
 # ------------------------------------------------------------------------------------------- optimiser schedule
-def fake_compute(mode, inputs_json, cal_json, settings, limits, prod, *rest):
+def fake_compute(mode, inputs_json, cal_json, settings, limits, prod, *rest, **kw):
     plan = {
         "P_tday": prod if mode == "fixed" else 2310.0,
         "feasible": True,
