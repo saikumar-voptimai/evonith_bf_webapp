@@ -2,9 +2,10 @@
 
 ``POST /api/bmo/runs`` queues ``bmo.run`` (page 9's Balanced Optimizer with page 9's inputs and the requested changes;
 composing the case reads Neon, InfluxDB and the hourly dataset, so it is a worker job) and answers 202 with the job;
-``GET /api/bmo/runs/{job id}`` returns the job and, once it is done, its plan. The forecasts are read from the worker's
-ledgers (SV-1.5) as page 9 reads them; nothing is issued here. Snapshots are the runs saved on page 9, without the
-plant data frozen with them. Units are in the schemas (t/day, kg/tHM, Rs/tHM, Rs/t, mass %); times UTC unless IST.
+``GET /api/bmo/runs/{job id}`` returns the job and, once it is done, its plan; ``GET /api/bmo/runs`` the latest runs
+(the /bmo page opens on the newest, SV-3.6). The forecasts are read from the worker's ledgers (SV-1.5) as page 9 reads
+them; nothing is issued here. Snapshots are the runs saved on page 9, without the plant data frozen with them. Units
+are in the schemas (t/day, kg/tHM, Rs/tHM, Rs/t, mass %); times UTC unless IST.
 """
 
 from __future__ import annotations
@@ -63,14 +64,31 @@ async def start_run(
     return BmoRunSubmitted(job=record, duplicate=duplicate)
 
 
+class BmoRunList(BaseModel):
+    runs: list[BmoRunLookup] = Field(default_factory=list, description="Newest first")
+
+
+def _lookup(job: JobRecord) -> BmoRunLookup:
+    result = BmoRunResult.model_validate(job.result) if job.status == "done" and job.result else None
+    return BmoRunLookup(job=job, result=result)
+
+
+@router.get("/runs", response_model=BmoRunList, summary="Recent Blend Mix Optimiser runs")
+async def list_runs(
+    jobs: Annotated[JobStore, Depends(job_store)],
+    limit: Annotated[int, Query(ge=1, le=50, description="Runs, count")] = 5,
+) -> BmoRunList:
+    """The latest ``bmo.run`` jobs of the last 7 days (any user), newest first, each with its plan once done."""
+    return BmoRunList(runs=[_lookup(job) for job in await jobs.list_kind(RUN_KIND, limit)])
+
+
 @router.get("/runs/{job_id}", response_model=BmoRunLookup, summary="A Blend Mix Optimiser run")
 async def get_run(job_id: str, jobs: Annotated[JobStore, Depends(job_store)]) -> BmoRunLookup:
     """The job (records are kept 7 days) and its plan once it is done."""
     job = await jobs.get(job_id)
     if job is None or job.kind != RUN_KIND:
         raise ApiError(404, "No Blend Mix Optimiser run with this id.")
-    result = BmoRunResult.model_validate(job.result) if job.status == "done" and job.result else None
-    return BmoRunLookup(job=job, result=result)
+    return _lookup(job)
 
 
 @router.get("/forecasts/si", response_model=BmoSiForecastView, summary="Hot-metal Si forecast")

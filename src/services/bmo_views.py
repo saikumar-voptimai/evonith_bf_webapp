@@ -55,8 +55,24 @@ class BmoOreRow(BaseModel):
     cost_rs_d: float | None = Field(None, description="Ore cost, Rs/day")
 
 
+class BmoCharging(BaseModel):
+    """What the plan charges per day and how often (page 9's Charging card and rows,
+    ``utils.bmo.calculations.compute_charging_requirements``)."""
+
+    production_t_d: float | None = Field(None, description="Hot-metal target of the plan, t/day")
+    flux_rate_kg_thm: float | None = Field(None, description="Wet flux charged, kg/tHM")
+    coke_t_d: float | None = Field(None, description="Wet coke in the charges, t/day")
+    nut_coke_t_d: float | None = Field(None, description="Wet nut coke in the charges, t/day")
+    pci_t_d: float | None = Field(None, description="PCI injected, t/day")
+    required_charges_per_hour: float | None = Field(None, description="Charges needed, charges/h")
+    chemical_hm_per_charge_t: float | None = Field(
+        None, description="Hot metal of the full material balance per charge, t"
+    )
+
+
 class BmoPlanView(BaseModel):
-    """A blend as page 9's result cards show it."""
+    """A blend as page 9's result cards show it. Slag, fuel and charging figures are page 9's outcome rows
+    (``services.bmo.comparison_view``): a ratio whose denominator is zero is null, where page 9 shows n/a."""
 
     feasible: bool
     violations: list[str] = Field(default_factory=list)
@@ -71,10 +87,14 @@ class BmoPlanView(BaseModel):
     slag_rate_kg_thm: float | None = Field(None, description="Slag rate, kg/tHM (model basis)")
     slag_basicity: float | None = Field(None, description="CaO/SiO₂ of the slag, ratio")
     slag_t_basicity: float | None = Field(None, description="(CaO+MgO)/SiO₂ of the slag, ratio")
+    slag_ib4: float | None = Field(None, description="(CaO+MgO)/(SiO₂+Al₂O₃) of the slag (display only), ratio")
     slag_al2o3_pct: float | None = Field(None, description="Al₂O₃ in slag, mass %")
     slag_mgo_pct: float | None = Field(None, description="MgO in slag, mass %")
     slag_mgo_al2o3_ratio: float | None = Field(None, description="MgO/Al₂O₃ of the slag, ratio")
     coke_rate_kg_thm: float | None = Field(None, description="Coke rate of the blend, kg/tHM")
+    coke_rate_uncorrected_kg_thm: float | None = Field(
+        None, description="Coke rate before the blend correction (the anchor's), kg/tHM"
+    )
     nut_coke_rate_kg_thm: float | None = Field(None, description="Nut-coke rate, kg/tHM")
     pci_rate_kg_thm: float | None = Field(None, description="PCI rate, kg/tHM")
     fuel_rate_kg_thm: float | None = Field(None, description="Coke + nut coke + PCI, kg/tHM")
@@ -82,7 +102,22 @@ class BmoPlanView(BaseModel):
         None, description="Blend correction of the coke rate against the reference burden, kg/tHM"
     )
     flux_t_d: dict[str, float] = Field(default_factory=dict, description="Flux the LP added, t/day by flux id")
+    charging: BmoCharging | None = Field(None, description="Charging of the plan")
     ores: list[BmoOreRow] = Field(default_factory=list, description="Ores of the run, largest share first")
+
+
+class BmoSlagBand(BaseModel):
+    """The plant's own p5–p95 band of a slag ratio (``utils.slag_bands``), shown beside page 9's slag ratios."""
+
+    quantity: Literal["b2", "t_basicity", "ib4"] = Field(..., description="b2 = CaO/SiO₂, t_basicity, ib4")
+    low: float = Field(..., description="p5 of the plant's HM/slag analyses, ratio")
+    high: float = Field(..., description="p95 of the plant's HM/slag analyses, ratio")
+
+
+def plant_slag_bands() -> list[BmoSlagBand]:
+    from utils.slag_bands import PLANT_SLAG_BANDS
+
+    return [BmoSlagBand(quantity=k, low=lo, high=hi) for k, (lo, hi) in PLANT_SLAG_BANDS.items()]  # type: ignore[arg-type]
 
 
 class BmoRunTargets(BaseModel):
@@ -138,6 +173,9 @@ class BmoRunResult(BaseModel):
     chemistry_window_days: int = Field(..., description="Chemistry window, d")
     live_si_pct: float | None = Field(None, description="Hot-metal Si of the Si forecast the run used, mass %")
     pellet_issues: list[str] = Field(default_factory=list)
+    slag_bands: list[BmoSlagBand] = Field(
+        default_factory=plant_slag_bands, description="Plant p5–p95 bands of B2, T-basicity and IB4"
+    )
     computed_at: datetime = Field(..., description="UTC")
     seconds: float = Field(..., description="Run time, s")
 
@@ -211,6 +249,9 @@ class BmoSnapshotDetail(BmoSnapshotHeader):
     )
     not_restorable: list[str] = Field(default_factory=list)
     model_check: dict[str, Any] | None = Field(None, description="Recorded fuel-model check of the run")
+    slag_bands: list[BmoSlagBand] = Field(
+        default_factory=plant_slag_bands, description="Plant p5–p95 bands of B2, T-basicity and IB4"
+    )
 
 
 # ============================================================================ helpers
@@ -246,21 +287,74 @@ def plain(value: Any) -> Any:
     return str(value)
 
 
-def plan_view(blend: Any, *, ores: list[Any] | None = None, charge_mass_mt: float = 26.4,
+#: Page 9's outcome rows (``services.bmo.COMPARISON_GROUPS``) behind the plan's slag, fuel and charging fields.
+OUTCOME_ROWS: dict[str, str] = {
+    "slag_basicity": "Slag Basicity (CaO/SiO2)",
+    "slag_t_basicity": "Slag T-Basicity (CaO+MgO)/SiO2",
+    "slag_ib4": "IB4 (CaO+MgO)/(SiO2+Al2O3)",
+    "slag_al2o3_pct": "Slag Al2O3 (%)",
+    "slag_mgo_pct": "Slag MgO (%)",
+    "slag_mgo_al2o3_ratio": "Slag MgO/Al2O3",
+    "coke_rate_uncorrected_kg_thm": "Coke Rate, uncorrected (kg/THM)",
+}
+CHARGING_ROWS: dict[str, str] = {
+    "production_t_d": "Production (MT/day)",
+    "flux_rate_kg_thm": "Flux Rate (kg/THM)",
+    "coke_t_d": "Coke in Charges (MT)",
+    "nut_coke_t_d": "Nut Coke in Charges (MT)",
+    "pci_t_d": "PCI in Charges (MT)",
+    "required_charges_per_hour": "Required Charges (/hr)",
+    "chemical_hm_per_charge_t": "Chemical Hotmetal per Charge (MT)",
+}
+
+
+def page_outcomes(blend: Any, *, charge_mass_mt: float) -> dict[str, float]:
+    """Page 9's outcome rows of one blend, by row label (finite values only): the Comparison tab's column of the
+    blend (``services.bmo.comparison_view``), without a manual blend or a last-shift baseline."""
+    from services import bmo
+
+    label = "plan"
+    view = bmo.comparison_view(
+        options=[(label, blend, None)],
+        optimizer_candidates=[(label, blend, None)],
+        manual_blend=None,
+        compare_ores=[],
+        charge_mass_mt=charge_mass_mt,
+        shift_baseline=None,
+        rows_by_ore={},
+        use_last_shift=False,
+    )
+    return {
+        row["Outcome"]: raw[label]
+        for group in view.groups.values()
+        for row, raw in zip(group.rows, group.raw, strict=True)
+        if label in raw
+    }
+
+
+def plan_view(blend: Any, *, ores: list[Any] | None = None, charge_mass_mt: float | None = None,
               names: Mapping[str, str] | None = None) -> BmoPlanView:  # fmt: skip
-    """A ``BlendEvaluation`` (or its fields as a mapping) with page 9's cost figures. With ``ores`` the ore rows are
-    page 9's result table (``services.bmo.blend_table``); else shares and tonnes by id, named by ``names``."""
+    """A ``BlendEvaluation`` (or its fields as a mapping) with page 9's cost figures and outcome rows. With ``ores``
+    the ore rows are page 9's result table (``services.bmo.blend_table``); else shares and tonnes by id, named by
+    ``names``. ``charge_mass_mt`` (t) defaults to the blend's own (``diagnostics.charge_mass_mt``), else 26.4."""
     from services import bmo
 
     if isinstance(blend, Mapping):
         fields = dict(blend)
         fields.setdefault("diagnostics", {})
         fields["diagnostics"] = dict(fields.get("diagnostics") or {})
-        fields.setdefault("objective_rs_per_thm", float("nan"))
-        fields.setdefault("fuel_cost_per_thm_rs", float("nan"))
+        for name in ("objective_rs_per_thm", "fuel_cost_per_thm_rs", "ore_cost_per_thm_rs", "slag_rate_kg_per_thm"):
+            fields.setdefault(name, float("nan"))  # page 9's rows read them as attributes; NaN shows as null
+        fields.setdefault("total_qty_mt", 0.0)
+        fields.setdefault("quantities_mt", {})
+        fields.setdefault("shares_pct", {})
         blend = SimpleNamespace(**fields)
     diagnostics = blend.diagnostics or {}
     rates = diagnostics.get("fuel_rate_estimate") or {}
+    if charge_mass_mt is None:
+        charge_mass_mt = _num(diagnostics.get("charge_mass_mt")) or 26.4
+    outcomes = page_outcomes(blend, charge_mass_mt=charge_mass_mt)
+    charging = {name: outcomes.get(row) for name, row in CHARGING_ROWS.items()}
     if ores is not None:
         by_name = {o.display_name: o.ore_id for o in ores}
         table = bmo.blend_table(blend, ores, charge_mass_mt=charge_mass_mt)
@@ -310,11 +404,7 @@ def plan_view(blend: Any, *, ores: list[Any] | None = None, charge_mass_mt: floa
         fe_production_t_d=_num(getattr(blend, "fe_production_mt", None)),
         slag_t_d=_num(getattr(blend, "slag_mt", None)),
         slag_rate_kg_thm=_num(getattr(blend, "slag_rate_kg_per_thm", None)),
-        slag_basicity=_num(getattr(blend, "slag_basicity", None)),
-        slag_t_basicity=_num(getattr(blend, "slag_t_basicity", None)),
-        slag_al2o3_pct=_num(getattr(blend, "slag_al2o3_pct", None)),
-        slag_mgo_pct=_num(getattr(blend, "slag_mgo_pct", None)),
-        slag_mgo_al2o3_ratio=_num(getattr(blend, "slag_mgo_al2o3_ratio", None)),
+        **{name: outcomes.get(row) for name, row in OUTCOME_ROWS.items()},
         coke_rate_kg_thm=_num(rates.get("coke_rate_kg_thm")),
         nut_coke_rate_kg_thm=_num(rates.get("nut_coke_rate_kg_thm")),
         pci_rate_kg_thm=_num(rates.get("pci_rate_kg_thm")),
@@ -323,6 +413,7 @@ def plan_view(blend: Any, *, ores: list[Any] | None = None, charge_mass_mt: floa
         flux_t_d={
             str(k): float(v) for k, v in (diagnostics.get("lp_flux_quantities_mt") or {}).items() if _num(v) is not None
         },
+        charging=BmoCharging(**charging) if any(v is not None for v in charging.values()) else None,
         ores=rows,
     )
 
@@ -598,7 +689,10 @@ def snapshot_detail(snapshot_id: str, *, directory: Path | None = None) -> BmoSn
 
 
 __all__ = [
+    "CHARGING_ROWS",
+    "OUTCOME_ROWS",
     "BmoAnchor",
+    "BmoCharging",
     "BmoChargedCokeView",
     "BmoFuelRates",
     "BmoOreRow",
@@ -606,13 +700,16 @@ __all__ = [
     "BmoRunResult",
     "BmoRunTargets",
     "BmoSiForecastView",
+    "BmoSlagBand",
     "BmoSnapshotDetail",
     "BmoSnapshotHeader",
     "BmoSnapshotList",
     "BmoSnapshotSummary",
     "charged_coke_forecast",
     "inputs_from_params",
+    "page_outcomes",
     "plain",
+    "plant_slag_bands",
     "plan_view",
     "run_case",
     "run_result",

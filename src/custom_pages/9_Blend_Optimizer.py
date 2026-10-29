@@ -104,7 +104,7 @@ if not is_logged_in():
 
 # Live / Sandbox switch. In Sandbox mode this replays a saved snapshot, with the
 # plant data its run used, in a separate copy of this page and stops here.
-from ui.bmo.snapshot_panel import render_mode_gate  # noqa: E402
+from ui.bmo.snapshot_panel import DE_SEARCH_ANCHOR, render_mode_gate  # noqa: E402
 from utils.bmo.replay import record_provider  # noqa: E402
 
 render_mode_gate(prefix="bmo_")
@@ -3126,6 +3126,8 @@ else:
     }
 run_lp_clicked = False
 run_total_clicked = False
+# The SPA's /bmo page links here for the Intensive Optimizer (DE search): /legacy/Blend_Optimizer#de-search.
+st.subheader("Balanced and Intensive Optimizer", anchor=DE_SEARCH_ANCHOR)
 with st.form("bmo_run_form", clear_on_submit=False):
     seed_options = list(_DE_SEED_LABELS)
     configured_seed = str(opt_cfg.get("initial_solution", "lp_else_random")).lower()

@@ -777,6 +777,20 @@ class JobStore:
         raws = await self.redis.mget([RECORD_KEY.format(i.decode() if isinstance(i, bytes) else i) for i in ids])
         return [JobRecord.model_validate_json(r) for r in raws if r]
 
+    async def list_kind(self, kind: str, limit: int = 10, *, batch: int = 500) -> list[JobRecord]:
+        """Jobs of one kind of the last 7 days, newest first: the index is read in batches until ``limit`` are
+        found (a week holds about 2,500 jobs, mostly the forecasts)."""
+        found: list[JobRecord] = []
+        start = 0
+        while len(found) < limit:
+            ids = await self.redis.zrevrange(INDEX_KEY, start, start + batch - 1)
+            if not ids:
+                break
+            raws = await self.redis.mget([RECORD_KEY.format(i.decode() if isinstance(i, bytes) else i) for i in ids])
+            found += [r for r in (JobRecord.model_validate_json(raw) for raw in raws if raw) if r.kind == kind]
+            start += batch
+        return found[:limit]
+
     async def queued_count(self) -> int:
         return int(await self.redis.zcard(QUEUE_NAME))
 

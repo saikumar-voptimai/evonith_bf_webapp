@@ -1041,6 +1041,14 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `builder._status` and `services.reports.kpi_checks`; thresholds read from `shift_report.yml` per request. Print
   theme: `--vo-print-*` tokens (paper #FFFBE6), `theme/print.css` (`@page` A4, `data-print="hide"`), print rules in
   Panel (`breakable`), DataTable, AppShell, PageHeader; `#lib/reports/print.ts` plans the pages (limit 3).
+- Blend Mix Optimiser page (SV-3.6, `routes/bmo/+page.svelte`): `#lib/bmo/runs.svelte.ts` opens on the newest
+  `bmo.run` (`GET /api/bmo/runs`, `JobStore.list_kind`) and queues runs through `POST /api/bmo/runs`; plan in
+  `#lib/bmo/PlanTabs.svelte` (Blend, Fuel, Slag, Charging). The plan's slag ratios, uncorrected coke and `charging`
+  are page 9's Comparison rows (`bmo_views.page_outcomes` = `services.bmo.comparison_view`; parity with the recorded
+  cells on the 5 golden days in `tests/test_services_bmo_case.py`), plant bands `slag_bands` from `utils.slag_bands`.
+  Sections of page 9 in Streamlit: `PageSection` in `config/page_registry.py` → `LEGACY_SECTIONS` (`make fixtures`)
+  → `legacyHref(page, section, params)`; page 9 opens `?section=sandbox|replay&snapshot=` in
+  `ui.bmo.snapshot_panel.open_linked_section` and `#de-search` is the run form's heading anchor.
 - Live data in the SPA: subscribe through `#lib/live/stream.svelte.ts` (`live.on(type, handler)`, one EventSource
   per tab); follow jobs with `JobTracker` (`#lib/live/jobs.svelte.ts`). A new event type is added to `EventType` and
   the payload models in `services/events.py`, then the OpenAPI client is regenerated (`make client`).

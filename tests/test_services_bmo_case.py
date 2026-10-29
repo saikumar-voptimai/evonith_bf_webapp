@@ -217,6 +217,70 @@ def test_lp_plan_equals_page9(day: str) -> None:
     )
     diffs = bmo_golden.compare(bmo_golden.normalise(expected_view), actual_view)
     assert not diffs, f"the API result differs from page 9 on {day}:\n" + "\n".join(diffs[:40])
+    assert_outcome_parity(view, run, golden, day)
+
+
+def _page_cells(golden: dict[str, Any], column: str = "Balanced Optimizer") -> dict[str, str]:
+    """The cells of one option in page 9's recorded Comparison tables (Cost, Fuel, Slag, Charging), by row label."""
+
+    cells: dict[str, str] = {}
+    for element in golden["tables"]:
+        if element[0] == "table" and element[1][:1] == ["Outcome"] and column in element[1]:
+            at = element[1].index(column)
+            cells.update({row[0]: row[at] for row in element[2]})
+    return cells
+
+
+def _page_formats() -> dict[str, str]:
+    """Page 9's format string of every outcome row (``services.bmo._metric_specs``; the accessors are not called)."""
+
+    def none(*_: Any) -> None:
+        return None
+
+    specs = bmo._metric_specs(production_of=none, production_delta_mt=none, production_change=none,
+                              charging_value=none, fuel_rate_total=none, rate_field=none, basicity=none)  # fmt: skip
+    return {label: fmt for label, _, fmt in specs}
+
+
+def assert_outcome_parity(view: bmo_views.BmoRunResult, run: Any, golden: dict[str, Any], day: str) -> None:
+    """The Fuel, Slag and Charging tabs of /bmo (SV-3.6) carry page 9's outcome rows of the LP plan: equal to
+    ``comparison_view``'s values (relative 1e-6) and, formatted as page 9 formats them, to the recorded cells."""
+
+    plan = view.plan
+    assert plan is not None and plan.charging is not None
+    page = bmo.comparison_view(
+        options=[("Balanced Optimizer", run.lp_result, None)],
+        optimizer_candidates=[("Balanced Optimizer", run.lp_result, None)],
+        manual_blend=None,
+        compare_ores=run.composed.case.ores,
+        charge_mass_mt=run.composed.case.charge_mass_mt,
+        shift_baseline=None,
+        rows_by_ore={},
+        use_last_shift=False,
+    )
+    expected = {
+        row["Outcome"]: raw.get("Balanced Optimizer")
+        for group in page.groups.values()
+        for row, raw in zip(group.rows, group.raw, strict=True)
+    }
+    fields = {
+        **{row: getattr(plan, name) for name, row in bmo_views.OUTCOME_ROWS.items()},
+        **{row: getattr(plan.charging, name) for name, row in bmo_views.CHARGING_ROWS.items()},
+        "Fuel Rate (kg/THM)": plan.fuel_rate_kg_thm,
+        "Coke Rate, corrected (kg/THM)": plan.coke_rate_kg_thm,
+        "Coke Correction (kg/THM)": plan.coke_correction_kg_thm,
+        "Slag Rate (kg/THM)": plan.slag_rate_kg_thm,
+        "Total Cost (Rs/THM)": plan.total_cost_rs_thm,
+        "Ore Cost (Rs/THM)": plan.ore_cost_rs_thm,
+        "Fuel Cost (Rs/THM)": plan.fuel_cost_rs_thm,
+        "Flux Cost (Rs/THM)": plan.flux_cost_rs_thm,
+    }
+    assert set(fields) <= set(expected), set(fields) - set(expected)
+    diffs = bmo_golden.compare(bmo_golden.normalise({k: expected[k] for k in fields}), bmo_golden.normalise(fields))
+    assert not diffs, f"/bmo outcome rows differ from page 9 on {day}:\n" + "\n".join(diffs)
+    formats, cells = _page_formats(), _page_cells(golden)
+    shown = {row: ("n/a" if value is None else formats[row].format(value)) for row, value in fields.items()}
+    assert shown == {row: cells[row] for row in fields}, f"/bmo outcome rows differ from page 9's record on {day}"
 
 
 def test_a_bmo_job_runs_page_9s_case_from_its_params() -> None:

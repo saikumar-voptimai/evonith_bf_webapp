@@ -173,6 +173,45 @@ def test_a_run_is_queued_as_a_bmo_job_and_read_back_with_its_plan(client) -> Non
     assert call(client, "GET", "op", f"/api/bmo/runs/{other.id}").status_code == 404  # not a BMO run
 
 
+class IndexedRedis(MemoryRedis):
+    """``MemoryRedis`` with the reads of the job index (``JobStore.list``, ``list_kind``)."""
+
+    async def zrevrange(self, key: str, start: int, stop: int) -> list[str]:
+        ranked = sorted(self.sorted.get(key, {}).items(), key=lambda kv: kv[1], reverse=True)
+        return [member for member, _ in ranked[start : stop + 1]]
+
+    async def mget(self, keys: list[str]) -> list[Any]:
+        return [self.values.get(k) for k in keys]
+
+
+def test_the_latest_runs_are_listed_newest_first_with_their_plans(client) -> None:
+    """The /bmo page (SV-3.6) opens on the newest run, of any user; other job kinds between runs are skipped."""
+    from datetime import UTC, datetime, timedelta
+
+    t0 = datetime(2026, 10, 29, 4, 0, tzinfo=UTC)
+    times = iter(t0 + timedelta(minutes=i) for i in range(100))
+    jobs = JobStore(IndexedRedis(), clock=lambda: next(times))
+    client.app.state.live.store = jobs  # type: ignore[attr-defined]
+    first, _ = asyncio.run(jobs.submit("bmo.run", {"target_production_mt": 2250}, "op"))
+    asyncio.run(jobs.finish(first.id, "done", result=_result()))
+    for _ in range(3):
+        asyncio.run(jobs.submit("report.live", {"narrative": False}, "op"))
+    second, _ = asyncio.run(jobs.submit("bmo.run", {"target_production_mt": 2300}, "sup"))
+
+    runs = call(client, "GET", "op", "/api/bmo/runs").json()["runs"]
+    assert [r["job"]["id"] for r in runs] == [second.id, first.id]
+    assert (
+        runs[0]["job"]["status"] == "queued" and runs[0]["result"] is None and runs[0]["job"]["submitted_by"] == "sup"
+    )
+    assert runs[1]["result"]["status"] == "ok" and runs[1]["result"]["plan"]["ores"][0]["share_pct"] == 57.5
+    assert [b["quantity"] for b in runs[1]["result"]["slag_bands"]] == ["b2", "t_basicity", "ib4"]
+    assert asyncio.run(jobs.list_kind("bmo.run", 5, batch=2)) == asyncio.run(jobs.list_kind("bmo.run", 5))
+    assert [r["job"]["id"] for r in call(client, "GET", "op", "/api/bmo/runs", params={"limit": 1}).json()["runs"]] == [
+        second.id
+    ]
+    assert call(client, "GET", "op", "/api/bmo/runs", params={"limit": 0}).status_code == 422
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -321,6 +360,13 @@ def test_the_snapshots_of_page_9_are_listed_and_read(client) -> None:
     assert isinstance(ore_rows, list) and {"ore_id", "price_rs_per_mt"} <= set(ore_rows[0])
     assert detail["inputs"]["target_production_mt"] == 2250.0 and "frozen" not in detail
     assert len(json.dumps(detail)) < len(json.dumps(stored)) / 10  # without the frozen plant data
+    # The saved plan carries page 9's outcome rows (the snapshot keeps the run's diagnostics), as a run's plan does.
+    charging = lp["charging"]
+    assert (
+        charging["production_t_d"] == first["summary"]["production_t_d"] and charging["required_charges_per_hour"] > 0
+    )
+    assert lp["slag_ib4"] is not None and lp["coke_rate_uncorrected_kg_thm"] is not None
+    assert {b["quantity"]: (b["low"], b["high"]) for b in detail["slag_bands"]}["t_basicity"] == (1.216, 1.403)
 
     for bad in ("no_such_snapshot", "..%2F..%2Fconfig%2Fsetting_bmo"):
         r = call(client, "GET", "op", f"/api/bmo/snapshots/{bad}")
@@ -353,3 +399,13 @@ def test_every_numeric_field_of_the_bmo_schemas_states_its_unit(client) -> None:
     assert not missing, missing
     paths = client.get("/api/openapi.json").json()["paths"]
     assert "202" in paths["/api/bmo/runs"]["post"]["responses"]
+
+
+def test_a_saved_plan_with_few_fields_still_reads() -> None:
+    """An old or hand-written snapshot result without page 9's diagnostics: values missing, nothing raised."""
+    view = bmo_views.plan_view(
+        {"feasible": True, "shares_pct": {"lump": 100.0}, "quantities_mt": {"lump": 3800.0}}, names={"lump": "LUMP"}
+    )
+    assert view.ores[0].ore_name == "LUMP" and view.ores[0].quantity_t_d == 3800.0
+    assert view.total_cost_rs_thm is None and view.slag_basicity is None and view.slag_ib4 is None
+    assert view.charging is not None and view.charging.required_charges_per_hour is None

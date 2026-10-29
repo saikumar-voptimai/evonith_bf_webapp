@@ -13,3 +13,12 @@ export const LEGACY_PAGES = {
 	'Burden & Fuel Optimiser': 'Burden_Fuel_Optimiser',
 	Feedback: 'Feedback'
 } as const;
+
+// Sections the SPA links to (PageSection): via 'query' = ?section=<key> and the params; 'anchor' = #<key>.
+export const LEGACY_SECTIONS = {
+	'Blend Mix Optimiser': {
+		'de-search': { title: 'Intensive Optimizer (DE search)', via: 'anchor', params: [] },
+		replay: { title: 'Snapshot replay', via: 'query', params: ['snapshot'] },
+		sandbox: { title: 'Sandbox', via: 'query', params: [] }
+	}
+} as const;
