@@ -180,6 +180,9 @@ coke_energy:
         block_h: 24                    # moving-block bootstrap, 95 % interval
         n_boot: 500
         basis: ferrous                 # coke per tonne of ferrous charged (charge: coke per charge on the counter)
+      blend_change:                    # Live Twin (SV-1.9): latest change of the ferrous blend in the charge record
+        threshold_pt: 5.0              # sinter, pellet or lump-ore share of the ferrous charge, percentage points
+        span_h: 2                      # hours compared on each side of an hour boundary
     # HMT one descent time ahead (SV-1.4, utils.coke_energy.hmt_forecast; gate run: scripts/hmt_gate.py). Every
     # window carries the forecast quantities; the Live Twin shows the forecast only with gate status "passed".
     hmt_forecast:
@@ -187,3 +190,23 @@ coke_energy:
         status: pending              # pending | passed | failed (set from the gate runs, register COKE-18 / COKE-19)
         rmse_ratio_max: 0.90         # model RMSE at most 90 % of persistence at the tau_RW horizon
         bias_max_c: 5.0
+    # Data age on the Live Twin (SV-1.9, services.twin_views.source_freshness): the evaluation records the newest
+    # time of each source (snapshot flags.sources); a source is stale from this age, h. InfluxDB on the page follows
+    # live.status (10 s) when the worker publishes it.
+    freshness:
+      stale_after_h:
+        influxdb: 0.5                # 10-min process data (furnace_status.yml: a reading is stale after 15 min)
+        hourly: 2.5                  # the window ending HH:00 needs the row HH-1 (published about HH:06)
+        hm_slag: 6.0                 # casts every 1-3 h
+        dpr: 48.0                    # daily report of the previous day
+        open_meteo: 36.0             # daily RH; the forecast endpoint holds today
+    # Live Twin alarms raised by twin.evaluate besides the drift alarm (SV-1.9, services.twin_alarms).
+    alarms:
+      strata_trace_gap:
+        rmse_days: 7                 # RMSE of STRATA - TRACE over the hourly windows of the last 7 days
+        ratio: 2.0                   # |STRATA - TRACE| above 2 x that RMSE ...
+        min_hours: 3                 # ... in at least 3 consecutive hourly windows
+        min_windows: 24              # windows needed for the RMSE
+      implied_lag:
+        low_h: 5.0                   # implied transit time outside 5-8 h (reference 6.2 h)
+        high_h: 8.0

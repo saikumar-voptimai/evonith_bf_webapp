@@ -736,6 +736,77 @@
         "title": "AuditPage",
         "type": "object"
       },
+      "BlendChangeView": {
+        "properties": {
+          "after_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Wet share of sinter, pellet, ore in the ferrous after, %",
+            "title": "After Pct",
+            "type": "object"
+          },
+          "before_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Wet share of sinter, pellet, ore in the ferrous before, %",
+            "title": "Before Pct",
+            "type": "object"
+          },
+          "changed_at": {
+            "description": "Start of the first hour charged with the new blend (UTC)",
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "charges_since": {
+            "description": "Charges from the change to the column time, count",
+            "title": "Charges Since",
+            "type": "number"
+          },
+          "cz_at": {
+            "description": "Arrival of its first charge at the cohesive-zone top (UTC)",
+            "format": "date-time",
+            "title": "Cz At",
+            "type": "string"
+          },
+          "raceway_at": {
+            "description": "Arrival of its first charge at the raceways (UTC)",
+            "format": "date-time",
+            "title": "Raceway At",
+            "type": "string"
+          },
+          "step_pt": {
+            "description": "Largest change of a ferrous share, percentage points",
+            "title": "Step Pt",
+            "type": "number"
+          },
+          "zone": {
+            "description": "Where it is at the column time",
+            "enum": [
+              "above_cz",
+              "in_cz",
+              "below_cz",
+              "burnt"
+            ],
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changed_at",
+          "step_pt",
+          "before_pct",
+          "after_pct",
+          "charges_since",
+          "cz_at",
+          "raceway_at",
+          "zone"
+        ],
+        "title": "BlendChangeView",
+        "type": "object"
+      },
       "ChargedCokeForecastData": {
         "description": "A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST\nwith their offset.",
         "properties": {
@@ -2896,6 +2967,67 @@
         "title": "HotMetalChemistryInputs",
         "type": "object"
       },
+      "HotMetalSample": {
+        "properties": {
+          "at": {
+            "description": "Sample time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "value": {
+            "description": "HMT, \u00b0C, or Si, %",
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "at",
+          "value"
+        ],
+        "title": "HotMetalSample",
+        "type": "object"
+      },
+      "HotMetalSamples": {
+        "properties": {
+          "end": {
+            "description": "End of the range (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "hmt": {
+            "description": "HMT per tap, \u00b0C (taps >= 1,350 \u00b0C), oldest first",
+            "items": {
+              "$ref": "#/components/schemas/HotMetalSample"
+            },
+            "title": "Hmt",
+            "type": "array"
+          },
+          "si": {
+            "description": "Si per sample, % (finite, above zero), oldest first",
+            "items": {
+              "$ref": "#/components/schemas/HotMetalSample"
+            },
+            "title": "Si",
+            "type": "array"
+          },
+          "start": {
+            "description": "Start of the range (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "hmt",
+          "si"
+        ],
+        "title": "HotMetalSamples",
+        "type": "object"
+      },
       "JobDoneData": {
         "properties": {
           "duration_s": {
@@ -4149,6 +4281,131 @@
           "content"
         ],
         "title": "MessageCreate",
+        "type": "object"
+      },
+      "ModelGaps": {
+        "properties": {
+          "days": {
+            "description": "Period of the RMSE, days",
+            "title": "Days",
+            "type": "number"
+          },
+          "forge_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Window end of forge_trace_kg_thm (UTC)",
+            "title": "Forge At"
+          },
+          "forge_trace_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "K_FORGE - K_TRACE of the newest window, kg/tHM dry",
+            "title": "Forge Trace Kg Thm"
+          },
+          "forge_trace_rmse_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of FORGE - TRACE over the days, kg/tHM dry",
+            "title": "Forge Trace Rmse Kg Thm"
+          },
+          "n_forge": {
+            "description": "Hourly windows in the FORGE RMSE, count",
+            "title": "N Forge",
+            "type": "integer"
+          },
+          "n_strata": {
+            "description": "Hourly windows in the STRATA RMSE, count",
+            "title": "N Strata",
+            "type": "integer"
+          },
+          "ratio": {
+            "description": "Multiple of the RMSE above which a window counts as excess, dimensionless",
+            "title": "Ratio",
+            "type": "number"
+          },
+          "strata_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Window end of strata_trace_kg_thm (UTC)",
+            "title": "Strata At"
+          },
+          "strata_excess_h": {
+            "description": "Newest consecutive hourly windows with |STRATA - TRACE| > ratio x RMSE, h",
+            "title": "Strata Excess H",
+            "type": "integer"
+          },
+          "strata_excess_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Window end where that run starts (UTC)",
+            "title": "Strata Excess Since"
+          },
+          "strata_trace_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "K_STRATA - K_TRACE of the newest window, kg/tHM dry",
+            "title": "Strata Trace Kg Thm"
+          },
+          "strata_trace_rmse_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of STRATA - TRACE over the days, kg/tHM dry",
+            "title": "Strata Trace Rmse Kg Thm"
+          }
+        },
+        "required": [
+          "days",
+          "ratio",
+          "n_forge",
+          "n_strata",
+          "strata_excess_h"
+        ],
+        "title": "ModelGaps",
         "type": "object"
       },
       "OmegaRow": {
@@ -7415,6 +7672,88 @@
         "title": "SlotProblem",
         "type": "object"
       },
+      "SourceAge": {
+        "properties": {
+          "age_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of data_end now, h",
+            "title": "Age H"
+          },
+          "data_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Newest time the source held at the evaluation (UTC)",
+            "title": "Data End"
+          },
+          "key": {
+            "enum": [
+              "influxdb",
+              "hourly",
+              "hm_slag",
+              "dpr",
+              "open_meteo"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "Name of the source on the page",
+            "title": "Label",
+            "type": "string"
+          },
+          "provisional": {
+            "default": false,
+            "description": "DPR: the window's date is carried forward from an earlier report",
+            "title": "Provisional",
+            "type": "boolean"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the evaluation recorded data_end (UTC)",
+            "title": "Recorded At"
+          },
+          "stale": {
+            "description": "age_h >= stale_after_h, or no time recorded",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_after_h": {
+            "description": "Age from which the source is stale, h (coke_energy.yml)",
+            "title": "Stale After H",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "stale_after_h",
+          "stale"
+        ],
+        "title": "SourceAge",
+        "type": "object"
+      },
       "StatusFreshness": {
         "properties": {
           "age_s": {
@@ -9948,6 +10287,17 @@
             "title": "Expected Window End",
             "type": "string"
           },
+          "gaps": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelGaps"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FORGE and STRATA against TRACE, now and over 7 days (SV-1.9)"
+          },
           "lag_h": {
             "anyOf": [
               {
@@ -9976,6 +10326,14 @@
               }
             ],
             "description": "Latest stored evaluation (None before the first)"
+          },
+          "sources": {
+            "description": "Data age of each source (SV-1.9)",
+            "items": {
+              "$ref": "#/components/schemas/SourceAge"
+            },
+            "title": "Sources",
+            "type": "array"
           },
           "stale": {
             "description": "The latest window lags the expected one by stale_after_h or more",
@@ -10408,6 +10766,17 @@
             },
             "title": "Bands",
             "type": "array"
+          },
+          "blend_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlendChangeView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest change of the ferrous blend in the last 72 h and its arrival times (SV-1.9)"
           },
           "charges_per_hour": {
             "anyOf": [
@@ -13090,6 +13459,64 @@
         ]
       }
     },
+    "/api/twin/hot-metal": {
+      "get": {
+        "description": "The hot-metal samples of Neon ``offline_feed.hot_metal_slag_analysis`` over the range: HMT of each tap by the\npipeline's tap filter and Si of each sample (``services.status.hot_metal_samples``); the Live Twin's thermal\nstate (SV-1.9).",
+        "operationId": "twin_hot_metal",
+        "parameters": [
+          {
+            "description": "Range ending now, h (at most 31 days)",
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 72.0,
+              "description": "Range ending now, h (at most 31 days)",
+              "exclusiveMinimum": 0.0,
+              "maximum": 744.0,
+              "title": "Hours",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotMetalSamples"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "HMT per tap and Si per sample",
+        "tags": [
+          "twin"
+        ]
+      }
+    },
     "/api/twin/now": {
       "get": {
         "description": "The latest stored evaluation, how far it lags the expected window and the number of open alarms.",
@@ -13318,6 +13745,62 @@
           }
         },
         "summary": "Burden column and coke in transit",
+        "tags": [
+          "twin"
+        ]
+      }
+    },
+    "/api/twin/window": {
+      "get": {
+        "description": "The stored evaluation of the window ending ``end``: every quantity, the flags (data counts, notes, network\nsolves) and the model versions; the Live Twin's drill-down of an hourly point.",
+        "operationId": "twin_window",
+        "parameters": [
+          {
+            "description": "Window end (a time without offset is UTC)",
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "description": "Window end (a time without offset is UTC)",
+              "format": "date-time",
+              "title": "End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwinSnapshotData"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "One stored window",
         "tags": [
           "twin"
         ]

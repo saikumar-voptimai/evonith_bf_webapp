@@ -690,6 +690,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/twin/hot-metal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * HMT per tap and Si per sample
+         * @description The hot-metal samples of Neon ``offline_feed.hot_metal_slag_analysis`` over the range: HMT of each tap by the
+         *     pipeline's tap filter and Si of each sample (``services.status.hot_metal_samples``); the Live Twin's thermal
+         *     state (SV-1.9).
+         */
+        get: operations["twin_hot_metal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/twin/now": {
         parameters: {
             query?: never;
@@ -742,6 +764,27 @@ export interface paths {
          * @description The charges in the column at ``at`` from the hourly dataset: descent times, coke by zone, the blend by zone.
          */
         get: operations["twin_transit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/twin/window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One stored window
+         * @description The stored evaluation of the window ending ``end``: every quantity, the flags (data counts, notes, network
+         *     solves) and the model versions; the Live Twin's drill-down of an hourly point.
+         */
+        get: operations["twin_window"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1151,6 +1194,57 @@ export interface components {
              * @description Entries that match the filters, count
              */
             total: number;
+        };
+        /** BlendChangeView */
+        BlendChangeView: {
+            /**
+             * After Pct
+             * @description Wet share of sinter, pellet, ore in the ferrous after, %
+             */
+            after_pct: {
+                [key: string]: number;
+            };
+            /**
+             * Before Pct
+             * @description Wet share of sinter, pellet, ore in the ferrous before, %
+             */
+            before_pct: {
+                [key: string]: number;
+            };
+            /**
+             * Changed At
+             * Format: date-time
+             * @description Start of the first hour charged with the new blend (UTC)
+             */
+            changed_at: string;
+            /**
+             * Charges Since
+             * @description Charges from the change to the column time, count
+             */
+            charges_since: number;
+            /**
+             * Cz At
+             * Format: date-time
+             * @description Arrival of its first charge at the cohesive-zone top (UTC)
+             */
+            cz_at: string;
+            /**
+             * Raceway At
+             * Format: date-time
+             * @description Arrival of its first charge at the raceways (UTC)
+             */
+            raceway_at: string;
+            /**
+             * Step Pt
+             * @description Largest change of a ferrous share, percentage points
+             */
+            step_pt: number;
+            /**
+             * Zone
+             * @description Where it is at the column time
+             * @enum {string}
+             */
+            zone: "above_cz" | "in_cz" | "below_cz" | "burnt";
         };
         /**
          * ChargedCokeForecastData
@@ -2227,6 +2321,45 @@ export interface components {
              */
             sulphur_pct?: number | null;
         };
+        /** HotMetalSample */
+        HotMetalSample: {
+            /**
+             * At
+             * Format: date-time
+             * @description Sample time (UTC)
+             */
+            at: string;
+            /**
+             * Value
+             * @description HMT, °C, or Si, %
+             */
+            value: number;
+        };
+        /** HotMetalSamples */
+        HotMetalSamples: {
+            /**
+             * End
+             * Format: date-time
+             * @description End of the range (UTC)
+             */
+            end: string;
+            /**
+             * Hmt
+             * @description HMT per tap, °C (taps >= 1,350 °C), oldest first
+             */
+            hmt: components["schemas"]["HotMetalSample"][];
+            /**
+             * Si
+             * @description Si per sample, % (finite, above zero), oldest first
+             */
+            si: components["schemas"]["HotMetalSample"][];
+            /**
+             * Start
+             * Format: date-time
+             * @description Start of the range (UTC)
+             */
+            start: string;
+        };
         /** JobDoneData */
         JobDoneData: {
             /** Duration S */
@@ -2797,6 +2930,69 @@ export interface components {
              * @description Reasoning profile of this turn (default: the conversation's)
              */
             reasoning_level?: ("Low" | "Medium" | "High") | null;
+        };
+        /** ModelGaps */
+        ModelGaps: {
+            /**
+             * Days
+             * @description Period of the RMSE, days
+             */
+            days: number;
+            /**
+             * Forge At
+             * @description Window end of forge_trace_kg_thm (UTC)
+             */
+            forge_at?: string | null;
+            /**
+             * Forge Trace Kg Thm
+             * @description K_FORGE - K_TRACE of the newest window, kg/tHM dry
+             */
+            forge_trace_kg_thm?: number | null;
+            /**
+             * Forge Trace Rmse Kg Thm
+             * @description RMSE of FORGE - TRACE over the days, kg/tHM dry
+             */
+            forge_trace_rmse_kg_thm?: number | null;
+            /**
+             * N Forge
+             * @description Hourly windows in the FORGE RMSE, count
+             */
+            n_forge: number;
+            /**
+             * N Strata
+             * @description Hourly windows in the STRATA RMSE, count
+             */
+            n_strata: number;
+            /**
+             * Ratio
+             * @description Multiple of the RMSE above which a window counts as excess, dimensionless
+             */
+            ratio: number;
+            /**
+             * Strata At
+             * @description Window end of strata_trace_kg_thm (UTC)
+             */
+            strata_at?: string | null;
+            /**
+             * Strata Excess H
+             * @description Newest consecutive hourly windows with |STRATA - TRACE| > ratio x RMSE, h
+             */
+            strata_excess_h: number;
+            /**
+             * Strata Excess Since
+             * @description Window end where that run starts (UTC)
+             */
+            strata_excess_since?: string | null;
+            /**
+             * Strata Trace Kg Thm
+             * @description K_STRATA - K_TRACE of the newest window, kg/tHM dry
+             */
+            strata_trace_kg_thm?: number | null;
+            /**
+             * Strata Trace Rmse Kg Thm
+             * @description RMSE of STRATA - TRACE over the days, kg/tHM dry
+             */
+            strata_trace_rmse_kg_thm?: number | null;
         };
         /** OmegaRow */
         OmegaRow: {
@@ -4387,6 +4583,50 @@ export interface components {
              */
             state: "failed" | "cancelled" | "running" | "skipped" | "missed";
         };
+        /** SourceAge */
+        SourceAge: {
+            /**
+             * Age H
+             * @description Age of data_end now, h
+             */
+            age_h?: number | null;
+            /**
+             * Data End
+             * @description Newest time the source held at the evaluation (UTC)
+             */
+            data_end?: string | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "influxdb" | "hourly" | "hm_slag" | "dpr" | "open_meteo";
+            /**
+             * Label
+             * @description Name of the source on the page
+             */
+            label: string;
+            /**
+             * Provisional
+             * @description DPR: the window's date is carried forward from an earlier report
+             * @default false
+             */
+            provisional: boolean;
+            /**
+             * Recorded At
+             * @description When the evaluation recorded data_end (UTC)
+             */
+            recorded_at?: string | null;
+            /**
+             * Stale
+             * @description age_h >= stale_after_h, or no time recorded
+             */
+            stale: boolean;
+            /**
+             * Stale After H
+             * @description Age from which the source is stale, h (coke_energy.yml)
+             */
+            stale_after_h: number;
+        };
         /** StatusFreshness */
         StatusFreshness: {
             /**
@@ -5715,6 +5955,8 @@ export interface components {
              * @description End of the newest window that should be evaluated now (UTC; run at HH:10, due at HH:15)
              */
             expected_window_end: string;
+            /** @description FORGE and STRATA against TRACE, now and over 7 days (SV-1.9) */
+            gaps?: components["schemas"]["ModelGaps"] | null;
             /**
              * Lag H
              * @description Expected window end minus the latest window end, h
@@ -5728,6 +5970,11 @@ export interface components {
             now: string;
             /** @description Latest stored evaluation (None before the first) */
             snapshot?: components["schemas"]["TwinSnapshotData"] | null;
+            /**
+             * Sources
+             * @description Data age of each source (SV-1.9)
+             */
+            sources?: components["schemas"]["SourceAge"][];
             /**
              * Stale
              * @description The latest window lags the expected one by stale_after_h or more
@@ -5950,6 +6197,8 @@ export interface components {
             at: string;
             /** Bands */
             bands: components["schemas"]["TransitBand"][];
+            /** @description Latest change of the ferrous blend in the last 72 h and its arrival times (SV-1.9) */
+            blend_change?: components["schemas"]["BlendChangeView"] | null;
             /**
              * Charges Per Hour
              * @description Charging rate of the last hour, charges/h
@@ -7628,6 +7877,47 @@ export interface operations {
             };
         };
     };
+    twin_hot_metal: {
+        parameters: {
+            query?: {
+                /** @description Range ending now, h (at most 31 days) */
+                hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HotMetalSamples"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     twin_now: {
         parameters: {
             query?: never;
@@ -7734,6 +8024,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TwinTransit"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    twin_window: {
+        parameters: {
+            query: {
+                /** @description Window end (a time without offset is UTC) */
+                end: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwinSnapshotData"];
                 };
             };
             /** @description Client error (problem+json) */

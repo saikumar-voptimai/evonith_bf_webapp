@@ -4,7 +4,9 @@ BF-02 cross-section (SV-0.6, #275), drawn from the configured furnace profile ex
 (`ui/furnace_status/schematic.py`): outline, lining, zones, burden layers in the stack, hot blast at the tuyeres,
 top gas and tapping, and readings in callouts on both sides with leader lines to the part of the furnace they
 describe. The zone buttons highlight a zone and the readings related to it. Illustrative: the shading is not a
-measured temperature map and the callouts are related readings, not sensor positions.
+measured temperature map and the callouts are related readings, not sensor positions. `overlay` draws inside the
+furnace (view-box units of `geometry.ts`, clipped to the profile, under the outline), e.g. the Live Twin's burden
+column (SV-1.9); without it the schematic is unchanged.
 -->
 <script lang="ts" module>
 	import type { StatusKind } from '../components/status.ts';
@@ -22,6 +24,7 @@ measured temperature map and the callouts are related readings, not sensor posit
 </script>
 
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { STATUS_ICON, STATUS_WORD } from '../components/status.ts';
 	import {
 		arrow,
@@ -61,6 +64,8 @@ measured temperature map and the callouts are related readings, not sensor posit
 		selected?: string | null;
 		/** Draw the illustrative burden layers in the stack. */
 		layers?: boolean;
+		/** Drawing inside the furnace, clipped to the profile and drawn under the outline. */
+		overlay?: Snippet;
 	}
 
 	let {
@@ -69,7 +74,8 @@ measured temperature map and the callouts are related readings, not sensor posit
 		readings = {},
 		zoneReadings = {},
 		selected = $bindable(null),
-		layers = true
+		layers = true,
+		overlay
 	}: Props = $props();
 
 	const uid = $props.id();
@@ -213,6 +219,9 @@ measured temperature map and the callouts are related readings, not sensor posit
 				{#each arcs as arc, i (i)}
 					<path d={arc.d} class="arc" />
 				{/each}
+			{/if}
+			{#if overlay}
+				<g clip-path="url(#{uid}-clip)">{@render overlay()}</g>
 			{/if}
 			<polygon points={outline} class="outline" />
 			{#each lining as points, i (i)}

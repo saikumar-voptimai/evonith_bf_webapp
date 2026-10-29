@@ -4,7 +4,9 @@
 charges in the column, from the hourly furnace dataset that ``services.coke_energy`` loads (``utils.coke_energy.
 burden_column``). ``quantities(state)``: its scalar quantities for the twin snapshot; ``bands(state)``: the ledger as
 JSON rows. ``implied_lag(fd, snapshots, end)``: the lag between the coke content of the charges and K_TRACE of the
-stored hourly windows over the days before ``end``. Settings: ``config/coke_energy.yml -> twin.transit``.
+stored hourly windows over the days before ``end``. ``blend_change(fd, at)``: the latest change of the ferrous blend
+and when its first charge reaches the cohesive zone and the raceways (SV-1.9). Settings: ``config/coke_energy.yml ->
+twin.transit``.
 """
 
 from __future__ import annotations
@@ -76,6 +78,16 @@ def bands(st: bc.ColumnState) -> list[dict[str, Any]]:
         }
         for b in st.bands
     ]
+
+
+def blend_change(fd: pd.DataFrame, at: Any, cfg: Mapping[str, Any] | None = None) -> bc.BlendChange | None:
+    """The latest change of the ferrous blend before ``at`` (IST) and its arrival at the cohesive zone and the raceways
+    (``burden_column.blend_change``; threshold and span from ``twin.transit.blend_change``)."""
+    ref, _ = settings(cfg)
+    block = dict((((cfg or {}).get("twin") or {}).get("transit") or {}).get("blend_change") or {})
+    return bc.blend_change(
+        fd, at, ref, threshold_pt=float(block.get("threshold_pt", 5.0)), span_h=int(block.get("span_h", 2))
+    )
 
 
 def burnt_series(snapshots: Iterable[Any]) -> pd.Series:

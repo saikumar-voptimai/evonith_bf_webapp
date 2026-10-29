@@ -7,7 +7,8 @@
 2. The windows of the last ``backfill_hours`` that have no snapshot, or were flagged so, are evaluated first (oldest
    first), then W; each is upserted into ``twin.snapshot`` with this job's id.
 3. The implied-omega drift alarm runs on the stored series (``services.drift.run``: ``alarm.raised`` /
-   ``alarm.cleared``), and W is published as ``twin.snapshot``.
+   ``alarm.cleared``), then the Live Twin alarms (``services.twin_alarms.run``: STRATA - TRACE gap, stale sources,
+   implied lag; SV-1.9), and W is published as ``twin.snapshot``.
 
 The evaluation runs in a thread (the Coke Energy sources and the pipeline are memoised in the worker process). Without
 a twin store the window is evaluated and returned in the job result only.
@@ -19,7 +20,7 @@ import asyncio
 from typing import Any
 
 from services import coke_energy as ce
-from services import drift, twin
+from services import drift, twin, twin_alarms
 from services.jobs import TwinEvaluateParams
 from services.store import twin_store
 from utils.burden_engine import strata_network
@@ -75,6 +76,9 @@ async def evaluate(job: JobContext, params: TwinEvaluateParams) -> dict[str, Any
         await job.progress(0.95, "Implied-ω drift alarm", force=True)
         report = await drift.run(store, job.bus, drift.DriftConfig.from_config(ce.config()))
         alarms = [f"{d} open" for d in report.open_episodes()]
+        await job.progress(0.97, "Live Twin alarms", force=True)
+        changes = await twin_alarms.run(store, job.bus, ce.config())
+        alarms += [f"{k}{'/' + sub if sub else ''} {event.removeprefix('alarm.')}" for event, k, sub in changes]
     await job.bus.publish("twin.snapshot", twin.snapshot_event(latest))
     return {
         "window_end": end.isoformat(),

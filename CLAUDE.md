@@ -970,6 +970,12 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   user `bfapp`, `/opt/bf-webapp/releases` + `current`, `/etc/bf-webapp/env` root:bfapp 0640, 14-day logs) and
   `verify_base.sh` (offset < 100 ms, units back after a reboot, open-port list); name service units `bf-*` with
   `RequiresMountsFor=/var/lib/bf-webapp`; tests `tests/test_jetson_scripts.py` (bash via Git Bash on Windows).
+- Live Twin page (SV-1.9, `routes/+page.svelte`): state in `#lib/twin/live-twin.svelte.ts` (`LiveTwin.start()` returns
+  the dispose; bounded buffers `MAX_ROWS` / `MAX_SAMPLES`), pure builders in `#lib/twin/live-twin.ts` tested on the
+  recorded payloads of `#lib/twin/fixtures/payloads.ts`; API additions `/api/twin/now` sources and gaps,
+  `/api/twin/window`, `/api/twin/hot-metal`, `/api/twin/transit` blend change; alarms `services/twin_alarms.py`
+  (STRATA − TRACE gap, stale source, implied lag, job failed; `coke_energy.yml -> twin.alarms`, `twin.freshness`);
+  optimiser runs store `result.critical_assumptions`. `FurnaceSchematic` takes an `overlay` snippet.
 - Live data in the SPA: subscribe through `#lib/live/stream.svelte.ts` (`live.on(type, handler)`, one EventSource
   per tab); follow jobs with `JobTracker` (`#lib/live/jobs.svelte.ts`). A new event type is added to `EventType` and
   the payload models in `services/events.py`, then the OpenAPI client is regenerated (`make client`).

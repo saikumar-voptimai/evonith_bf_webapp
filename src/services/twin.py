@@ -100,7 +100,35 @@ def evaluate(
         transit=reference,
     )
     ev.flags["hmt_forecast_gate"] = hmt_gate_status(cfg)
+    ev.flags["sources"] = source_ends(frames)
     return ev
+
+
+def source_ends(frames: TwinFrames) -> dict[str, str | None]:
+    """Newest time each source holds, as UTC ISO strings (the Live Twin's data ages, SV-1.9): the 10-min InfluxDB
+    data, the hourly dataset (label of its last hour), the last hot-metal cast, the last DPR date (provisional dates
+    carried forward excluded) and the last day of the Open-Meteo record (00:00 IST)."""
+    real_dpr = frames.dpr[~frames.dpr.index.isin(pd.to_datetime(list(frames.provisional)))]
+    fresh = sources.freshness(frames.fd, frames.m10, frames.hm, real_dpr)
+    ends = {
+        "influxdb": fresh.online_end,
+        "hourly": fresh.hourly_end,
+        "hm_slag": fresh.hm_slag_end,
+        "dpr": fresh.dpr_end,
+        "open_meteo": open_meteo_end(),
+    }
+    return {k: None if v is None or pd.isna(v) else to_utc(ist_naive(v)).isoformat() for k, v in ends.items()}
+
+
+def open_meteo_end() -> pd.Timestamp | None:
+    """Last day of the Open-Meteo humidity record (shipped file, cache and earlier fetches; no fetch here)."""
+    from utils.coke_energy import weather
+
+    try:
+        record = weather.open_meteo_rh(refresh=False).dropna()
+    except Exception:  # noqa: BLE001 - a missing record is a missing data age, not a failed evaluation
+        return None
+    return None if record.empty else pd.Timestamp(record.index.max()).normalize()
 
 
 def hmt_gate_status(cfg: Mapping[str, Any]) -> str:

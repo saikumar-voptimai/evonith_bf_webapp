@@ -1,5 +1,6 @@
 """Views of the stored twin for the API (SV-1.6, #286): freshness of the latest evaluation, hourly and per-shift
-series, alarms, optimiser runs and decisions as plain values.
+series, alarms, optimiser runs and decisions as plain values; for the Live Twin (SV-1.9, #289) the data age of each
+source and the model gaps against TRACE.
 
 The twin evaluates the window [t - 8 h, t) for t = HH:00 at HH:10 (``twin.evaluate``, SV-1.7: the window's last
 hourly row is in the published build of about HH:06), normally within a few minutes: at a time ``now`` the newest
@@ -133,6 +134,104 @@ def series_rows(
     return out
 
 
+# ------------------------------------------------------------------------------------- Live Twin (SV-1.9, #289)
+SOURCE_LABELS = {
+    "influxdb": "InfluxDB",
+    "hourly": "Hourly dataset",
+    "hm_slag": "HM/slag",
+    "dpr": "DPR",
+    "open_meteo": "Open-Meteo",
+}
+STALE_AFTER_H = {"influxdb": 0.5, "hourly": 2.5, "hm_slag": 6.0, "dpr": 48.0, "open_meteo": 36.0}
+
+
+def freshness_limits(cfg: Mapping[str, Any] | None) -> dict[str, float]:
+    """Age from which each source is stale, h (``config/coke_energy.yml -> twin.freshness.stale_after_h``)."""
+    block = dict((((cfg or {}).get("twin") or {}).get("freshness") or {}).get("stale_after_h") or {})
+    return {k: float(block.get(k, v)) for k, v in STALE_AFTER_H.items()}
+
+
+def source_freshness(
+    latest: Any | None, now: datetime | None = None, limits: Mapping[str, float] | None = None
+) -> list[dict[str, Any]]:
+    """Data age of each source as the latest evaluation recorded it (snapshot ``flags.sources``): newest time, age at
+    ``now`` and stale from ``limits`` (h); the DPR carries the evaluation's provisional flag (a date carried forward).
+    A source without a recorded time is stale."""
+    now = utc(now or datetime.now(UTC))
+    lim = {**STALE_AFTER_H, **dict(limits or {})}
+    flags = dict(_get(latest, "flags") or {}) if latest is not None else {}
+    ends = dict(flags.get("sources") or {})
+    recorded = utc(_get(latest, "evaluated_at")) if latest is not None else None
+    out = []
+    for key, label in SOURCE_LABELS.items():
+        end = utc(ends[key]) if ends.get(key) else None
+        age = (now - end).total_seconds() / 3600.0 if end is not None else None
+        out.append(
+            dict(
+                key=key,
+                label=label,
+                data_end=end,
+                age_h=age,
+                stale_after_h=lim[key],
+                stale=age is None or age >= lim[key],
+                provisional=bool(flags.get("provisional_dpr")) if key == "dpr" else False,
+                recorded_at=recorded,
+            )
+        )
+    return out
+
+
+def model_gaps(
+    rows: Iterable[Any], now: datetime | None = None, *, days: float = 7.0, ratio: float = 2.0
+) -> dict[str, Any]:
+    """FORGE - TRACE and STRATA - TRACE of the newest window that has them and their RMSE over the hourly windows of
+    the last ``days`` (kg/tHM dry), and the run of newest consecutive hourly windows with |STRATA - TRACE| above
+    ``ratio`` x that RMSE (a missing hour ends the run)."""
+    now = utc(now or datetime.now(UTC))
+    since = now - pd.Timedelta(days=days)
+    seen: list[tuple[datetime, float | None, float | None]] = []
+    for row in rows:
+        end = utc(_get(row, "window_end"))
+        if end is None or end <= since or end > now:
+            continue
+        trace, forge, strata = (number(_get(row, k)) for k in ("k_trace", "k_forge", "k_strata"))
+        if trace is None:
+            continue
+        seen.append((end, None if forge is None else forge - trace, None if strata is None else strata - trace))
+    seen.sort(key=lambda r: r[0])
+
+    def rmse(values: list[float]) -> float | None:
+        return math.sqrt(sum(v * v for v in values) / len(values)) if values else None
+
+    d_forge = [r[1] for r in seen if r[1] is not None]
+    d_strata = [r[2] for r in seen if r[2] is not None]
+    last_forge = next((r for r in reversed(seen) if r[1] is not None), None)
+    last_strata = next((r for r in reversed(seen) if r[2] is not None), None)
+    rmse_strata = rmse(d_strata)
+    run: list[datetime] = []
+    if rmse_strata:
+        for end, _, d in reversed(seen):
+            if d is None or abs(d) <= ratio * rmse_strata:
+                break
+            if run and (run[-1] - end) > pd.Timedelta(hours=1):
+                break
+            run.append(end)
+    return dict(
+        days=days,
+        ratio=ratio,
+        forge_at=last_forge[0] if last_forge else None,
+        forge_trace_kg_thm=last_forge[1] if last_forge else None,
+        strata_at=last_strata[0] if last_strata else None,
+        strata_trace_kg_thm=last_strata[2] if last_strata else None,
+        forge_trace_rmse_kg_thm=rmse(d_forge),
+        strata_trace_rmse_kg_thm=rmse_strata,
+        n_forge=len(d_forge),
+        n_strata=len(d_strata),
+        strata_excess_h=len(run),
+        strata_excess_since=run[-1] if run else None,
+    )
+
+
 def alarm_data(row: Any) -> dict[str, Any]:
     return {
         "id": _get(row, "id"),
@@ -208,6 +307,11 @@ def current_shift_key(now: datetime | None = None) -> str:
 
 __all__ = [
     "EVALUATION_MINUTE",
+    "SOURCE_LABELS",
+    "STALE_AFTER_H",
+    "freshness_limits",
+    "model_gaps",
+    "source_freshness",
     "number",
     "SHIFT_ENDS",
     "alarm_data",
