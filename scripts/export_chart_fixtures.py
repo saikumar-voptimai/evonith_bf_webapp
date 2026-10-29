@@ -18,6 +18,13 @@
   ``tests/test_services_reports.py`` through the report builder and the Reports tab's renderer, as
   ``GET /api/reports/{id}`` and ``GET /api/reports/thresholds`` serve it. The Shift Reports page's tables
   (``frontend/src/lib/reports/reports.ts``) must show the numbers of the tab's document (#296).
+- ``frontend/src/lib/optimiser/fixtures/result.json``: a recorded Burden & Fuel Optimiser run, the 16 Oct 2026 case
+  report at 2,270 t/d (Fixed-ω, reference yard, case calibration at 15 g/Nm³) with a charged blend to compare, as
+  ``GET /api/optimiser/runs/{id}/result`` serves it, a Step 1 result on three levels of the same case, and
+  ``GET /api/optimiser/reference``; ``expected`` holds what page 11 renders from the engine's result (``plan_tiles``,
+  ``band_note``, ``plan_sentence``, ``blend_compare_table``, ``flux_compare_table``, the frontier header, the value of
+  limits). The builders of the SPA's optimiser page (``frontend/src/lib/optimiser/optimiser.ts``) must reproduce them
+  (#300).
 
 ``tests/test_chart_fixtures.py`` fails when a committed fixture differs from this output.
 """
@@ -25,6 +32,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -39,6 +47,7 @@ RIST_OUT = ROOT / "frontend" / "src" / "lib" / "charts" / "fixtures" / "rist_shi
 SCHEMATIC_OUT = ROOT / "frontend" / "src" / "lib" / "furnace" / "fixtures" / "schematic.json"
 STATUS_OUT = ROOT / "frontend" / "src" / "lib" / "status" / "fixtures" / "snapshot.json"
 REPORT_OUT = ROOT / "frontend" / "src" / "lib" / "reports" / "fixtures" / "report.json"
+OPTIMISER_OUT = ROOT / "frontend" / "src" / "lib" / "optimiser" / "fixtures" / "result.json"
 SHIFT_INPUTS = ROOT / "tests" / "fixtures" / "coke_energy" / "shift_inputs.csv"
 SHIFT_KEY = "2026-10-14_A"
 
@@ -266,6 +275,196 @@ def report_fixture() -> dict[str, Any]:
     }
 
 
+OPTIMISER_RUN_ID = "3c1f7a52-9b0e-4d6a-8e21-5f4b7c9d2a10"
+OPTIMISER_STEP1_ID = "8a2d4e61-0c3f-4b7a-9d15-6e2c8f1a4b37"
+CASE_CAL = ROOT / "tests" / "fixtures" / "cal_2z_jul_oct_2026_case_report_15g.json"
+#: The case report's controls and thermal targets (as tests/test_api_optimiser.py).
+CASE_SETTINGS = {
+    "hmt_c": 1470.0,
+    "hm_si_pct": 0.3836,
+    "pci_kg_thm": 190.0,
+    "nut_coke_kg_thm": 70.0,
+    "blast_moisture_g_nm3": 15.0,
+    "hbt_c": 1188.4,
+    "o2_per_air": 0.05209,
+    "hot_blast_pressure_bar_g": 2.79,
+    "top_pressure_bar_g": 1.42,
+}
+#: A charged blend to compare Step 2 against (wet % of the ferrous charge; the reference yard has none).
+TODAY_SHARES = {"sinter_sp_02": 62.0, "lloyds_pellet": 12.0, "geomin_clo": 12.0, "lloyds_clo": 8.0, "nmdc_rom": 6.0}
+TODAY_WINDOW = "from 15 Oct 06:00 to 16 Oct 06:00 IST"
+STEP1_LEVELS = (2200.0, 2270.0, 2340.0)
+
+
+def _rounded(value: Any, digits: int = 9) -> Any:
+    if isinstance(value, dict):
+        return {k: _rounded(v, digits) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_rounded(v, digits) for v in value]
+    if isinstance(value, float):
+        return round(value, digits) if math.isfinite(value) else None
+    return value
+
+
+def _records(frame: Any) -> list[dict[str, Any]]:
+    return [
+        {k: (None if isinstance(v, float) and not math.isfinite(v) else v) for k, v in row.items()}
+        for row in frame.to_dict(orient="records")
+    ]
+
+
+def _page11(
+    r: dict[str, Any],
+    today: dict[str, Any] | None,
+    other: dict[str, Any] | None,
+    names: dict[str, str],
+    prices: dict[str, float],
+    flux_ids: list[str],
+) -> dict[str, Any]:
+    """What page 11 renders for a plan (``render_plan_summary``, ``plan_sentence``, the Blend tab) from the engine's
+    result."""
+    from utils.burden_engine.scenarios import blend_compare_table, flux_compare_table, plan_sentence, plan_tiles
+    from utils.slag_bands import PLANT_SLAG_BANDS, band_note
+
+    tiles = plan_tiles(r, flux_ids)
+    out: dict[str, Any] = {"tiles": tiles}
+    notes = {}
+    for key, (lo, hi) in PLANT_SLAG_BANDS.items():
+        value = tiles["slag"][key]
+        text, inside = band_note(value if math.isfinite(value) else None, lo, hi)
+        notes[key] = {"text": text, "inside": inside}
+    out["band_notes"] = notes
+    others = []
+    if today is not None:
+        others.append(("Today", today))
+        t0 = plan_tiles(today, flux_ids)
+        out["today_tiles"] = t0
+        out["deltas"] = {grp: {k: tiles[grp][k] - t0[grp][k] for k in tiles[grp]} for grp in ("cost", "fuel", "slag")}
+        out["saving_lakh_rs_d"] = (t0["cost"]["total"] - tiles["overview"]["total"]) * tiles["overview"]["P_tday"] / 1e5
+    if other is not None and abs(other["cost"]["total"] - r["cost"]["total"]) >= 0.5:
+        others.append(("Ore + flux only", other))
+    out["lead"] = list(plan_sentence(r, names, flux_ids, today))
+    out["blend_table"] = _records(blend_compare_table(r, others, names, prices))
+    out["flux_table"] = _records(flux_compare_table(r, others, names, flux_ids))
+    out["donut"] = {
+        "segments": [[i, float(sh), float(r["t_day"].get(i, 0.0))] for i, sh in r["share_wet"].items() if sh > 0],
+        "ferrous_t_d": r["ferrous_wet"] * r["P_tday"] / 1000.0,
+    }
+    return out
+
+
+def optimiser_fixture() -> dict[str, Any]:
+    """The case report's Step 2 as the worker stores it, the result view and page 11's figures from the same run."""
+    if str(ROOT) not in sys.path:
+        sys.path.append(str(ROOT))
+    os.environ.setdefault("COKE_ENERGY_TODAY", "2026-10-15")
+    from dataclasses import replace
+    from datetime import UTC, datetime
+
+    from services import optimiser as svc
+    from services.optimiser_reference import reference_view
+    from services.optimiser_results import result_view
+    from utils.burden_engine.engine import Limits, Settings
+    from utils.burden_engine.scenarios import frontier_table, limit_labels, run_fixed
+
+    cfg = dict(svc.read_page_config(0))
+    cfg.pop("prices", None)  # the case report's own (UAT) prices
+    cfg["calibration"] = dict(cfg.get("calibration") or {}, fallback_path=str(CASE_CAL))
+    case = svc.default_case(
+        "step2",
+        omega_mode="fixed",
+        production_t_d=2270.0,
+        production_source="requested",
+        calibration_basis="reference",
+        yard_basis="reference",
+        settings=CASE_SETTINGS,
+        cfg=cfg,
+    )
+    args = list(case.args)
+    args[10] = svc.as_json(TODAY_SHARES)
+    case = replace(case, args=tuple(args), today_shares=dict(TODAY_SHARES), today_window=TODAY_WINDOW)
+    res = svc.compute_mode(*case.args)
+    started = datetime(2026, 10, 16, 0, 45, tzinfo=UTC)
+    finished = datetime(2026, 10, 16, 0, 46, 12, tzinfo=UTC)
+    row = {
+        "id": OPTIMISER_RUN_ID,
+        "trigger": "user",
+        "requested_by": "sup",
+        "started_at": started,
+        "finished_at": finished,
+        **svc.run_values(case, res),
+    }
+    step2 = json.loads(result_view(row).model_dump_json())
+
+    inputs = json.loads(case.args[1])
+    names = dict(case.names)
+    prices = {m["id"]: float(m["price"]) for m in [*inputs["materials"], *inputs["fluxes"]]}
+    flux_ids = [f["id"] for f in inputs["fluxes"]]
+    r, today, r0 = (svc.jsonable(res[k]) for k in ("with_fuel", "today", "ore_only"))
+    expected_step2 = _page11(r, today, r0, names, prices, flux_ids)
+    vol = svc.jsonable(res["value_of_limits"])
+    expected_step2["value_of_limits"] = {
+        "useful": [x["change"] for x in vol if abs(x["saving_rs_thm"] or 0.0) >= 0.5],
+        "rest": [x["change"] for x in vol if abs(x["saving_rs_thm"] or 0.0) < 0.5],
+    }
+
+    # Step 1 on three levels of the same case: the frontier, its cheapest and its highest point.
+    eng = svc.engine(inputs, json.loads(case.args[2]))
+    s = Settings(**case.args[3])
+    L = Limits(**case.args[4])
+    plans = [svc.jsonable(run_fixed(eng, p, s, L)["with_fuel"]) for p in STEP1_LEVELS]
+    best = min(plans, key=lambda x: x["cost"]["total"])
+    top = max(plans, key=lambda x: x["P_tday"])
+    step1_res = {
+        "mode": "cheapest",
+        "best": best,
+        "top": top,
+        "frontier": svc.jsonable(frontier_table(plans)),
+        "critical_assumptions": [],
+    }
+    summary = dict(case.summary(), mode="step1", production_target_t_d=None, production_source=None)
+    step1_row = {
+        "id": OPTIMISER_STEP1_ID,
+        "trigger": "schedule",
+        "requested_by": "scheduler",
+        "mode": "step1",
+        "omega_mode": "fixed",
+        "status": "ok",
+        "inputs": svc.jsonable(summary),
+        "result": step1_res,
+        "started_at": started,
+        "finished_at": finished,
+    }
+    step1 = json.loads(result_view(step1_row).model_dump_json())
+    dp = top["P_tday"] - best["P_tday"]
+    extra = (top["cost"]["total"] * top["P_tday"] - best["cost"]["total"] * best["P_tday"]) / dp if dp > 1 else None
+    expected_step1 = {
+        "tiles": _page11(best, None, None, names, prices, flux_ids)["tiles"],
+        "best": {
+            "P_tday": best["P_tday"],
+            "cost": best["cost"]["total"],
+            "limited_by": limit_labels(best.get("binding", [])),
+        },
+        "top": {
+            "P_tday": top["P_tday"],
+            "cost": top["cost"]["total"],
+            "limited_by": limit_labels(top.get("binding", [])),
+        },
+        "extra_rs_per_t": extra,
+    }
+    return {
+        "source": (
+            "services.optimiser.compute_mode on the 16 Oct 2026 case report (Fixed-ω, reference yard, "
+            f"{CASE_CAL.name}) at 2,270 t/d against a charged blend, stored by run_values and served by result_view; "
+            "Step 1 from run_fixed at 2,200 / 2,270 / 2,340 t/d; expected = page 11's functions on the engine result"
+        ),
+        "step2": _rounded(step2),
+        "step1": _rounded(step1),
+        "reference": json.loads(reference_view().model_dump_json()),
+        "expected": _rounded({"step2": expected_step2, "step1": expected_step1}),
+    }
+
+
 def write(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
@@ -277,6 +476,7 @@ def main() -> None:
     write(SCHEMATIC_OUT, schematic_fixture())
     write(STATUS_OUT, status_fixture())
     write(REPORT_OUT, report_fixture())
+    write(OPTIMISER_OUT, optimiser_fixture())
 
 
 if __name__ == "__main__":

@@ -288,6 +288,27 @@ def plan_tiles(r: Mapping[str, Any], flux_ids: Sequence[str] = ()) -> dict[str, 
     )
 
 
+def plan_sentence(r: Mapping[str, Any], names: Mapping[str, str], flux_ids: list[str],
+                  today: Mapping[str, Any] | None = None) -> tuple[str, str]:
+    """(kind, markdown): one line an operator can act on - what to charge, what it costs, what it saves against
+    today's blend. kind is "saving", "dearer" or "plain" (no comparison)."""
+    fer = sorted(((names.get(i, i), sh) for i, sh in r["share_wet"].items() if sh > 0.05), key=lambda t: -t[1])
+    flux = [(names.get(i, i), r["wet_kg"].get(i, 0.0)) for i in flux_ids if r["wet_kg"].get(i, 0.0) >= 0.5]
+    text = "**Charge** " + ", ".join(f"{n} {sh:.1f} %" for n, sh in fer)
+    text += (" with " + ", ".join(f"{n.lower()} {kg:.0f} kg/tHM" for n, kg in flux)) if flux else ", no flux"
+    text += f": Rs {r['cost']['total']:,.0f}/tHM, coke {r['out']['K']:.1f} kg/tHM dry."
+    if today is None:
+        return "plain", text
+    d = today["cost"]["total"] - r["cost"]["total"]
+    if abs(d) < 0.5:
+        return "plain", text + " Same cost as today's blend."
+    lakh = abs(d) * r["P_tday"] / 1e5
+    dk = r["out"]["K"] - today["out"]["K"]
+    text += (f" **Rs {abs(d):,.0f}/tHM {'less' if d > 0 else 'more'} than today's blend** (Rs {lakh:,.1f} lakh/day at "
+             f"this output; coke {dk:+.1f} kg/tHM).")
+    return ("saving" if d > 0 else "dearer"), text
+
+
 def cost_table(r: Mapping[str, Any]) -> pd.DataFrame:
     c, o, s = r["cost"], r["out"], r["settings"]
     rows = [("Ore", c["ore"], ""), ("Flux", c["flux"], ""),
