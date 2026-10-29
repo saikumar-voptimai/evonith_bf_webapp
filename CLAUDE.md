@@ -1078,6 +1078,11 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   Sections of page 9 in Streamlit: `PageSection` in `config/page_registry.py` → `LEGACY_SECTIONS` (`make fixtures`)
   → `legacyHref(page, section, params)`; page 9 opens `?section=sandbox|replay&snapshot=` in
   `ui.bmo.snapshot_panel.open_linked_section` and `#de-search` is the run form's heading anchor.
+- Retirement of Streamlit pages (SV-6.7): `docs/retirement.md` lists per page the Svelte replacement, parity tests,
+  gate, shadow use and sign-off (none retired yet; G2 / G3 pending). Retire with `retirement=Retirement(date,
+  routes)` on the `AppPageDescriptor`: the page leaves the navigation, the Welcome tiles, the feedback list and
+  `LEGACY_PAGES` (SPA links to it fail the type check); administrators open it at its URL, hidden, with a banner,
+  for 30 days (`served_pages`); then nobody, and `tests/test_page_registry.py` fails until it is deleted.
 - Live data in the SPA: subscribe through `#lib/live/stream.svelte.ts` (`live.on(type, handler)`, one EventSource
   per tab); follow jobs with `JobTracker` (`#lib/live/jobs.svelte.ts`). A new event type is added to `EventType` and
   the payload models in `services/events.py`, then the OpenAPI client is regenerated (`make client`).
