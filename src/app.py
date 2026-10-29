@@ -14,9 +14,9 @@ import streamlit as st
 # Must be first Streamlit call
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
 
-from config.page_registry import get_navigation_pages
+from config.page_registry import retirement_notice, served_pages
 from utils.logger import setup_logger
-from utils.session import is_logged_in, sync_api_session
+from utils.session import is_admin, is_logged_in, sync_api_session
 
 # Initialize logging once
 setup_logger()
@@ -49,12 +49,25 @@ if not is_logged_in():
 # ------------------------------------------------------
 # PAGE REGISTRATION
 # ------------------------------------------------------
-pages = [
-    st.Page(descriptor.file_path, title=descriptor.title, icon=descriptor.icon)
-    for descriptor in get_navigation_pages()
+# Retired pages (SV-6.7, #321) are registered for administrators only, hidden from the menu, until their deletion date.
+served = [
+    (
+        descriptor,
+        st.Page(
+            descriptor.file_path,
+            title=descriptor.title,
+            icon=descriptor.icon,
+            visibility="visible" if shown else "hidden",
+        ),
+    )
+    for descriptor, shown in served_pages(admin=is_admin())
 ]
 
-pg = st.navigation(pages)
+pg = st.navigation([page for _, page in served])
+
+notice = next((retirement_notice(d) for d, page in served if page is pg), None)
+if notice:
+    st.warning(notice, icon=":material/archive:")
 
 # Run active page
 pg.run()

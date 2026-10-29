@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from config.page_registry import get_navigation_pages
 from utils.session import has_permission, logout_user
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -289,7 +290,14 @@ _TILES = [
 ]
 
 
+# Tiles of pages in the navigation only: a retired page is not registered for every session (SV-6.7, #321).
+_IN_NAVIGATION = {descriptor.file_path for descriptor in get_navigation_pages()}
+_TILES = [tile for tile in _TILES if tile[0] in _IN_NAVIGATION]
+
+
 def _tile(col, page_path: str, icon: str, title: str, desc: str, color: str):
+    if page_path not in _IN_NAVIGATION:
+        return
     with col:
         st.html(f"""
         <div style="background:{color}; border-radius:10px 10px 0 0;
