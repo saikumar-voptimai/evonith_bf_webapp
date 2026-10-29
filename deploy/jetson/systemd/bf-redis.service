@@ -1,0 +1,32 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): Redis on 127.0.0.1:6379 for the job queue, the event stream
+# (twin:events), the worker heartbeat and the revoked sessions. redis-server from Ubuntu (apt, provision.sh); the
+# package's own redis-server.service is masked. Configuration on the command line, so Redis needs no release.
+# Append-only file every second on the NVMe: queued jobs and revoked sessions survive a restart.
+[Unit]
+Description=BF-02 webapp: Redis (127.0.0.1:6379)
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+After=network.target
+RequiresMountsFor=/var/lib/bf-webapp
+PartOf=bf-webapp.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+User=bfapp
+Group=bfapp
+EnvironmentFile=/etc/bf-webapp/env
+StateDirectory=bf-webapp/redis
+StateDirectoryMode=0750
+ExecStart=/usr/bin/redis-server --bind 127.0.0.1 --port 6379 --protected-mode yes --daemonize no --supervised systemd --dir /var/lib/bf-webapp/redis --appendonly yes --appendfsync everysec --save "" --maxmemory 512mb --maxmemory-policy noeviction --loglevel notice
+Restart=always
+RestartSec=2s
+TimeoutStopSec=30s
+MemoryMax=1G
+LimitNOFILE=65536
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=bf-webapp.target

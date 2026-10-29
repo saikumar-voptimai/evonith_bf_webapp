@@ -1,0 +1,15 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): the watchdog of the bf-* services. First run 30 s after the
+# timer starts (at boot, with bf-webapp.target), then 10 s after the end of each run: runs never overlap.
+[Unit]
+Description=BF-02 webapp: health check every 10 s
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+PartOf=bf-webapp.target
+
+[Timer]
+OnActiveSec=30s
+OnUnitInactiveSec=10s
+AccuracySec=1s
+Unit=bf-healthcheck.service
+
+[Install]
+WantedBy=bf-webapp.target

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# BF-02 webapp: base system of the Jetson AGX Orin (SV-6.1, #315). Run as root on the Orin; idempotent: every step
-# reads the current state and changes only what differs, so a second run reports "no changes".
+# BF-02 webapp: base system and services of the Jetson AGX Orin (SV-6.1 #315, SV-6.3 #317). Run as root on the Orin;
+# idempotent: every step reads the current state and changes only what differs, so a second run reports "no changes".
 #
 #   sudo deploy/jetson/provision.sh --nvme-uuid <UUID> --ntp-server <host> --admin-subnet <CIDR> [options]
 #
 # Steps, in this order (main):
 #   platform  JetPack 6.x (L4T R36), Ubuntu 22.04, aarch64; refuses anything else
-#   packages  chrony, ufw, logrotate through apt, only the missing ones
+#   packages  chrony, ufw, logrotate, redis-server, curl through apt, only the missing ones
 #   user      system user bfapp: no login shell, home /var/lib/bf-webapp, groups video and render (GPU)
 #   nvme      the NVMe filesystem (ext4 or xfs, formatted by hand: README) in /etc/fstab by UUID, at /var/lib/bf-webapp
 #   layout    /opt/bf-webapp/releases (+ current, the symlink release.sh sets), /var/lib/bf-webapp/{storage,cache},
@@ -14,6 +14,9 @@
 #   power     nvpmodel MAXN now and at every boot, then jetson_clocks (bf-jetson-power.service)
 #   clock     chrony against the plant NTP server(s) only
 #   logs      logrotate: /var/log/bf-webapp/*.log daily, 14 days; journald keeps 14 days
+#   services  Caddy (SHA-checked GitHub release) in /usr/local/bin; the package units redis-server / caddy masked; the
+#             units of deploy/jetson/systemd in /etc/systemd/system and enabled (bf-webapp.target at boot), the health
+#             check in /usr/local/sbin/bf-healthcheck; started when a release is installed (SV-6.3)
 #   firewall  ufw: incoming denied except 443/tcp and 80/tcp (Caddy's HTTPS redirect) from anywhere, 22/tcp from the
 #             admin subnet(s); refuses to run while an SSH client outside those subnets is connected
 #
@@ -34,7 +37,19 @@ LOGROTATE_CONF=/etc/logrotate.d/bf-webapp
 JOURNALD_CONF=/etc/systemd/journald.conf.d/bf-webapp.conf
 UFW_DEFAULTS=/etc/default/ufw
 LOG_RETENTION_DAYS=14
-PACKAGES=(chrony ufw logrotate)
+PACKAGES=(chrony ufw logrotate redis-server curl)
+# Services (SV-6.3): unit files of deploy/jetson/systemd, installed in this order (the directory holds exactly these;
+# tested); the package units that would take ports 6379 and 443 are masked
+JETSON_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+UNIT_DIR=/etc/systemd/system
+UNITS=(bf-webapp.target bf-redis.service bf-furnace-data.service bf-twin-api.service bf-twin-worker.service
+	bf-streamlit.service bf-caddy.service bf-healthcheck.service bf-healthcheck.timer)
+SERVICES_TARGET=bf-webapp.target
+PACKAGE_UNITS=(redis-server.service caddy.service)
+HEALTHCHECK_BIN=/usr/local/sbin/bf-healthcheck
+CADDY_VERSION=2.10.2
+CADDY_BIN=/usr/local/bin/caddy
+CADDY_RELEASES=https://github.com/caddyserver/caddy/releases/download
 # path owner:group mode; verify_base.sh holds the same table (tested)
 LAYOUT_DIRS=(
 	"/opt/bf-webapp root:root 755"
@@ -265,6 +280,8 @@ BF_API_COOKIE_SECURE=true
 BF_REDIS_URL=redis://127.0.0.1:6379/0
 UV_CACHE_DIR=$DATA_DIR/cache/uv
 XDG_CACHE_HOME=$DATA_DIR/cache
+# Caddy and the health check (deploy/jetson/Caddyfile; default in brackets): BF_SITE (bf02.local), BF_TLS (internal),
+# BF_HSTS (max-age=0), BF_HTTPS_PORT (443)
 # Fill in before the first release (CLAUDE.md, "Environment Variables"):
 # DATABASE_URL=postgresql://...
 # INFLUX_ONLINE_TOKEN=
@@ -275,6 +292,34 @@ XDG_CACHE_HOME=$DATA_DIR/cache
 # QDRANT_API_KEY=
 EOF
 }
+
+# caddy_asset MACHINE VERSION: the release tarball of Caddy for this machine
+caddy_asset() {
+	case $1 in
+	aarch64 | arm64) printf 'caddy_%s_linux_arm64.tar.gz\n' "$2" ;;
+	x86_64) printf 'caddy_%s_linux_amd64.tar.gz\n' "$2" ;;
+	*) return 1 ;;
+	esac
+}
+
+# stdin: `caddy version` ("v2.10.2 h1:..."); stdout: "2.10.2"
+caddy_version() { awk 'NR == 1 && $1 ~ /^v[0-9]/ { print substr($1, 2); found = 1 } END { exit !found }'; }
+
+# checksum_listed FILE NAME < checksums file ("<hex>  <name>" lines): the listed digest of NAME equals FILE's,
+# SHA-512 or SHA-256 by the digest's length
+checksum_listed() {
+	local want have
+	want=$(awk -v n="$2" '$2 == n || $2 == "*" n { print tolower($1); exit }')
+	case ${#want} in
+	128) have=$(sha512sum "$1" | awk '{ print $1 }') ;;
+	64) have=$(sha256sum "$1" | awk '{ print $1 }') ;;
+	*) return 1 ;;
+	esac
+	[[ $want == "$have" ]]
+}
+
+# stdin: a unit file; status 0 when it has an [Install] section (it can be enabled)
+has_install() { grep -q '^\[Install\]' ; }
 
 # stdout: "<ufw rule words><TAB><comment>" per rule, in the order they are added
 ufw_rules() { # http(0|1) subnets...
@@ -514,6 +559,71 @@ step_logs() {
 	fi
 }
 
+install_caddy() {
+	local have="" asset url tmp
+	[[ -x $CADDY_BIN ]] && have=$("$CADDY_BIN" version 2>/dev/null | caddy_version || true)
+	if [[ $have == "$CADDY_VERSION" ]]; then
+		note "caddy $have in $CADDY_BIN"
+		return
+	fi
+	asset=$(caddy_asset "$(uname -m)" "$CADDY_VERSION") || die "no Caddy release asset for $(uname -m)"
+	url=$CADDY_RELEASES/v$CADDY_VERSION
+	tmp=$(mktemp -d)
+	trap 'rm -rf -- "${tmp:-}"; trap - RETURN' RETURN # a RETURN trap outlives the function: it clears itself
+	curl -fsSL --retry 3 -o "$tmp/$asset" "$url/$asset" || die "download failed: $url/$asset (GitHub reachable?)"
+	curl -fsSL --retry 3 -o "$tmp/checksums.txt" "$url/caddy_${CADDY_VERSION}_checksums.txt" ||
+		die "download failed: $url/caddy_${CADDY_VERSION}_checksums.txt"
+	checksum_listed "$tmp/$asset" "$asset" <"$tmp/checksums.txt" || die "checksum of $asset does not match the release"
+	tar -xzf "$tmp/$asset" -C "$tmp" caddy
+	install -m 755 -o root -g root "$tmp/caddy" "$CADDY_BIN"
+	have=$("$CADDY_BIN" version | caddy_version) || die "$CADDY_BIN does not run"
+	[[ $have == "$CADDY_VERSION" ]] || die "installed caddy reports $have, not $CADDY_VERSION"
+	changed "caddy $have in $CADDY_BIN ($asset, checksum checked)"
+}
+
+step_services() {
+	step "services: Caddy $CADDY_VERSION, Redis, ${#UNITS[@]} bf-* units"
+	local unit state restart=()
+	[[ -x /usr/bin/redis-server && -x /usr/bin/redis-cli ]] || die "redis-server / redis-cli missing (step packages)"
+	install_caddy
+	for unit in "${PACKAGE_UNITS[@]}"; do
+		state=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+		if [[ -n $state && $state != masked && $state != not-found ]]; then
+			systemctl disable --now "$unit" >/dev/null 2>&1 || true
+			systemctl mask "$unit" >/dev/null
+			changed "$unit stopped and masked (bf-webapp.target runs its own)"
+		fi
+	done
+	write_file "$HEALTHCHECK_BIN" 755 root:root <"$JETSON_DIR/healthcheck.sh"
+	if ((WROTE)); then changed "$HEALTHCHECK_BIN"; fi
+	for unit in "${UNITS[@]}"; do
+		write_file "$UNIT_DIR/$unit" 644 root:root <"$JETSON_DIR/systemd/$unit"
+		if ((WROTE)); then
+			restart+=("$unit")
+			changed "$UNIT_DIR/$unit"
+		fi
+	done
+	if ((${#restart[@]})); then systemctl daemon-reload; fi
+	for unit in "${UNITS[@]}"; do
+		has_install <"$UNIT_DIR/$unit" || continue # bf-healthcheck.service: started by its timer
+		if ! systemctl is-enabled --quiet "$unit"; then
+			systemctl enable --quiet "$unit"
+			changed "$unit enabled"
+		fi
+	done
+	if [[ ! -L $OPT_DIR/current ]]; then
+		note "no release yet: the services start with the first release (release.sh, SV-6.4) and at every boot"
+		return
+	fi
+	# changed units that run are restarted (not the target: that would restart every unit); then whatever of the
+	# target is not running is started
+	for unit in "${restart[@]}"; do
+		[[ $unit == *.target ]] || systemctl try-restart "$unit" || note "$unit did not restart: journalctl -u $unit"
+	done
+	systemctl start "$SERVICES_TARGET"
+	for unit in "${UNITS[@]}"; do note "$unit $(systemctl is-active "$unit" 2>/dev/null || true)"; done
+}
+
 step_firewall() {
 	step "firewall: ufw"
 	local outside want have status rule comment
@@ -621,6 +731,7 @@ main() {
 	step_power
 	step_clock
 	step_logs
+	step_services
 	step_firewall
 	summary
 }

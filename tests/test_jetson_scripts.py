@@ -141,6 +141,7 @@ def test_provision_runs_every_required_step_in_order() -> None:
         "step_power",
         "step_clock",
         "step_logs",
+        "step_services",  # units (SV-6.3) after the user, the NVMe and the env file they use
         "step_firewall",  # last: a firewall mistake must not stop the other steps
     ]
     body = {name: _function_body(text, name) for name in steps}
@@ -156,6 +157,14 @@ def test_provision_runs_every_required_step_in_order() -> None:
     assert "maxn_mode" in body["step_power"] and 'systemctl enable "$POWER_UNIT"' in body["step_power"]
     assert "render_chrony_conf" in body["step_clock"] and "chronyc waitsync" in body["step_clock"]
     assert "render_logrotate" in body["step_logs"] and "logrotate --debug" in body["step_logs"]
+    assert "install_caddy" in body["step_services"] and 'systemctl mask "$unit"' in body["step_services"]
+    assert (
+        'write_file "$UNIT_DIR/$unit"' in body["step_services"] and "systemctl daemon-reload" in body["step_services"]
+    )
+    assert (
+        'systemctl enable --quiet "$unit"' in body["step_services"]
+        and "[[ ! -L $OPT_DIR/current ]]" in body["step_services"]
+    )  # started only with a release
     assert "ufw --force enable" in body["step_firewall"] and "peers_outside" in body["step_firewall"]
 
 

@@ -8,7 +8,7 @@ Production host for the Svelte frontend, the twin-api, the twin-worker and Strea
 | #280 (SV-0.11) | CI release artefacts (`frontend-build.tar.gz`, lock files) and the aarch64 lock check (below) |
 | #315 (SV-6.1) | `provision.sh`, `verify_base.sh`: JetPack 6.x, NVMe at `/var/lib/bf-webapp`, nvpmodel MAXN, chrony, ufw, user `bfapp`, directory layout, logrotate (below) |
 | #316 (SV-6.2) | `install_python.sh`: uv 0.7.13 and uv-managed CPython 3.12, `uv sync --frozen`, import check; wheel audit (`docs/jetson_wheel_audit.md`); `benchmark.sh`: optimiser runtimes against the plan's targets (`docs/jetson_benchmark.md`) (below) |
-| #317 (SV-6.3) | systemd units: caddy, twin-api, twin-worker, streamlit, redis, furnace-data-service |
+| #317 (SV-6.3) | `systemd/`: units of Caddy, twin-api, twin-worker, Streamlit, Redis, furnace-data-service, the target `bf-webapp.target` and the health check (`healthcheck.sh`, timer); installed by `provision.sh` (below) |
 | #318 (SV-6.4) | `release.sh <tag>`: CI artefact, `uv sync --frozen`, `alembic -n twin upgrade head`, smoke test, rollback |
 
 ## Base system (`provision.sh`, `verify_base.sh`, SV-6.1)
@@ -50,13 +50,14 @@ Steps (`main`, in this order):
 | Step | Result |
 |---|---|
 | platform | Stops unless aarch64, L4T R36.x (JetPack 6.0 to 6.2) and Ubuntu 22.04; prints the module and the `nvidia-jetpack` version |
-| packages | `chrony`, `ufw`, `logrotate` installed (apt only for the missing ones) |
+| packages | `chrony`, `ufw`, `logrotate`, `redis-server`, `curl` installed (apt only for the missing ones) |
 | user | System user `bfapp`: shell `/usr/sbin/nologin`, home `/var/lib/bf-webapp`, groups `video` and `render` (GPU) |
 | nvme | One `/etc/fstab` entry `UUID=<uuid> /var/lib/bf-webapp <fs> defaults,noatime,nofail,x-systemd.device-timeout=30s 0 2` (the first version kept as `/etc/fstab.bf-orig`), mounted. Stops when the UUID is not on an NVMe, is mounted elsewhere, or the unmounted mount point holds files |
 | layout | The paths below; `/etc/bf-webapp/env` created once with a new `BF_API_JWT_SECRET` (64 hex characters), afterwards only its owner and mode are corrected |
 | power | `nvpmodel -m <id>` of the `MAXN` mode in `/etc/nvpmodel.conf` (`MAXN_SUPER` on an Orin Nano / NX), and `bf-jetson-power.service` (oneshot, after `nvpmodel.service`): nvpmodel MAXN, then `jetson_clocks`, at every boot. The summary says when the mode change needs a reboot |
 | clock | `/etc/chrony/chrony.conf` with only the plant servers (`iburst`, `makestep 1 3`, `rtcsync`; the Ubuntu file kept as `chrony.conf.bf-orig`), systemd-timesyncd off, chrony enabled; waits up to 60 s for an offset below 100 ms |
 | logs | `/etc/logrotate.d/bf-webapp`: `/var/log/bf-webapp/*.log` daily, `rotate 14`, `maxage 14`, compressed, `copytruncate`, as `bfapp`; checked with `logrotate --debug`. journald (`journald.conf.d/bf-webapp.conf`): persistent, `MaxRetentionSec=14day` |
+| services | Caddy 2.10.2 in `/usr/local/bin/caddy` (GitHub release, checked against its checksum file), `redis-server` from apt with its own `redis-server.service` masked (and `caddy.service`, if a package installed one); the units of `systemd/` in `/etc/systemd/system`, the health check in `/usr/local/sbin/bf-healthcheck`, every unit with an `[Install]` section enabled; with a release installed, changed units restarted and `bf-webapp.target` started. Section "Services" |
 | firewall | ufw: incoming denied, outgoing allowed, routing denied; allowed in: 443/tcp and 80/tcp from anywhere, 22/tcp from each admin subnet. Rewritten (`ufw --force reset`) only when `ufw show added`, the active state or a default policy differs (routing: `DEFAULT_FORWARD_POLICY="DROP"` in `/etc/default/ufw`, since `ufw status verbose` prints `disabled (routed)` while IP forwarding is off). Stops while an SSH client outside the admin subnets is connected |
 
 | Path | Owner | Mode | Content |
@@ -67,9 +68,9 @@ Steps (`main`, in this order):
 | `/var/log/bf-webapp` | bfapp:bfapp | 750 | Log files of the services (`*.log`, 14 days) |
 | `/etc/bf-webapp/env` | root:bfapp | 640 | `EnvironmentFile=` of the units (SV-6.3): `BF_API_ENVIRONMENT=prod`, the JWT secret, `BF_REDIS_URL`; `DATABASE_URL` and the InfluxDB, LLM and Qdrant keys are filled in by hand before the first release |
 
-For the units of SV-6.3: name them `bf-*` (`verify_base.sh` then checks them without arguments), and give every unit
-that writes to the NVMe `RequiresMountsFor=/var/lib/bf-webapp`. The `nofail` mount lets the Jetson boot, with SSH
-reachable, when the NVMe is missing; the services then stay down instead of writing to the eMMC.
+The service units (SV-6.3) are named `bf-*`, so `verify_base.sh` checks them without arguments, and every one has
+`RequiresMountsFor=/var/lib/bf-webapp`. The `nofail` mount lets the Jetson boot, with SSH reachable, when the NVMe is
+missing; the services then stay down instead of writing to the eMMC.
 
 **Checks** (`verify_base.sh`; one line per check, exit status 1 on a FAIL):
 
@@ -132,25 +133,26 @@ removed. Responses other than the event stream are compressed (zstd, gzip).
 | `BF_API_UPSTREAM`, `BF_LEGACY_UPSTREAM` | `127.0.0.1:8100`, `127.0.0.1:8501` | twin-api and Streamlit |
 | `BF_HTTP_PORT`, `BF_HTTPS_PORT` | `80`, `443` | Listening ports. Redirects assume the clients use 443 |
 
-Processes behind the proxy (units in SV-6.3), all on 127.0.0.1:
+Processes behind the proxy, all on 127.0.0.1 (units of section "Services"; by hand from a checkout):
 
 ```bash
-# twin-api: ONE process (no --workers). It holds the sign-in failure limit and the revoked sessions.
-uv run uvicorn api.main:app --app-dir src --host 127.0.0.1 --port 8100
-# Streamlit under /legacy
+# twin-api: 2 uvicorn workers (bf-twin-api.service)
+uv run uvicorn api.main:app --app-dir src --host 127.0.0.1 --port 8100 --workers 2 --timeout-graceful-shutdown 10
+# Streamlit under /legacy (bf-streamlit.service)
 uv run python run_streamlit.py --server.address 127.0.0.1 --server.port 8501 --server.baseUrlPath legacy \
-    --server.headless true --browser.gatherUsageStats false
+    --server.headless true --server.fileWatcherType none --browser.gatherUsageStats false
 ```
 
 The twin-api trusts `X-Forwarded-For` from `BF_API_TRUSTED_PROXIES` (default 127.0.0.1, ::1, i.e. Caddy) and sets its
 session cookie `Secure` (`BF_API_COOKIE_SECURE=true`), which needs the HTTPS origin.
 
-**Certificate.** With `BF_TLS=internal`, Caddy creates a local CA under its data directory (for the caddy user
-normally `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`). Install that root certificate on every
-control-room PC (Windows: Trusted Root Certification Authorities). The Caddyfile sets `skip_install_trust`: Caddy
-does not add its root to the Jetson's own store.
+**Certificate.** With `BF_TLS=internal`, Caddy creates a local CA under its data directory
+(`/var/lib/bf-webapp/caddy/data/caddy/pki/authorities/local/root.crt`, `XDG_DATA_HOME` of `bf-caddy.service`).
+Install that root certificate on every control-room PC (Windows: Trusted Root Certification Authorities). The
+Caddyfile sets `skip_install_trust`: Caddy does not add its root to the Jetson's own store.
 With a certificate of the plant CA, set `BF_TLS="/etc/bf-webapp/tls/bf02.crt /etc/bf-webapp/tls/bf02.key"` (readable
-by the caddy user). The choice is an open item of the plan (TLS certificate source and Jetson host name).
+by `bfapp`, the user of `bf-caddy.service`). The choice is an open item of the plan (TLS certificate source and Jetson
+host name).
 
 **Check.**
 
@@ -169,6 +171,73 @@ ports 80 / 443, `BF_SITE=localhost`):
 | Assets | `/_app/immutable/...` 200 with the one-year cache; a missing asset 404; `/_app/version.json` `no-cache` |
 | Event stream | 20 of 20 events through Caddy, latency from publish to the browser 3 ms (p50), 4 ms (max) |
 | Streamlit | All 11 pages under `/legacy` run to the end with the WebSocket `/legacy/_stcore/stream` connected and the same content as Streamlit without the proxy |
+
+## Services (`systemd/`, SV-6.3)
+
+`provision.sh` (step "services") installs the units of `deploy/jetson/systemd/` in `/etc/systemd/system` and enables
+`bf-webapp.target` at boot. Every service runs as `bfapp` with `EnvironmentFile=/etc/bf-webapp/env` (the Python units
+also read `/etc/bf-webapp/uv.env`), `RequiresMountsFor=/var/lib/bf-webapp`, `PartOf=bf-webapp.target`,
+`Restart=always` after 2 s and `StartLimitIntervalSec=0` (systemd never gives up restarting), `MemoryMax`, and
+`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=full`, `ProtectHome`.
+
+| Unit | Process | Listens | MemoryMax | Starts after |
+|---|---|---|---|---|
+| `bf-redis.service` | `redis-server` (apt), `Type=notify`; append-only file every second in `/var/lib/bf-webapp/redis`, `maxmemory 512mb`, `noeviction` | 127.0.0.1:6379 | 1 GiB | network |
+| `bf-furnace-data.service` | furnace-data-service: `uvicorn app.main:app` in `furnace-data-service/`, the release's `.venv` | 127.0.0.1:8000 | 2 GiB | network online |
+| `bf-twin-api.service` | twin-api: `uvicorn api.main:app --workers 2 --timeout-graceful-shutdown 10` | 127.0.0.1:8100 | 3 GiB | Redis |
+| `bf-twin-worker.service` | twin-worker: `python -m worker`, `BF_WORKER_POOL=8`, `PYTHONPATH=src`; `KillMode=mixed`, `CPUWeight=50` | | 12 GiB | Redis |
+| `bf-streamlit.service` | `run_streamlit.py` with `--server.baseUrlPath legacy`, no file watcher | 127.0.0.1:8501 | 6 GiB | Redis, furnace-data-service |
+| `bf-caddy.service` | `caddy run` with the release's `Caddyfile`, `Type=notify`; `CAP_NET_BIND_SERVICE` for ports 80 and 443; data in `/var/lib/bf-webapp/caddy` | :443, :80 | 512 MiB | twin-api, Streamlit |
+| `bf-healthcheck.timer` | `bf-healthcheck.service` (root, oneshot): `/usr/local/sbin/bf-healthcheck` = `healthcheck.sh`, 30 s after the start, then 10 s after each run | | | |
+
+The memory limits add up to 24.5 GiB (the AGX Orin's 32 GB, shared with the GPU, less the system); measured values
+replace them after the soak on the device. The application units start only when a release is installed
+(`ConditionPathExists` on `/opt/bf-webapp/current/.venv/bin/python`, Caddy on the release's `Caddyfile`); Redis does
+not depend on a release. They find the interpreter, `src` and `run_streamlit.py` relative to
+`WorkingDirectory=/opt/bf-webapp/current`, which systemd resolves once at the start: a release switch never mixes two
+releases in one process tree, and `release.sh` (SV-6.4) restarts the target after switching.
+
+**Start order.** `After=` and `Wants=`: Redis and furnace-data-service first, then the twin-api, the twin-worker and
+Streamlit, then Caddy, so the first request after a boot finds its upstream. `Wants=`, not `Requires=`, between the
+services: a start that fails on a dependency is never retried, while a service that starts without its dependency
+(arq without Redis exits; the twin-api answers and retries Redis every 15 s) is restarted until it runs. The only hard
+dependency is the NVMe (`RequiresMountsFor`).
+
+**Restart and watchdog.** A process that exits or is killed is restarted by systemd after 2 s; a uvicorn worker that
+dies is restarted by uvicorn's parent. None of the processes signals systemd's watchdog (`WatchdogSec`), so
+`bf-healthcheck.timer` probes the services that run but may no longer answer, and restarts one after two failed probes
+in a row (a hung service is restarted 16 to 30 s after it stops answering). A service that is not active (stopped by
+hand, starting, waiting for its restart) or still in its start grace is not probed.
+
+| Unit | Probe | Grace |
+|---|---|---|
+| `bf-redis.service` | `redis-cli -u $BF_REDIS_URL ping` answers `PONG` | 15 s |
+| `bf-twin-api.service` | `GET http://127.0.0.1:8100/api/health` 2xx | 90 s |
+| `bf-streamlit.service` | `GET http://127.0.0.1:8501/legacy/_stcore/health` 2xx | 90 s |
+| `bf-furnace-data.service` | `GET http://127.0.0.1:8000/health` 2xx | 60 s |
+| `bf-caddy.service` | any HTTP answer from `https://$BF_SITE:$BF_HTTPS_PORT/` at 127.0.0.1 | 15 s |
+| `bf-twin-worker.service` | `twin:worker:alive` (written every 10 s) at most 60 s old; not judged while Redis does not answer | 120 s |
+
+The check logs only failed probes and restarts, at warning level: `journalctl -u bf-healthcheck -p warning`.
+
+**Two twin-api workers.** The revoked sessions are shared through Redis (SV-6.6). Per process remain the sign-in
+failure limit (a client can fail up to 2 x `BF_API_LOGIN_MAX_FAILURES` sign-ins per window) and FurnaceMind's tool
+state (a follow-up question answered by the other worker starts without the DataFrames the conversation fetched); set
+`--workers 1` in the unit if either matters more than the second worker.
+
+```bash
+systemctl list-dependencies bf-webapp.target              # every unit and its state
+sudo systemctl restart bf-webapp.target                   # all services (release.sh after a switch)
+journalctl -u bf-twin-api -u bf-twin-worker -f            # logs (journald keeps 14 days)
+sudo systemctl kill -s KILL bf-twin-api; sleep 30; curl -fsS http://127.0.0.1:8100/api/health   # serving again
+systemd-analyze critical-chain bf-caddy.service           # boot to serving
+```
+
+Acceptance on the device (open until measured, #317): a killed process serves again within 30 s (kill each of the
+six; the twin-api imports in about 16 s on the development laptop), and boot to serving is below 3 min
+(`systemd-analyze critical-chain bf-caddy.service`, then the first 200 from `https://<site>/api/health`).
+`tests/test_jetson_units.py` checks the units: sections and keys, the ports against the Caddyfile and the environment
+template, the start order (no cycle), the health check's probes and its decisions.
 
 ## Release artefacts (CI, SV-0.11)
 

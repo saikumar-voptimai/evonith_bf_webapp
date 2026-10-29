@@ -991,6 +991,14 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   user `bfapp`, `/opt/bf-webapp/releases` + `current`, `/etc/bf-webapp/env` root:bfapp 0640, 14-day logs) and
   `verify_base.sh` (offset < 100 ms, units back after a reboot, open-port list); name service units `bf-*` with
   `RequiresMountsFor=/var/lib/bf-webapp`; tests `tests/test_jetson_scripts.py` (bash via Git Bash on Windows).
+- Jetson services (SV-6.3): `deploy/jetson/systemd/` (`bf-redis` 127.0.0.1:6379, `bf-furnace-data` :8000, `bf-twin-api`
+  uvicorn 2 workers :8100, `bf-twin-worker` pool 8, `bf-streamlit` :8501 `/legacy`, `bf-caddy` :443, all `WantedBy=` /
+  `PartOf=bf-webapp.target`; `bf-healthcheck.timer` = `deploy/jetson/healthcheck.sh`, restarts a unit after 2 failed
+  probes), installed and enabled by `provision.sh` step `services` (Caddy 2.10.2 from the release, package units
+  masked). User `bfapp`, `EnvironmentFile=/etc/bf-webapp/env`, `Restart=always` 2 s, `MemoryMax`; `Wants=` (never
+  `Requires=`) between services; Python units run `./.venv/bin/python` relative to
+  `WorkingDirectory=/opt/bf-webapp/current` (release pinned at start). Ports and keys checked by
+  `tests/test_jetson_units.py`; change a port in the unit, the Caddyfile and the health check together.
 - Outages (SV-6.5): `services/source_health.py` (registry `HEALTH` of the five sources InfluxDB / hourly / HM-slag /
   DPR / Open-Meteo: `record_ok` / `record_failure` from `services.twin.load_frames`, every status snapshot view, the
   hourly-dataset refresh (`record_dataset_refresh`; the refresh returns its error) and the Si source's reads

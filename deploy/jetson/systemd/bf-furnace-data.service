@@ -1,0 +1,32 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): furnace-data-service, the FastAPI data sidecar on
+# 127.0.0.1:8000. Runs from the release's .venv (the root lock holds every dependency of the sidecar) in
+# furnace-data-service/, which keeps its result and static-dataset files.
+[Unit]
+Description=BF-02 webapp: furnace-data-service (127.0.0.1:8000)
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/bf-webapp
+ConditionPathExists=/opt/bf-webapp/current/.venv/bin/python
+PartOf=bf-webapp.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+User=bfapp
+Group=bfapp
+EnvironmentFile=/etc/bf-webapp/env
+EnvironmentFile=-/etc/bf-webapp/uv.env
+WorkingDirectory=/opt/bf-webapp/current/furnace-data-service
+ExecStart=/usr/bin/env ../.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=2s
+TimeoutStopSec=15s
+MemoryMax=2G
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=bf-webapp.target

@@ -1,0 +1,20 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): one run of the health check (/usr/local/sbin/bf-healthcheck =
+# deploy/jetson/healthcheck.sh), started by bf-healthcheck.timer every 10 s. It probes every running bf-* service and
+# restarts one that failed two probes in a row. Root, since it restarts units; it changes nothing else except its
+# counters in /run/bf-healthcheck. Lines below warning (the "Starting/Finished" pairs of each run) are not logged.
+[Unit]
+Description=BF-02 webapp: health check of the bf-* services
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/bf-webapp/env
+ExecStart=/usr/local/sbin/bf-healthcheck
+RuntimeDirectory=bf-healthcheck
+RuntimeDirectoryPreserve=yes
+TimeoutStartSec=60s
+LogLevelMax=warning
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes

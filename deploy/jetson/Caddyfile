@@ -2,11 +2,11 @@
 # pages. Caddy 2.10.
 #
 #   https://<site>/            SPA: the static build; client-side routes are answered with 200.html
-#   https://<site>/api/...     twin-api (uvicorn, one process); /api/stream is passed through unbuffered (SSE)
+#   https://<site>/api/...     twin-api (uvicorn, 2 workers); /api/stream is passed through unbuffered (SSE)
 #   https://<site>/legacy/...  Streamlit (--server.baseUrlPath legacy), WebSocket included
 #   http://<site>/...          308 redirect to https
 #
-# Environment (EnvironmentFile of the caddy unit, SV-6.3); every value has a default:
+# Environment (/etc/bf-webapp/env, EnvironmentFile of bf-caddy.service, SV-6.3); every value has a default:
 #   BF_SITE             host name of the console                       bf02.local
 #   BF_TLS              internal (Caddy's own CA; its root certificate is installed on the control-room PCs), or
 #                       "<cert.pem> <key.pem>" (certificate of the plant CA)                        internal
@@ -39,8 +39,8 @@
 		-Server
 	}
 
-	# twin-api. One process: it holds the sign-in failure limit and the revoked sessions (README, "Sign-in and
-	# roles"). flush_interval -1 writes every server-sent event to the browser as soon as the API sends it.
+	# twin-api (bf-twin-api.service: 2 uvicorn workers; revoked sessions shared through Redis, README "Services").
+	# flush_interval -1 writes every server-sent event to the browser as soon as the API sends it.
 	handle /api/* {
 		reverse_proxy {$BF_API_UPSTREAM:127.0.0.1:8100} {
 			flush_interval -1

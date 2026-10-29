@@ -20,7 +20,7 @@ RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/ui/coke_ener
 	tests/test_jsonl_log.py tests/test_forecast_jobs.py scripts/forecast_gaps.py tests/test_schedule.py \
 	tests/test_schedule_worker.py tests/test_scheduled_jobs.py scripts/schedule_audit.py scripts/optimiser_bench.py \
 	tests/test_strata_parallel.py tests/test_burden_engine_step1.py tests/bmo_golden.py tests/test_bmo_golden.py \
-	src/ui/bmo/operator_inputs.py tests/test_jetson_scripts.py \
+	src/ui/bmo/operator_inputs.py tests/test_jetson_scripts.py tests/test_jetson_units.py \
 	src/agents/furnacemind/tool_state.py src/agents/furnacemind/turn.py tests/furnacemind_fakes.py \
 	src/utils/bmo/editor_tables.py scripts/jetson_wheel_audit.py tests/test_jetson_wheel_audit.py \
 	src/reports/furnace_report/status.py src/agents/twin_tools.py

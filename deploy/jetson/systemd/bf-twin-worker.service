@@ -1,0 +1,43 @@
+# BF-02 webapp (deploy/jetson/systemd, SV-6.3 #317): twin-worker, arq on Redis with a model-solve process pool of 8
+# (BF_WORKER_POOL). Started after Redis; Wants=, not Requires=: a start that fails on a dependency is never retried,
+# while arq without Redis exits and Restart= starts it again every 2 s until Redis answers. The health check
+# (bf-healthcheck.timer) restarts it when its heartbeat (twin:worker:alive, every 10 s) is older than 60 s while Redis
+# answers.
+# KillMode=mixed: SIGTERM to arq only, which ends its jobs (arq runs them again) and writes the last heartbeat; the
+# pool and STRATA-Flow solver processes are killed after it. CPUWeight 50: the API and Streamlit keep answering while
+# the pool solves.
+#
+# Interpreter and PYTHONPATH relative to the working directory (see bf-twin-api.service): the forkserver of the
+# STRATA-Flow solvers starts from the same release as the worker.
+[Unit]
+Description=BF-02 webapp: twin-worker (arq, process pool 8)
+Documentation=https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/317
+After=network-online.target bf-redis.service
+Wants=network-online.target bf-redis.service
+RequiresMountsFor=/var/lib/bf-webapp
+ConditionPathExists=/opt/bf-webapp/current/.venv/bin/python
+PartOf=bf-webapp.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+User=bfapp
+Group=bfapp
+EnvironmentFile=/etc/bf-webapp/env
+EnvironmentFile=-/etc/bf-webapp/uv.env
+Environment=PYTHONPATH=src BF_WORKER_POOL=8
+WorkingDirectory=/opt/bf-webapp/current
+ExecStart=/usr/bin/env ./.venv/bin/python -m worker
+Restart=always
+RestartSec=2s
+KillMode=mixed
+TimeoutStopSec=30s
+MemoryMax=12G
+CPUWeight=50
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=bf-webapp.target

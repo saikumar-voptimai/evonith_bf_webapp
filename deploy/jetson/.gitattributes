@@ -1,2 +1,4 @@
 # Shell scripts run on the Jetson: LF on every checkout, also with core.autocrlf=true on Windows.
 *.sh text eol=lf
+# systemd keeps a carriage return as part of a value: unit files LF as well (SV-6.3).
+systemd/* text eol=lf
