@@ -5550,6 +5550,48 @@
         "title": "DecisionRequest",
         "type": "object"
       },
+      "DiskRow": {
+        "properties": {
+          "path": {
+            "description": "A path on the file system",
+            "title": "Path",
+            "type": "string"
+          },
+          "pct": {
+            "description": "Used share, %",
+            "title": "Pct",
+            "type": "number"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "warning",
+              "critical"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total_gb": {
+            "description": "Size, GB",
+            "title": "Total Gb",
+            "type": "number"
+          },
+          "used_gb": {
+            "description": "Used space, GB",
+            "title": "Used Gb",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path",
+          "used_gb",
+          "total_gb",
+          "pct",
+          "state"
+        ],
+        "title": "DiskRow",
+        "type": "object"
+      },
       "DriftEpisode": {
         "properties": {
           "cleared_at": {
@@ -10021,6 +10063,261 @@
         "title": "HopperSnapshot",
         "type": "object"
       },
+      "HostHealth": {
+        "properties": {
+          "collected_at": {
+            "description": "Time of the reading (UTC)",
+            "format": "date-time",
+            "title": "Collected At",
+            "type": "string"
+          },
+          "cores_pct": {
+            "description": "Load per core (tegrastats; null = core off), %",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Cores Pct",
+            "type": "array"
+          },
+          "cpu_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Logical CPUs, count",
+            "title": "Cpu Count"
+          },
+          "cpu_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CPU load, mean of the online cores, %",
+            "title": "Cpu Pct"
+          },
+          "cpu_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ok",
+                  "warning",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu State"
+          },
+          "disks": {
+            "items": {
+              "$ref": "#/components/schemas/DiskRow"
+            },
+            "title": "Disks",
+            "type": "array"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "limits": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HostLimit"
+            },
+            "description": "Warning and critical values: cpu_pct, ram_pct, disk_pct, temp_c",
+            "title": "Limits",
+            "type": "object"
+          },
+          "load_1m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Load average over 1 min (not on Windows), runnable tasks",
+            "title": "Load 1M"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "ram_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RAM in use, %",
+            "title": "Ram Pct"
+          },
+          "ram_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ok",
+                  "warning",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ram State"
+          },
+          "ram_total_mb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RAM size, MB",
+            "title": "Ram Total Mb"
+          },
+          "ram_used_mb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RAM in use, MB",
+            "title": "Ram Used Mb"
+          },
+          "source": {
+            "description": "Where CPU, RAM and temperatures were read",
+            "enum": [
+              "tegrastats",
+              "psutil"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "description": "Worst state of the figures",
+            "enum": [
+              "ok",
+              "warning",
+              "critical"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "swap_total_mb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Swap size, MB",
+            "title": "Swap Total Mb"
+          },
+          "swap_used_mb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Swap in use, MB",
+            "title": "Swap Used Mb"
+          },
+          "temperatures": {
+            "items": {
+              "$ref": "#/components/schemas/TemperatureRow"
+            },
+            "title": "Temperatures",
+            "type": "array"
+          },
+          "uptime_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time since boot, s",
+            "title": "Uptime S"
+          }
+        },
+        "required": [
+          "collected_at",
+          "hostname",
+          "platform",
+          "source",
+          "state",
+          "cores_pct",
+          "disks",
+          "temperatures",
+          "limits",
+          "notes"
+        ],
+        "title": "HostHealth",
+        "type": "object"
+      },
+      "HostLimit": {
+        "properties": {
+          "critical": {
+            "description": "Critical from this value, in the figure's unit (%, \u00b0C)",
+            "title": "Critical",
+            "type": "number"
+          },
+          "warning": {
+            "description": "Warning from this value, in the figure's unit (%, \u00b0C)",
+            "title": "Warning",
+            "type": "number"
+          }
+        },
+        "required": [
+          "warning",
+          "critical"
+        ],
+        "title": "HostLimit",
+        "type": "object"
+      },
       "HotMetalChemistryInputs": {
         "additionalProperties": false,
         "properties": {
@@ -10263,6 +10560,30 @@
         "title": "JacobianFile",
         "type": "object"
       },
+      "JobCancelled": {
+        "properties": {
+          "audit_id": {
+            "description": "Audit-log entry of the cancel (job.cancel)",
+            "title": "Audit Id",
+            "type": "integer"
+          },
+          "ended": {
+            "description": "The job was queued and is cancelled; a running job stops in the worker",
+            "title": "Ended",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          }
+        },
+        "required": [
+          "job",
+          "ended",
+          "audit_id"
+        ],
+        "title": "JobCancelled",
+        "type": "object"
+      },
       "JobDoneData": {
         "properties": {
           "duration_s": {
@@ -10342,6 +10663,296 @@
           "data"
         ],
         "title": "JobDoneEvent",
+        "type": "object"
+      },
+      "JobHistory": {
+        "properties": {
+          "end": {
+            "description": "End of the period (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Rows at most, count",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "rows": {
+            "description": "Jobs submitted in the period, newest first",
+            "items": {
+              "$ref": "#/components/schemas/JobHistoryRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sources": {
+            "description": "Stores the rows were read from",
+            "items": {
+              "enum": [
+                "twin.jobs",
+                "redis"
+              ],
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "start": {
+            "description": "Start of the period (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "sources",
+          "limit",
+          "rows"
+        ],
+        "title": "JobHistory",
+        "type": "object"
+      },
+      "JobHistoryRow": {
+        "properties": {
+          "can_cancel": {
+            "description": "Queued or running, no cancel requested yet, live record in Redis",
+            "title": "Can Cancel",
+            "type": "boolean"
+          },
+          "can_retry": {
+            "description": "Failed or cancelled, and its kind is still in the catalogue",
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "cancel_requested": {
+            "description": "A cancel was requested (Redis records only)",
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "elapsed_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "now \u2212 start while running, s",
+            "title": "Elapsed S"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the job failed or was cancelled",
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End (UTC)",
+            "title": "Finished At"
+          },
+          "id": {
+            "description": "Job id",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Job kind, e.g. twin.evaluate",
+            "title": "Kind",
+            "type": "string"
+          },
+          "live": {
+            "description": "Read from Redis (the live record) rather than from twin.jobs",
+            "title": "Live",
+            "type": "boolean"
+          },
+          "max_tries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tries the kind allows, count",
+            "title": "Max Tries"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest progress message or outcome",
+            "title": "Message"
+          },
+          "params": {
+            "description": "Parameters of the job (units in the kind's parameter schema)",
+            "title": "Params",
+            "type": "object"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Progress of a running job, fraction 0-1 (Redis records only)",
+            "title": "Progress"
+          },
+          "run_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Execution time summed over the tries, s",
+            "title": "Run S"
+          },
+          "scheduled": {
+            "description": "Started by the schedule rather than by a user",
+            "title": "Scheduled",
+            "type": "boolean"
+          },
+          "scheduled_for": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Schedule slot the job serves (UTC)",
+            "title": "Scheduled For"
+          },
+          "skipped": {
+            "description": "A schedule slot recorded as skipped (the job did not run)",
+            "title": "Skipped",
+            "type": "boolean"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start of the first try (UTC)",
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Submission (UTC)",
+            "title": "Submitted At"
+          },
+          "submitted_by": {
+            "description": "User name, or scheduler / scheduler (catch-up) / scheduler (skipped)",
+            "title": "Submitted By",
+            "type": "string"
+          },
+          "timeout_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time limit of one try, s",
+            "title": "Timeout S"
+          },
+          "title": {
+            "description": "Title of the kind (the kind itself when it left the catalogue)",
+            "title": "Title",
+            "type": "string"
+          },
+          "tries": {
+            "description": "Tries made, count",
+            "title": "Tries",
+            "type": "integer"
+          },
+          "wait_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start \u2212 submission; now \u2212 submission while queued, s",
+            "title": "Wait S"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "status",
+          "submitted_by",
+          "scheduled",
+          "skipped",
+          "tries",
+          "params",
+          "cancel_requested",
+          "can_cancel",
+          "can_retry",
+          "live"
+        ],
+        "title": "JobHistoryRow",
         "type": "object"
       },
       "JobKindInfo": {
@@ -10664,6 +11275,36 @@
           "submitted_at"
         ],
         "title": "JobRecord",
+        "type": "object"
+      },
+      "JobRetried": {
+        "properties": {
+          "audit_id": {
+            "description": "Audit-log entry of the retry (job.retry)",
+            "title": "Audit Id",
+            "type": "integer"
+          },
+          "duplicate": {
+            "description": "True when an identical job was already queued or running",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          },
+          "retry_of": {
+            "description": "Id of the failed or cancelled job retried",
+            "title": "Retry Of",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job",
+          "duplicate",
+          "audit_id",
+          "retry_of"
+        ],
+        "title": "JobRetried",
         "type": "object"
       },
       "JobStatsResponse": {
@@ -16521,6 +17162,86 @@
         "title": "ScheduleAuditResponse",
         "type": "object"
       },
+      "ServiceRow": {
+        "properties": {
+          "age_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of last_at, s",
+            "title": "Age S"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "key": {
+            "description": "api, redis, twin_store, worker",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Process start (API) or last heartbeat (worker), UTC; null for the others",
+            "title": "Last At"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the check (Redis ping, database query), ms",
+            "title": "Latency Ms"
+          },
+          "state": {
+            "description": "ok, stale, down, missing (not known), off (not configured)",
+            "enum": [
+              "ok",
+              "stale",
+              "down",
+              "missing",
+              "off"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "state"
+        ],
+        "title": "ServiceRow",
+        "type": "object"
+      },
       "SessionInfo": {
         "properties": {
           "expires_at": {
@@ -18796,6 +19517,134 @@
         "title": "SourceAge",
         "type": "object"
       },
+      "SourceRow": {
+        "properties": {
+          "age_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of last_at at checked time, s; null without last_at",
+            "title": "Age S"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last successful fetch or evaluation (UTC)",
+            "title": "Checked At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Error of the last fetch while the source is down",
+            "title": "Error"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the failed fetch (UTC)",
+            "title": "Failed At"
+          },
+          "group": {
+            "description": "data: a data source; twin: the twin's own evaluation",
+            "enum": [
+              "data",
+              "twin"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
+          "key": {
+            "description": "influxdb, hourly, hm_slag, dpr, open_meteo, evaluation",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Newest data time the source holds (UTC; the window end for the evaluation); null when none",
+            "title": "Last At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "stale_after_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age from which the source is stale, s",
+            "title": "Stale After S"
+          },
+          "state": {
+            "description": "ok, stale, down (last fetch failed), missing (no time), off",
+            "enum": [
+              "ok",
+              "stale",
+              "down",
+              "missing",
+              "off"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "group",
+          "state"
+        ],
+        "title": "SourceRow",
+        "type": "object"
+      },
       "StabilityTest": {
         "properties": {
           "hi": {
@@ -20596,6 +21445,71 @@
         "title": "SubmitResponse",
         "type": "object"
       },
+      "SystemHealth": {
+        "properties": {
+          "checked_at": {
+            "description": "Time of the check (UTC); the ages are taken at this time",
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Sources and services per state, count",
+            "title": "Counts",
+            "type": "object"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HostHealth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The machine the API runs on; null when it could not be read"
+          },
+          "host_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the host could not be read",
+            "title": "Host Error"
+          },
+          "services": {
+            "description": "twin-api, Redis, the twin store and the worker",
+            "items": {
+              "$ref": "#/components/schemas/ServiceRow"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "sources": {
+            "description": "Every source the twin reads, with its last timestamp and age",
+            "items": {
+              "$ref": "#/components/schemas/SourceRow"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checked_at",
+          "sources",
+          "services",
+          "counts"
+        ],
+        "title": "SystemHealth",
+        "type": "object"
+      },
       "TagValue": {
         "properties": {
           "at": {
@@ -20706,6 +21620,36 @@
           }
         },
         "title": "TempRowView",
+        "type": "object"
+      },
+      "TemperatureRow": {
+        "properties": {
+          "c": {
+            "description": "Temperature, \u00b0C",
+            "title": "C",
+            "type": "number"
+          },
+          "sensor": {
+            "description": "Thermal zone or sensor, e.g. cpu, gpu, tj",
+            "title": "Sensor",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "warning",
+              "critical"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensor",
+          "c",
+          "state"
+        ],
+        "title": "TemperatureRow",
         "type": "object"
       },
       "TextPart": {
@@ -24981,6 +25925,48 @@
         ]
       }
     },
+    "/api/admin/health": {
+      "get": {
+        "description": "Every source with its last timestamp and age (the data sources with the live fetches of this process and the\nworker, and the latest twin evaluation), the services and the host's CPU, RAM, disks and temperatures.",
+        "operationId": "admin_health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemHealth"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Sources, services and host health",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/hoppers": {
       "get": {
         "description": "Active hoppers, the materials they can hold, the mapping in force and every snapshot.",
@@ -25128,6 +26114,255 @@
           }
         },
         "summary": "Delete hopper snapshots",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/jobs": {
+      "get": {
+        "description": "Jobs submitted in the period, newest first, from ``twin.jobs`` (92 days) merged with the live Redis records\n(7 days; their progress and cancel flag): durations (waiting, execution over the tries, elapsed while running),\ntries, the error of a failed job and whether it can be cancelled or retried.",
+        "operationId": "admin_job_history_view",
+        "parameters": [
+          {
+            "description": "Only this kind, e.g. optimiser.step2",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this kind, e.g. optimiser.step2",
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "Only this status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "done",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this status",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Length of the period, d",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "description": "Length of the period, d",
+              "exclusiveMinimum": 0.0,
+              "maximum": 92.0,
+              "title": "Days",
+              "type": "number"
+            }
+          },
+          {
+            "description": "End of the period (default now; naive is UTC)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End of the period (default now; naive is UTC)",
+              "title": "End"
+            }
+          },
+          {
+            "description": "Rows at most, count",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "description": "Rows at most, count",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Job history",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/jobs/{job_id}/cancel": {
+      "post": {
+        "description": "Cancel a queued or running job; the cancel is recorded in the audit log (``job.cancel``, with the job before\nand after) before the job changes. A queued job ends at once (``cancelled``), a running one when the worker stops\nit. 409 when the job has ended.",
+        "operationId": "admin_cancel_job",
+        "parameters": [
+          {
+            "description": "Job id",
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "description": "Job id",
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCancelled"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Cancel a job (audited)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/jobs/{job_id}/retry": {
+      "post": {
+        "description": "Queue the kind and parameters of a failed or cancelled job again (``job.retry`` in the audit log, with the job\nretried). A scheduler job's parameters take their defaults now (e.g. the current hour), not at its slot. An\nidentical job already queued or running is returned instead (``duplicate``), and recorded as well. 409 when the\njob neither failed nor was cancelled; 422 when its parameters no longer fit the kind.",
+        "operationId": "admin_retry_job",
+        "parameters": [
+          {
+            "description": "Job id",
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "description": "Job id",
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRetried"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Retry a job (audited)",
         "tags": [
           "admin"
         ]
@@ -27178,7 +28413,7 @@
     },
     "/api/jobs/{job_id}/cancel": {
       "post": {
-        "description": "A queued job is not started; a running job is stopped. Both end with status ``cancelled``.",
+        "description": "A queued job is not started; a running job is stopped. Both end with status ``cancelled``. The cancel is\nrecorded in the audit log (``job.cancel``) before the job changes; without the twin store it is refused (503).",
         "operationId": "jobs_cancel",
         "parameters": [
           {
@@ -27223,7 +28458,7 @@
             "description": "Server error (problem+json)"
           }
         },
-        "summary": "Cancel a job",
+        "summary": "Cancel a job (audited)",
         "tags": [
           "jobs"
         ]
