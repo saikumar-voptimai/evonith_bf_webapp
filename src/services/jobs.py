@@ -673,8 +673,10 @@ register(
         description=(
             "STRATA-Learn in shadow mode on the stored evidence (Kalman challenger, champion/challenger gate, CUSUM "
             "drift, register proposal) into src/storage/burden_engine/learn; changes nothing in the asset, the "
-            "register or the pages (SV-1.7)."
+            "register or the pages (SV-1.7). Started by hand from the validation console (POST /api/admin/learn/run), "
+            "audited (SV-4.5)."
         ),
+        audited=True,
     )
 )
 register(

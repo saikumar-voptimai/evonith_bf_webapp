@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -248,8 +248,8 @@ def approved_overlay() -> register.ApprovedOverlay | None:
     return register.ApprovedOverlay(row.version, row.base_version, dict(row.overlay), row.content_hash)
 
 
-def _lock(session: Session) -> None:
-    """Serialise proposals and reviews (PostgreSQL; SQLite writes one at a time)."""
+def lock(session: Session) -> None:
+    """Serialise proposals and reviews, and writes linked to them (PostgreSQL; SQLite writes one at a time)."""
     if session.get_bind().dialect.name == "postgresql":
         session.execute(text("SELECT pg_advisory_xact_lock(hashtext('twin.facts_version'))"))
 
@@ -365,16 +365,20 @@ def propose(
     changes: Mapping[str, Mapping[str, Any]],
     note: str,
     at: datetime | None = None,
+    details: Mapping[str, Any] | None = None,
+    also: Callable[[audit.AdminWrite, FactsVersion], None] | None = None,
 ) -> dict[str, Any]:
     """Save ``changes`` on the version in force as the next pending version, with its audit row
     (``facts.propose``). ``parent_version``: the version the edit started from (0: the file); ``FactsConflict``
-    when another is in force, ``InvalidOverlay`` when the register would not be usable or nothing changes."""
+    when another is in force, ``InvalidOverlay`` when the register would not be usable or nothing changes.
+    ``details`` are added to the audit row's details; ``also`` runs in the write's transaction once the version is
+    added (e.g. the audit row of the decision that proposed it, SV-4.5): an exception in it rolls back both."""
     data = file_data()
     for attempt in range(3):  # two proposals at once: the second takes the next number
         try:
             with audit.admin_write(store, actor, "facts.propose", "facts_version", None, at=at) as write:
                 session = write.session
-                _lock(session)
+                lock(session)
                 current = _in_force_row(session, data["version"])
                 current_no = current.version if current else 0
                 if parent_version != current_no:
@@ -411,9 +415,12 @@ def propose(
                     "facts": sorted({c["id"] for c in changes_between(before_doc, after_doc)}),
                     "status_changes": statuses,
                     "second_review": bool(statuses),
+                    **dict(details or {}),
                 }
                 write.before = None
                 write.after = audit.row_values(row, include=FIELDS)
+                if also is not None:
+                    also(write, row)
             return version_view(row, current_no or None, data["version"])
         except IntegrityError:
             if attempt == 2:
@@ -438,7 +445,7 @@ def review(
     details = {"decision": decision, "note": note}
     with audit.admin_write(store, actor, "facts.review", "facts_version", version, details=details, at=at) as write:
         session = write.session
-        _lock(session)
+        lock(session)
         row = session.scalars(
             select(FactsVersion).where(FactsVersion.version == version).with_for_update()
         ).one_or_none()
@@ -553,6 +560,7 @@ __all__ = [
     "export_text",
     "file_data",
     "in_force",
+    "lock",
     "merge",
     "next_version",
     "propose",

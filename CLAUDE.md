@@ -976,6 +976,14 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `hopper.assign`, `hopper.delete`, `burden.update`, `burden.delete`). A save adds a wide snapshot effective from an
   aware time and keeps the earlier rows (SCD-2). `GET/POST /api/admin/users|hoppers|burden`, `DELETE
   .../hoppers|burden/history?ids=` (admin); 503 when the plant tables are missing.
+- Validation and STRATA-Learn console (SV-4.5, `/admin/validation`): `services/learn_console.py` reads what `learn.shadow`
+  stored (`strata_learn_state.json` = `learn.run.shadow_run` without history, `strata_learn_history.csv` now at full
+  precision, `runs/`; numbers unrounded) and the asset's tests via `services.strata.validation`; VAL facts in force via
+  `facts.register_view`. `GET /api/admin/learn`, `POST /api/admin/learn/decisions`, `POST /api/admin/learn/run` (admin;
+  `learn.shadow` now `audited`). A proposal = `<IST date>/<hash of its items>`; approve = `facts.propose` of the items'
+  value / status (se, params not carried) as one pending version + `learn.approve` audit row in the same transaction
+  (`facts.propose(also=)`), reviewed in the fact register; reject = `learn.reject`; an item whose version the editor
+  rejected is open again.
 - Shift reports (SV-2.3): `services/reports.py` composes the FurnaceMind Reports tab's `ShiftReportService.build` /
   `build_previous` / `document`; `report.shift` (closed shift) and `report.live` store into `twin.shift_report`. The
   narrative uses page 7's `OpenRouterClient` (120 s per call, 1 retry); when the LLM fails the report is stored

@@ -95,7 +95,7 @@ export const ADMIN_VIEWS: NavItem[] = [
 		subtitle: 'Out-of-sample error of the coke models and the STRATA-Learn shadow run.',
 		icon: ChartLine,
 		summary:
-			'Out-of-sample error of TRACE, FORGE and STRATA by period, and STRATA-Learn in shadow mode: scale estimates, champion and challenger, drift alarm and register proposals.',
+			'Out-of-sample error of STRATA against Fixed-ω (2026 expanding window, strict 2023–24 test) by blend family, and STRATA-Learn in shadow mode: Kalman scale trajectories, champion / challenger gate, drift alarm and register proposals to approve or reject.',
 		issue: 308,
 		legacy: 'Burden & Fuel Optimiser'
 	},

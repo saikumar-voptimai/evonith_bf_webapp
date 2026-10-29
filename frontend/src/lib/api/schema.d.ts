@@ -382,6 +382,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/learn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Validation and STRATA-Learn console
+         * @description The stored shadow run with its decisions, the asset's out-of-sample results, the runs and the job. Without a
+         *     stored run the asset's results only (``run`` null).
+         */
+        get: operations["admin_learn_view"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/learn/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or reject proposal items
+         * @description Approve: the items' value and status become the next pending facts version (``facts.propose``) with the
+         *     decision's audit row (``learn.approve``), for review in the fact-register editor. Reject: ``learn.reject``.
+         *     404 without a stored run; 409 when a new run replaced the proposal, an item is decided or another facts version
+         *     is in force; 422 for an unknown item or one an approval cannot write.
+         */
+        post: operations["admin_decide_proposal_items"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/learn/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the shadow run now
+         * @description Queue ``learn.shadow`` now and record the start in the audit log (``job.start``); a run already queued or
+         *     running is returned instead (``duplicate``). The run replaces the stored outputs: a proposal with other items
+         *     is a new proposal.
+         */
+        post: operations["admin_start_shadow_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/users": {
         parameters: {
             query?: never;
@@ -2142,6 +2208,66 @@ export interface components {
              * @enum {string}
              */
             zone: "above_cz" | "in_cz" | "below_cz" | "burnt";
+        };
+        /** BlendFamily */
+        BlendFamily: {
+            /**
+             * Bias Kg Thm
+             * @description Mean of realised - STRATA, kg/tHM
+             */
+            bias_kg_thm?: number | null;
+            /** @description The family's VAL fact in force; null: no fact */
+            fact?: components["schemas"]["FamilyFact"] | null;
+            /**
+             * Family
+             * @description Blend family (or a cross-family group)
+             */
+            family: string;
+            /**
+             * Fixed Omega Kg Thm
+             * @description Fixed-omega prediction, mean, kg/tHM dry
+             */
+            fixed_omega_kg_thm?: number | null;
+            /**
+             * N
+             * @description Evidence days since the evaluation start, count
+             */
+            n: number;
+            /**
+             * Realised Kg Thm
+             * @description Burnt coke (oxygen balance), mean, kg/tHM dry
+             */
+            realised_kg_thm?: number | null;
+            /**
+             * Rmse Fixed Kg Thm
+             * @description RMSE of Fixed-omega, kg/tHM
+             */
+            rmse_fixed_kg_thm?: number | null;
+            /**
+             * Rmse Strata Kg Thm
+             * @description RMSE of STRATA, kg/tHM
+             */
+            rmse_strata_kg_thm?: number | null;
+            /**
+             * Se Bias Kg Thm
+             * @description Standard error of the bias (AR-adjusted n), kg/tHM
+             */
+            se_bias_kg_thm?: number | null;
+            /**
+             * Skill
+             * @description 1 - MSE(STRATA) / MSE(Fixed-omega), dimensionless
+             */
+            skill?: number | null;
+            /**
+             * Strata Kg Thm
+             * @description STRATA one-step prediction (challenger), mean, kg/tHM dry
+             */
+            strata_kg_thm?: number | null;
+            /**
+             * Verdict
+             * @description Verdict by the rule: Supported, Neutral, Disputed or Modelled only
+             */
+            verdict: string;
         };
         /** BlendRow */
         BlendRow: {
@@ -5012,6 +5138,49 @@ export interface components {
              */
             version: number;
         };
+        /** FamilyFact */
+        FamilyFact: {
+            /**
+             * Bias Kg Thm
+             * @description Bias of the fact, kg/tHM
+             */
+            bias_kg_thm?: number | null;
+            /**
+             * Id
+             * @description VAL fact id
+             */
+            id: string;
+            /**
+             * N
+             * @description Days of the fact, count
+             */
+            n?: number | null;
+            /**
+             * Se Bias Kg Thm
+             * @description Standard error of the bias, kg/tHM
+             */
+            se_bias_kg_thm?: number | null;
+            /**
+             * Se Kg Thm
+             * @description Standard error in force, kg/tHM
+             */
+            se_kg_thm?: number | null;
+            /**
+             * Skill
+             * @description Skill of the fact, dimensionless
+             */
+            skill?: number | null;
+            /**
+             * Status
+             * @description Status in force (Supported, Neutral, Disputed, Modelled only)
+             */
+            status: string;
+            /**
+             * Value Kg Thm
+             * @description Value in force: STRATA burnt coke (mean), kg/tHM dry
+             */
+            value_kg_thm?: number | null;
+        };
         /** FamilyRow */
         FamilyRow: {
             /**
@@ -6911,6 +7080,42 @@ export interface components {
              */
             start: string;
         };
+        /** ItemDecision */
+        ItemDecision: {
+            /**
+             * At
+             * Format: date-time
+             * @description Time of the decision (UTC)
+             */
+            at: string;
+            /**
+             * Audit Id
+             * @description Audit-log entry of the decision
+             */
+            audit_id: number;
+            /**
+             * By
+             * @description Administrator
+             */
+            by: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /**
+             * Facts Version
+             * @description Facts version the approval proposed, count
+             */
+            facts_version?: number | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Version Status
+             * @description Status of that version: pending, approved or rejected
+             */
+            version_status?: string | null;
+        };
         /** JacobianCache */
         JacobianCache: {
             /**
@@ -7790,6 +7995,468 @@ export interface components {
              * @description Step / standard error, dimensionless
              */
             z?: number | null;
+        };
+        /** LearnAsset */
+        LearnAsset: {
+            /**
+             * Deployed
+             * @description Deployment day: the gate counts the days after it
+             */
+            deployed?: string | null;
+            /**
+             * Label
+             * @description Deployed STRATA asset, e.g. STRATA 1.5 (2026-10-25)
+             */
+            label: string;
+            /**
+             * N Days
+             * @description Days the asset's posterior was fitted on, count
+             */
+            n_days?: number | null;
+            /**
+             * Rho
+             * @description AR(1) coefficient of the day errors, dimensionless
+             */
+            rho?: number | null;
+            /**
+             * Sigma E
+             * @description Innovation sd of the day's omega deviation, dimensionless
+             */
+            sigma_e?: number | null;
+            /**
+             * Version
+             * @description The asset's full version text
+             */
+            version: string;
+        };
+        /** LearnConsole */
+        LearnConsole: {
+            asset: components["schemas"]["LearnAsset"];
+            cusum?: components["schemas"]["LearnCusum"] | null;
+            /**
+             * Decisions Reason
+             * @description Why decisions are not shown
+             */
+            decisions_reason?: string | null;
+            /** @description Fact register in force */
+            facts_register: components["schemas"]["RegisterInForce"];
+            /** Families */
+            families: components["schemas"]["BlendFamily"][];
+            gate?: components["schemas"]["LearnGate"] | null;
+            job: components["schemas"]["LearnJob"];
+            proposal?: components["schemas"]["LearnProposal"] | null;
+            /** @description The stored run; null: none yet */
+            run?: components["schemas"]["LearnRunInfo"] | null;
+            /**
+             * Runs
+             * @description Stored runs, newest first (at most 30)
+             */
+            runs: components["schemas"]["LearnRunDay"][];
+            /** Skill */
+            skill: components["schemas"]["LearnSkill"][];
+            /**
+             * Skill From
+             * @description First day of the run's skill and family table
+             */
+            skill_from?: string | null;
+            /**
+             * Today
+             * Format: date
+             * @description Today (IST)
+             */
+            today: string;
+            trajectory?: components["schemas"]["LearnTrajectory"] | null;
+            /** @description Out-of-sample results of the deployed asset (as on /strata) */
+            validation: components["schemas"]["Validation"];
+        };
+        /** LearnCusum */
+        LearnCusum: {
+            /**
+             * Alarm
+             * @description S+ or S- above h at the last day
+             */
+            alarm: boolean;
+            /**
+             * Basis
+             * @description Errors the CUSUM runs on
+             */
+            basis: string;
+            /**
+             * Ever Alarm
+             * @description S+ or S- exceeded h on some day
+             */
+            ever_alarm: boolean;
+            /**
+             * First Alarm
+             * @description Index of the first excursion, days
+             */
+            first_alarm?: number | null;
+            /**
+             * First Alarm Date
+             * @description Day of the first excursion
+             */
+            first_alarm_date?: string | null;
+            /**
+             * H
+             * @description Alarm threshold, standardised innovations
+             */
+            h: number;
+            /**
+             * K
+             * @description Reference value, standardised innovations
+             */
+            k: number;
+            /**
+             * Rho
+             * @description AR(1) coefficient of the errors, dimensionless
+             */
+            rho?: number | null;
+            /**
+             * S Minus
+             * @description Lower CUSUM, standardised innovations
+             */
+            s_minus?: number | null;
+            /**
+             * S Plus
+             * @description Upper CUSUM, standardised innovations
+             */
+            s_plus?: number | null;
+            /**
+             * Sigma E
+             * @description Innovation sd, dimensionless
+             */
+            sigma_e?: number | null;
+        };
+        /** LearnDecisionRequest */
+        LearnDecisionRequest: {
+            /**
+             * Approve
+             * @description true proposes the items through the register editor, false rejects them
+             */
+            approve: boolean;
+            /**
+             * Items
+             * @description Item keys to decide
+             */
+            items: string[];
+            /**
+             * Note
+             * @description Reason, recorded in the audit log
+             */
+            note?: string | null;
+            /**
+             * Proposal
+             * @description Hash of the proposal (GET proposal.hash)
+             */
+            proposal: string;
+        };
+        /** LearnDecisionResult */
+        LearnDecisionResult: {
+            /**
+             * Audit Id
+             * @description Audit-log entry of the decision
+             */
+            audit_id: number;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** @description The pending facts version an approval made */
+            facts_version?: components["schemas"]["FactsVersionView"] | null;
+            /** Items */
+            items: string[];
+            /** Proposal Date */
+            proposal_date?: string | null;
+            /** Proposal Hash */
+            proposal_hash: string;
+        };
+        /** LearnGate */
+        LearnGate: {
+            /**
+             * Deployed
+             * @description Deployment day of the champion
+             */
+            deployed?: string | null;
+            /**
+             * Dm T
+             * @description Diebold-Mariano t (positive: challenger better), dimensionless
+             */
+            dm_t?: number | null;
+            /**
+             * Gain
+             * @description 1 - MSE(challenger) / MSE(champion), fraction
+             */
+            gain?: number | null;
+            /**
+             * Lags
+             * @description Newey-West lags of the Diebold-Mariano variance, days
+             */
+            lags: number;
+            /**
+             * Min Gain
+             * @description MSE gain the challenger needs, fraction
+             */
+            min_gain: number;
+            /**
+             * Mse Challenger
+             * @description MSE of the challenger's omega errors, dimensionless
+             */
+            mse_challenger?: number | null;
+            /**
+             * Mse Champion
+             * @description MSE of the champion's omega errors, dimensionless
+             */
+            mse_champion?: number | null;
+            /**
+             * N
+             * @description Days after deployment, count
+             */
+            n: number;
+            /**
+             * Promote
+             * @description Promotion proposed (never applied by the run)
+             */
+            promote: boolean;
+            /** Reason */
+            reason: string;
+            /**
+             * Status
+             * @description collecting (fewer than window days after deployment) or evaluated
+             */
+            status: string;
+            /**
+             * T Min
+             * @description Diebold-Mariano t the challenger needs, dimensionless
+             */
+            t_min: number;
+            /**
+             * Window
+             * @description Days the gate compares, count
+             */
+            window: number;
+        };
+        /** LearnJob */
+        LearnJob: {
+            /** Kind */
+            kind: string;
+            /**
+             * Next Slot
+             * @description Next scheduled run (UTC)
+             */
+            next_slot?: string | null;
+            /**
+             * Role
+             * @description Lowest role that may start it
+             */
+            role: string;
+            /**
+             * Schedule
+             * @description Scheduled times (IST)
+             */
+            schedule?: string | null;
+            /**
+             * Timeout S
+             * @description Time limit, s
+             */
+            timeout_s: number;
+            /** Title */
+            title: string;
+        };
+        /** LearnProposal */
+        LearnProposal: {
+            /**
+             * Day
+             * @description IST day of the run that made it
+             */
+            day?: string | null;
+            /**
+             * Hash
+             * @description Hash of the items: names the proposal in a decision
+             */
+            hash: string;
+            /** Items */
+            items: components["schemas"]["ProposalItem"][];
+            /**
+             * N Approval
+             * @description Items for approval (the run's rule), count
+             */
+            n_approval: number;
+            /**
+             * N Auto
+             * @description Automatic items (the run's rule), count
+             */
+            n_auto: number;
+            /**
+             * Object Id
+             * @description Audit-log object id of its decisions, <date>/<hash>
+             */
+            object_id: string;
+        };
+        /** LearnRunDay */
+        LearnRunDay: {
+            /**
+             * Appended Days
+             * @description Days appended, count
+             */
+            appended_days?: number | null;
+            /**
+             * Approval
+             * @description Items for approval, count
+             */
+            approval?: number | null;
+            /**
+             * At
+             * @description When it finished (UTC)
+             */
+            at?: string | null;
+            /**
+             * Automatic
+             * @description Automatic items, count
+             */
+            automatic?: number | null;
+            /**
+             * Coke Skill Challenger
+             * @description Coke skill of the challenger, dimensionless
+             */
+            coke_skill_challenger?: number | null;
+            /**
+             * Coke Skill Champion
+             * @description Coke skill of the champion, dimensionless
+             */
+            coke_skill_champion?: number | null;
+            /**
+             * Day
+             * @description IST day of the run
+             */
+            day?: string | null;
+            /** Drift Alarm */
+            drift_alarm: boolean;
+            /**
+             * Evidence Days
+             * @description Evidence days, count
+             */
+            evidence_days?: number | null;
+            /**
+             * Evidence To
+             * @description Last evidence day
+             */
+            evidence_to?: string | null;
+            /** Gate Status */
+            gate_status: string;
+            /** Promote */
+            promote: boolean;
+        };
+        /** LearnRunInfo */
+        LearnRunInfo: {
+            /**
+             * Appended Days
+             * @description Days the run appended, count
+             */
+            appended_days?: number | null;
+            /**
+             * At
+             * Format: date-time
+             * @description When the run finished (UTC)
+             */
+            at: string;
+            /**
+             * Day
+             * @description IST day of the run
+             */
+            day?: string | null;
+            /**
+             * Evidence Days
+             * @description Rows of the evidence store, count
+             */
+            evidence_days?: number | null;
+            /**
+             * Evidence To
+             * @description Last evidence day
+             */
+            evidence_to?: string | null;
+            /**
+             * N Days
+             * @description Evidence days with all regressors, count
+             */
+            n_days: number;
+        };
+        /** LearnRunStarted */
+        LearnRunStarted: {
+            /**
+             * Audit Id
+             * @description Audit-log entry of the start
+             */
+            audit_id: number;
+            /**
+             * Duplicate
+             * @description True when a shadow run was already queued or running
+             */
+            duplicate: boolean;
+            job: components["schemas"]["JobRecord"];
+        };
+        /** LearnSkill */
+        LearnSkill: {
+            /**
+             * Coke Day
+             * @description Skill of the day's burnt coke against Fixed-omega, dimensionless
+             */
+            coke_day?: number | null;
+            /**
+             * Label
+             * @description The run's label of the predictor
+             */
+            label: string;
+            /**
+             * Omega Day
+             * @description Skill of the day's omega against Fixed-omega, dimensionless
+             */
+            omega_day?: number | null;
+            /**
+             * Predictor
+             * @enum {string}
+             */
+            predictor: "challenger" | "champion";
+        };
+        /** LearnTrajectory */
+        LearnTrajectory: {
+            /**
+             * Challenger
+             * @description One-step prediction of the challenger, dimensionless
+             */
+            challenger: (number | null)[];
+            /**
+             * Challenger Sd
+             * @description 1-sigma of its parameter part, dimensionless
+             */
+            challenger_sd: (number | null)[];
+            /**
+             * Champion
+             * @description Prediction of the champion (deployed asset), dimensionless
+             */
+            champion: (number | null)[];
+            /**
+             * Dates
+             * @description Evidence days (IST, YYYY-MM-DD), oldest first
+             */
+            dates: string[];
+            /**
+             * Last Date
+             * @description Last evidence day
+             */
+            last_date?: string | null;
+            /**
+             * N
+             * @description Days the filter has seen, count
+             */
+            n?: number | null;
+            /**
+             * Observed
+             * @description Day's omega minus its 14-day anchor, dimensionless
+             */
+            observed: (number | null)[];
+            /** Params */
+            params: components["schemas"]["ScaleTrajectory"][];
         };
         /** LiveCalibration */
         LiveCalibration: {
@@ -9551,6 +10218,78 @@ export interface components {
              */
             top_pressure_bar_g?: number | null;
         };
+        /** ProposalItem */
+        ProposalItem: {
+            /**
+             * Approvable
+             * @description An approval changes the register
+             */
+            approvable: boolean;
+            /**
+             * Automatic
+             * @description Within 2 se and no status change (the run's rule)
+             */
+            automatic: boolean;
+            /**
+             * Change
+             * @description The run's proposed change (value, se, params, status)
+             */
+            change: Record<string, unknown>;
+            /**
+             * Decidable
+             * @description Open or not taken: it can be approved or rejected
+             */
+            decidable: boolean;
+            decision?: components["schemas"]["ItemDecision"] | null;
+            /**
+             * Fact Id
+             * @description Fact of the register the item changes
+             */
+            fact_id?: string | null;
+            /**
+             * Key
+             * @description Item key: the fact id, new:<family> for a family without a VAL fact
+             */
+            key: string;
+            /**
+             * Kind
+             * @description value, status, support, new, promotion or drift
+             */
+            kind: string;
+            /**
+             * Not Carried
+             * @description Proposed fields an overlay does not carry (se, params)
+             */
+            not_carried: string[];
+            /** Reason */
+            reason: string;
+            /**
+             * Register Changes
+             * @description What an approval writes through the overlay
+             */
+            register_changes: components["schemas"]["RegisterChange"][];
+            /**
+             * State
+             * @description open; proposed (facts version pending); approved (version approved); not_taken (the editor rejected the version: open again); rejected (here)
+             * @enum {string}
+             */
+            state: "open" | "proposed" | "approved" | "not_taken" | "rejected";
+            /**
+             * Statement
+             * @description The fact's statement, or the family
+             */
+            statement: string;
+            /**
+             * Unit
+             * @description Unit of the fact's value
+             */
+            unit: string;
+            /**
+             * Why
+             * @description Why the item cannot be approved through the register
+             */
+            why?: string | null;
+        };
         /** ReferencePoint */
         ReferencePoint: {
             /**
@@ -9646,6 +10385,42 @@ export interface components {
             lo: number;
             /** Unit */
             unit: string;
+        };
+        /** RegisterChange */
+        RegisterChange: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "value" | "status";
+            /**
+             * In Force
+             * @description Value in force or status, unit of the fact's value
+             */
+            in_force: number | string | null;
+            /**
+             * Proposed
+             * @description Proposed value or status, unit of the fact's value
+             */
+            proposed: number | string;
+        };
+        /** RegisterInForce */
+        RegisterInForce: {
+            /**
+             * In Force Version
+             * @description Approved facts version in force (0: the repository file), count
+             */
+            in_force_version: number;
+            /**
+             * Label
+             * @description Register in force, e.g. 1.8 + overlay 3
+             */
+            label: string;
+            /**
+             * Reason
+             * @description Why the repository file is shown
+             */
+            reason?: string | null;
         };
         /**
          * ReportDocumentView
@@ -10132,6 +10907,51 @@ export interface components {
             fuel?: components["schemas"]["YardFuel"];
             /** Materials */
             materials?: components["schemas"]["YardMaterial"][];
+        };
+        /** ScaleTrajectory */
+        ScaleTrajectory: {
+            /**
+             * Champion
+             * @description Deployed asset's value, unit of the parameter
+             */
+            champion?: number | null;
+            /**
+             * Fixed
+             * @description Held at 0 by the asset (no random walk)
+             */
+            fixed: boolean;
+            /** Label */
+            label: string;
+            /**
+             * Latest
+             * @description Kalman mean after the last evidence day, unit of the parameter
+             */
+            latest?: number | null;
+            /**
+             * Latest Sd
+             * @description Kalman sd after the last evidence day, unit of the parameter
+             */
+            latest_sd?: number | null;
+            /**
+             * Mean
+             * @description Kalman mean after each day of dates, unit of the parameter
+             */
+            mean: (number | null)[];
+            /**
+             * Name
+             * @description Parameter, e.g. lam_pellet
+             */
+            name: string;
+            /**
+             * Sd
+             * @description Kalman sd after each day of dates, unit of the parameter
+             */
+            sd: (number | null)[];
+            /**
+             * Unit
+             * @description Unit (empty: dimensionless scale on the model channel)
+             */
+            unit: string;
         };
         /** ScheduleAuditResponse */
         ScheduleAuditResponse: {
@@ -14954,6 +15774,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobRetried"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_learn_view: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearnConsole"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_decide_proposal_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearnDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearnDecisionResult"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_start_shadow_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearnRunStarted"];
                 };
             };
             /** @description Client error (problem+json) */
