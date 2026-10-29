@@ -25,6 +25,7 @@ from services import schedule as sch
 from services import store as store_service
 from services.events import MemoryEventBus
 from services.jobs import CATALOG, JobRecord, NoParams, OptimiserRunParams, TwinEvaluateParams, input_hash
+from tests.redis_server import needs_redis, redis_server
 from tests.twin_data import synthetic_frames
 from worker.kinds import calibration as calibration_kind
 from worker.kinds import learn as learn_kind
@@ -396,10 +397,10 @@ def test_housekeeping_stores_the_runtime_statistics_of_14_days() -> None:
 
 # --------------------------------------------------------------------------------------------------------- routes
 @pytest.mark.usefixtures("store")
+@needs_redis
 def test_the_stats_and_schedule_routes_read_the_archive(store, tmp_path) -> None:
     from fastapi.testclient import TestClient
 
-    from tests.redis_server import redis_server
     from tests.test_api_auth import build
     from tests.test_api_live import Users
 

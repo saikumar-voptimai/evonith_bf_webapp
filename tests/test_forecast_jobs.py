@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -310,8 +311,8 @@ def _publish(tmp_path: Path, source: pd.DataFrame, row: pd.Timestamp) -> tuple[P
     return versioned, built
 
 
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="time.tzset is POSIX only")
 def test_the_build_time_is_read_as_gmt_on_any_host(tmp_path, monkeypatch) -> None:
-    import time
 
     meta = tmp_path / "cache_meta.json"
     meta.write_text(json.dumps({"source_last_modified": "Mon, 28 Sep 2026 07:36:00 GMT"}), encoding="utf-8")
@@ -475,7 +476,7 @@ def test_the_forecast_jobs_are_scheduled_in_ist(monkeypatch) -> None:
     assert kind.max_tries * kind.retry_delay_s <= 30 * 60  # retries end before the next hour's run
     assert CATALOG["forecast.si"].timeout_s < 300  # a run ends before the next one starts
     monkeypatch.setenv(
-        "BF_WORKER_SKIP_SCHEDULES", "forecast.charged_coke, system., twin., optimiser., calibration., learn., report."
+        "BF_WORKER_SKIP_SCHEDULES", "forecast.charged_coke, system., twin., optimiser., calibration., learn., report., strata."
     )
     assert sorted(c.name for c in settings.cron_jobs()) == ["cron:schedule_forecast_si"]
 
