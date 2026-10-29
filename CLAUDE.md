@@ -1020,8 +1020,11 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   from `frontend/src/lib/theme/tokens.css` (no hex values in components); build pages from
   `frontend/src/lib/components/` (catalogue at `/dev/components`, rules in `frontend/DESIGN.md`): status always with
   icon and word, `updatedAt` on live panels, units on every readout joined by a no-break space (`formatQuantity`),
-  chemical labels with Unicode subscripts (SiO₂). New nav pages go into `frontend/src/lib/nav.ts`. Check with
-  `make audit-ui` (axe-core, three viewports).
+  chemical labels with Unicode subscripts (SiO₂). New nav pages go into `frontend/src/lib/nav.ts` and the audit's
+  `ROUTES` (`frontend/scripts/ui-audit.mjs`; `mocked: false` audits the error state, any other unmocked /api read
+  fails). Check with `make audit-ui` (axe-core, three viewports, console errors). An `$effect` that starts a
+  controller or a load calls it in `untrack(...)`: a synchronous read and write of `$state` restarts the effect
+  (effect_update_depth_exceeded); `bind:` never targets an undefined entry of a prop with a fallback.
 - Charts in the SPA: `#lib/charts/` (`TimeSeriesChart`, `ScatterChart`, `BarChart`, `DonutChart`, `RistDiagram`;
   ECharts 6 SVG, loaded lazily; pure option builders with unit tests) and `#lib/furnace/FurnaceSchematic.svelte`.
   Series colours only by token: categorical slots `cat-1..6` in fixed order, entity aliases `series-trace` / `-forge` /

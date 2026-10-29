@@ -13,8 +13,11 @@
  * (`scripts/fixtures/calibration-console.json`, checked by tests/test_api_calibration.py), /api/admin/users, /hoppers and
  * /burden (`scripts/fixtures/plant-admin.json`, checked by tests/test_api_plant_admin.py), /api/admin/learn
  * (`scripts/fixtures/learn-console.json`, checked by tests/test_api_learn.py) and the STRATA page's
- * /api/strata/* (`strata-mock.mjs`) itself, so the audit does not need the twin-api. Exit code 1 on a critical or
- * serious axe violation, a horizontal overflow or a failed behaviour check.
+ * /api/strata/* (`strata-mock.mjs`), /api/version and the Live Twin's reads (`src/lib/twin/fixtures/payloads.ts`, moved
+ * to the present; Node >= 22.18 strips its types) itself, so the audit does not need the twin-api. Pages whose reads are
+ * not mocked (`mocked: false` in ROUTES) are audited in their error state: every other /api read is answered with a
+ * 503 problem and listed as unmocked; on a mocked page such a read is a failure. Exit code 1 on a critical or serious
+ * axe violation, a horizontal overflow, a console error or a failed behaviour check.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -23,6 +26,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { strataMock } from './strata-mock.mjs';
 import { traceFixture } from './trace-fixture.mjs';
+import * as twinPayloads from '../src/lib/twin/fixtures/payloads.ts';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -68,8 +72,31 @@ const ROUTES = [
 	{ name: 'admin-hoppers', path: '/admin/users?tab=hoppers' },
 	{ name: 'admin-burden', path: '/admin/users?tab=burden' },
 	{ name: 'admin-validation', path: '/admin/validation' },
-	{ name: 'not-found', path: '/no-such-page' }
+	{ name: 'not-found', path: '/no-such-page' },
+	// Reads not mocked: the page's error state (shell, headings, error panels) is audited.
+	{ name: 'forge', path: '/forge', mocked: false },
+	{ name: 'status', path: '/status', mocked: false },
+	{ name: 'reports', path: '/reports', mocked: false },
+	{ name: 'furnacemind', path: '/furnacemind', mocked: false },
+	{ name: 'optimiser', path: '/optimiser', mocked: false },
+	{ name: 'bmo', path: '/bmo', mocked: false },
+	{ name: 'admin-facts', path: '/admin/facts', mocked: false },
+	{ name: 'admin-what-if', path: '/admin/what-if', mocked: false },
+	{ name: 'admin-burnt-vs-charged', path: '/admin/burnt-vs-charged', mocked: false },
+	{ name: 'admin-jobs', path: '/admin/jobs', mocked: false }
 ];
+
+const HOUR_MS = 3_600_000;
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+/** `value` with every ISO date-time moved by `ms` (recorded payloads made current). */
+function shifted(value, ms) {
+	if (typeof value === 'string' && ISO_TIME.test(value))
+		return new Date(Date.parse(value) + ms).toISOString();
+	if (Array.isArray(value)) return value.map((v) => shifted(v, ms));
+	if (value && typeof value === 'object')
+		return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shifted(v, ms)]));
+	return value;
+}
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
 
 const failures = [];
@@ -82,9 +109,11 @@ function fail(message) {
 
 async function startPreview() {
 	// Bound to the address the audit opens: `localhost` resolves to ::1 first on hosts such as the GitHub runners, and
-	// a server on [::1] refuses the connection to 127.0.0.1.
-	const args = ['exec', 'vite', 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'];
-	const proc = spawn('pnpm', args, {
+	// a server on [::1] refuses the connection to 127.0.0.1. Vite's CLI runs on this Node directly: `spawn('pnpm')`
+	// fails with ENOENT on Windows (pnpm is a .cmd shim), and a shell in between would outlive `kill()`.
+	const vite = join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+	const args = [vite, 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'];
+	const proc = spawn(process.execPath, args, {
 		cwd: ROOT,
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
@@ -156,9 +185,79 @@ const preview = base ? null : await startPreview();
 base ??= `http://127.0.0.1:${PORT}`;
 mkdirSync(OUT, { recursive: true });
 
+// Every /api read without a mock (Playwright tries the routes registered last first) is answered with a 503 problem
+// and kept here (URL -> path). `current` is the ROUTES entry being audited (null during the behaviour checks).
+let current = null;
+const unmocked = new Map();
+
 const browser = await chromium.launch();
 try {
 	const context = await browser.newContext({ deviceScaleFactor: 1, reducedMotion: 'reduce' });
+	await context.route(/\/api\//, (route) => {
+		const url = route.request().url();
+		const path = new URL(url).pathname;
+		unmocked.set(url, path);
+		if (current && current.mocked !== false) fail(`${current.label}: unmocked read ${path}`);
+		return route.fulfill({
+			status: 503,
+			contentType: 'application/problem+json',
+			body: JSON.stringify({
+				type: 'about:blank',
+				title: '503',
+				status: 503,
+				detail: 'Not mocked by the UI audit.'
+			})
+		});
+	});
+	await context.route('**/api/version', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({
+				version: '0.1.0',
+				release: 'v0.1.0-audit',
+				git_sha: '0000000',
+				environment: 'audit',
+				python: '3.12',
+				started_at: new Date(Date.now() - 2 * HOUR_MS).toISOString(),
+				installed_at: null,
+				frontend_build: null
+			})
+		})
+	);
+	// Live Twin (SV-1.9, #289): the recorded payloads of its Vitest suite, moved to the present.
+	const twinShift = Date.now() - twinPayloads.NOW_MS;
+	const twinBodies = {
+		now: twinPayloads.twinNow,
+		series: twinPayloads.series,
+		transit: twinPayloads.transit,
+		alarms: twinPayloads.alarms,
+		'hot-metal': twinPayloads.hotMetal,
+		window: twinPayloads.snapshot
+	};
+	await context.route(/\/api\/twin\/(now|series|transit|alarms|hot-metal|window)(\?.*)?$/, (route) => {
+		const key = new URL(route.request().url()).pathname.split('/').pop();
+		return route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify(shifted(twinBodies[key], twinShift))
+		});
+	});
+	await context.route('**/api/optimiser/latest', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify(shifted(twinPayloads.plan, twinShift))
+		})
+	);
+	await context.route(/\/api\/stream\/recent(\?.*)?$/, (route) => {
+		const at = new Date().toISOString();
+		const events = [
+			{ id: '0-1', type: 'live.status', at, data: shifted(twinPayloads.liveStatus, twinShift) },
+			{ id: '0-2', type: 'forecast.si', at, data: shifted(twinPayloads.siForecast, twinShift) }
+		];
+		return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(events) });
+	});
 	await context.route('**/api/health', (route) =>
 		route.fulfill({
 			status: 200,
@@ -259,15 +358,17 @@ try {
 	page.on('console', (m) => {
 		// Expected HTTP statuses: the 404 of the not-found route's document and the 401s of the sign-in checks.
 		const url = m.location()?.url ?? '';
-		const expected = url.endsWith('/no-such-page') || url.includes('/api/auth/');
-		if (m.type() === 'error' && !expected) consoleErrors.push(`${m.text()} ${url}`);
+		const expected = url.endsWith('/no-such-page') || url.includes('/api/auth/') || unmocked.has(url);
+		const at = new URL(page.url()).pathname;
+		if (m.type() === 'error' && !expected) consoleErrors.push(`${at}: ${m.text()} ${url}`);
 	});
-	page.on('pageerror', (e) => consoleErrors.push(String(e)));
+	page.on('pageerror', (e) => consoleErrors.push(`${new URL(page.url()).pathname}: ${e}`));
 
 	for (const vp of VIEWPORTS) {
 		await page.setViewportSize({ width: vp.width, height: vp.height });
 		for (const route of ROUTES) {
 			const label = `${route.name}@${vp.name}`;
+			current = { ...route, label };
 			await page.goto(base + route.path, { waitUntil: 'networkidle' });
 			await settle(page);
 			const violations = await axe(page, label);
@@ -279,6 +380,7 @@ try {
 			if (new URL(page.url()).pathname !== new URL(route.path, base).pathname)
 				fail(`${label}: landed on ${page.url()}`);
 			report.pages.push({ label, violations, overflow: o });
+			current = null;
 		}
 	}
 
@@ -610,14 +712,19 @@ try {
 	});
 
 	await check('no console errors', async () => {
-		expect(consoleErrors.length === 0, consoleErrors.join(' | '));
+		const counts = new Map();
+		for (const e of consoleErrors) counts.set(e.slice(0, 400), (counts.get(e.slice(0, 400)) ?? 0) + 1);
+		const lines = [...counts].slice(0, 20).map(([e, n]) => `${n} x ${e}`);
+		expect(consoleErrors.length === 0, `${consoleErrors.length} errors: ${lines.join(' | ')}`);
 	});
 } finally {
 	await browser.close();
 	preview?.kill('SIGTERM');
 }
 
+report.unmocked = [...new Set(unmocked.values())].sort();
 writeFileSync(join(OUT, 'report.json'), JSON.stringify({ ...report, failures }, null, 2));
+if (report.unmocked.length) console.log(`unmocked reads (503): ${report.unmocked.join(', ')}`);
 const total = report.pages.reduce((n, p) => n + p.violations.length, 0);
 console.log(
 	`\n${report.pages.length} page views, ${total} axe findings, ${report.checks.length} checks, ${failures.length} failures`
