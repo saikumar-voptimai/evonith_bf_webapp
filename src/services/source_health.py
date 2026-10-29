@@ -9,16 +9,21 @@ again, and the next job after the hold probes it once more, so the recovery need
 
 ``observe_status_view`` records InfluxDB from a furnace-status snapshot (``services.status``: the worker's producer
 every 10 s and the API's own snapshots, also the producer's view the API reads from Redis), ``services.twin.
-load_frames`` records the four evaluation sources. The Live Twin's source rows (``twin_views.source_freshness``)
-merge ``view()``: a source is stale when its data are older than the limit or its last fetch failed.
+load_frames`` records the four evaluation sources, ``record_dataset_refresh`` the publisher of the hourly dataset
+(whose refresh returns its error instead of raising) and the live Si forecast its InfluxDB and HM/slag reads. The
+worker publishes its registry to Redis every heartbeat (``publish``), the API merges it (``follow``: the newer event
+of each source wins), so a failure the worker found is shown by the API. The Live Twin's source rows
+(``twin_views.source_freshness``) merge ``view()``: a source is stale when its data are older than the limit or its
+last fetch failed.
 """
 
 from __future__ import annotations
 
 import copy
+import json
 import logging
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -34,6 +39,8 @@ SOURCE_LABELS = {
 }
 SOURCES = tuple(SOURCE_LABELS)
 RETRY_AFTER_S = 300.0  # a job needing a source that failed within this long skips without a probe
+REDIS_KEY = "twin:sources:health"  # the worker's registry, written every heartbeat (``publish``)
+REDIS_TTL_S = 120  # a stopped worker's registry expires after this long
 
 IST = "Asia/Kolkata"
 
@@ -96,6 +103,10 @@ def _ist_text(value: datetime | None) -> str:
     import pandas as pd
 
     return f"{pd.Timestamp(value).tz_convert(IST):%d %b %H:%M} IST"
+
+
+def _iso(value: datetime | None) -> str | None:
+    return None if value is None else value.isoformat()
 
 
 def _short(exc: BaseException | str, limit: int = 300) -> str:
@@ -229,6 +240,43 @@ class SourceHealth:
             for key, label in SOURCE_LABELS.items():
                 self._states[key] = SourceState(key, label)
 
+    # ---------------------------------------------------------------------------------- between processes
+    def export(self) -> list[dict[str, Any]]:
+        """The events of every source as JSON values (UTC ISO times), without the kept values."""
+        with self._lock:
+            states = [copy.copy(s) for s in self._states.values()]
+        return [
+            {
+                "key": s.key,
+                "last_ok_at": _iso(s.last_ok_at),
+                "data_end": _iso(s.data_end),
+                "last_failure_at": _iso(s.last_failure_at),
+                "last_error": s.last_error,
+                "failures": s.failures,
+            }
+            for s in states
+        ]
+
+    def merge(self, rows: Iterable[Mapping[str, Any]]) -> None:
+        """Adopt another process's events (``export``): a later success or failure replaces this process's, the
+        newest data time is kept; unknown sources and unreadable times are ignored."""
+        with self._lock:
+            for row in rows:
+                s = self._states.get(str(row.get("key")))
+                if s is None:
+                    continue
+                ok, failed_at, end = (_utc(row.get(k)) for k in ("last_ok_at", "last_failure_at", "data_end"))
+                if failed_at is not None and (s.last_failure_at is None or failed_at > s.last_failure_at):
+                    s.last_failure_at = failed_at
+                    s.last_error = _short(str(row.get("last_error") or "failed"))
+                    s.failures = max(int(row.get("failures") or 1), 1)
+                if ok is not None and (s.last_ok_at is None or ok > s.last_ok_at):
+                    s.last_ok_at = ok
+                    if not s.failed:
+                        s.failures = 0
+                if end is not None and (s.data_end is None or end > s.data_end):
+                    s.data_end = end
+
 
 HEALTH = SourceHealth()
 
@@ -252,13 +300,51 @@ def observe_status_view(view: Any, *, health: SourceHealth = HEALTH) -> bool:
     return True
 
 
+def record_dataset_refresh(
+    outcome: Mapping[str, Any] | None, data_end: Any = None, *, health: SourceHealth = HEALTH
+) -> None:
+    """Record the hourly dataset from a refresh outcome (``data.coke_energy.sources.refresh_static_dataset``, which
+    returns ``{"refreshed": False, "error": ...}`` instead of raising): a failure with that error, a success with
+    the local copy's last row (``data_end``, IST); an outcome with neither records nothing."""
+    out = dict(outcome or {})
+    if out.get("error"):
+        health.record_failure("hourly", f"refresh failed: {out['error']}")
+    elif out.get("refreshed"):
+        health.record_ok("hourly", data_end=data_end)
+
+
+async def publish(redis: Any, *, health: SourceHealth = HEALTH, ttl_s: int = REDIS_TTL_S) -> None:
+    """Write this process's registry to Redis (the worker's heartbeat)."""
+    await redis.set(REDIS_KEY, json.dumps(health.export()), ex=int(ttl_s))
+
+
+async def follow(redis: Any, *, health: SourceHealth = HEALTH) -> bool:
+    """Merge the worker's registry from Redis into this process's (the API); False when there is none."""
+    raw = await redis.get(REDIS_KEY)
+    if not raw:
+        return False
+    try:
+        rows = json.loads(raw)
+    except ValueError:
+        log.warning("%s does not hold a source registry; ignored", REDIS_KEY)
+        return False
+    if not isinstance(rows, list):
+        return False
+    health.merge(r for r in rows if isinstance(r, Mapping))
+    return True
+
+
 __all__ = [
     "HEALTH",
+    "REDIS_KEY",
     "RETRY_AFTER_S",
     "SOURCES",
     "SOURCE_LABELS",
     "SourceDown",
     "SourceHealth",
     "SourceState",
+    "follow",
     "observe_status_view",
+    "publish",
+    "record_dataset_refresh",
 ]

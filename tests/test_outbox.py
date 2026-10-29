@@ -264,3 +264,37 @@ def test_a_one_hour_neon_outage_loses_no_hourly_snapshot(buffered, neon, monkeyp
     finally:
         outbox_service.reset()
         source_health.HEALTH.reset()
+
+
+def test_the_worker_job_archive_buffers_through_the_outage(neon, monkeypatch, tmp_path) -> None:
+    """The worker's archive writes through the process's buffered store: records of an outage are replayed."""
+    from services import store as store_service
+    from services.job_archive import open_job_archive
+    from services.jobs import JobRecord
+
+    monkeypatch.setenv("BF_TWIN_OUTBOX", str(tmp_path / "worker_outbox.sqlite"))
+    store_service.use(neon)  # type: ignore[arg-type]
+
+    def job(status: str) -> JobRecord:
+        return JobRecord(id="a1", kind="system.selftest", status=status, input_hash="h", submitted_by="op",
+                         submitted_at=T0)  # fmt: skip
+
+    async def run() -> None:
+        archive = await open_job_archive()
+        assert archive is not None and archive.store is outbox_service.buffered_twin_store()
+        neon.down = True
+        archive.record(job("queued"))
+        await archive.flush()
+        archive.record(job("done"))
+        await archive.flush()
+        assert (archive.failed, archive.store.pending) == (0, 2)
+        neon.down = False
+        assert archive.store.replay().replayed == 2
+        assert neon.inner.jobs.get("a1").status == "done"  # in order: the last state stands
+        await archive.close()
+
+    try:
+        asyncio.run(run())
+    finally:
+        store_service.reset()
+        outbox_service.reset()

@@ -14,7 +14,9 @@ The evaluation runs in a thread (the Coke Energy sources and the pipeline are me
 a twin store the window is evaluated and returned in the job result only.
 
 Outages (SV-6.5): a source that failed within ``source_health.RETRY_AFTER_S`` skips the job with the reason
-(``SkipJob``); a loader that fails marks its source and skips the job as well. The snapshots go through the buffered
+(``SkipJob``, which raises the source's ``source_stale`` alarm); a loader that fails, or a refresh of the hourly dataset
+that fails while the window's row is missing, marks its source and skips the job as well (no retries; the next hour's
+backfill evaluates the window once the source is back). The snapshots go through the buffered
 store (``services.outbox``): while Neon is unreachable they are kept in the local outbox and replayed by the heartbeat,
 the backfill lookup, the drift and the alarms are skipped with a note, and the job still ends ``done``.
 """
@@ -45,13 +47,15 @@ async def evaluate(job: JobContext, params: TwinEvaluateParams) -> dict[str, Any
     try:
         source_health.HEALTH.require(*SOURCES)
     except source_health.SourceDown as exc:
-        raise SkipJob(exc.reason) from exc
+        raise SkipJob(exc.reason, source=exc.key) from exc
     await job.progress(0.02, f"Checking the hourly dataset for the row of {end - twin.HOUR:%H:%M}", force=True)
     try:
         ready, data = await asyncio.to_thread(twin.ensure_dataset, end)
     except Exception as exc:
         source_health.HEALTH.record_failure("hourly", exc)
-        raise SkipJob(source_health.HEALTH.reason("hourly") or f"hourly dataset: {exc}") from exc
+        raise SkipJob(source_health.HEALTH.reason("hourly") or f"hourly dataset: {exc}", source="hourly") from exc
+    if not ready and source_health.HEALTH.down("hourly"):  # the refresh failed: another try would fail again
+        raise SkipJob(source_health.HEALTH.reason("hourly") or "hourly dataset refresh failed", source="hourly")
     if not ready and job.attempt < job.kind.max_tries:
         raise TransientJobError(
             f"the hourly dataset ends at {data.data_end} (build {data.built_at}); the window ending {end:%d %b %H:%M} "
@@ -97,7 +101,7 @@ async def evaluate(job: JobContext, params: TwinEvaluateParams) -> dict[str, Any
                         )
                     )
                 except source_health.SourceDown as exc:
-                    raise SkipJob(exc.reason) from exc
+                    raise SkipJob(exc.reason, source=exc.key) from exc
     finally:
         await asyncio.to_thread(strata_network.stop_solvers, pool)
     latest = results[-1].values

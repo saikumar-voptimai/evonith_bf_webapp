@@ -29,7 +29,7 @@ from typing import Any
 from arq import Retry
 from pydantic import BaseModel
 
-from services import outbox, schedule, twin_alarms
+from services import outbox, schedule, source_health, twin_alarms
 from services.events import EventBus, JobDoneData, JobProgressData, LiveStatusData, WorkerStatus
 from services.jobs import CATALOG, JobKind, JobStore
 
@@ -50,7 +50,12 @@ class TransientJobError(RuntimeError):
 
 class SkipJob(RuntimeError):
     """The job cannot run now and another try would not help (a source it needs is down, SV-6.5): the record ends
-    ``cancelled`` with the reason as its message, logged once, and no ``job_failed`` alarm is raised."""
+    ``cancelled`` with the reason as its message, logged once, and no ``job_failed`` alarm is raised. With ``source``
+    (a ``services.source_health`` key) the source's ``source_stale`` alarm is raised instead."""
+
+    def __init__(self, reason: str, *, source: str | None = None) -> None:
+        super().__init__(reason)
+        self.source = source
 
 
 def handles(kind_name: str) -> Callable[[Handler], Handler]:
@@ -188,6 +193,11 @@ async def run_job(ctx: dict[str, Any], job_id: str) -> None:
         await store.finish(job_id, "cancelled", error=message, run_s=run_s())
         await _publish_done(ctx, job_id, kind.name, "cancelled", message, t0)
         log.warning("job %s %s skipped: %s", job_id, kind.name, exc)
+        if exc.source is not None:
+            try:
+                await twin_alarms.source_down(bus, exc.source, str(exc))
+            except Exception as alarm_exc:  # noqa: BLE001 - the alarm is a by-product (Neon may be down too)
+                log.warning("source_stale alarm of %s not raised: %s", exc.source, _short(alarm_exc))
     except TransientJobError as exc:
         if attempt < kind.max_tries:
             message = f"Try {attempt} failed ({_short(exc)}); next try in {kind.retry_delay_s:g} s."
@@ -320,6 +330,7 @@ async def heartbeat_loop(ctx: dict[str, Any]) -> None:
         try:
             redis = ctx["store"].redis
             await mark_alive(redis)
+            await source_health.publish(redis)  # the API shows the sources this worker found down (SV-6.5)
             status = WorkerStatus(
                 name=ctx["name"],
                 started_at=ctx["started_at"],

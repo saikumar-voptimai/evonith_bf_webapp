@@ -275,6 +275,7 @@ def ensure_dataset(
         outcome = refresh_fn(cfg.get("data_sources", {}) or {})
         state = state_fn(cfg)
         state.refresh = {k: str(v) for k, v in dict(outcome or {}).items()}
+        source_health.record_dataset_refresh(outcome, state.data_end)  # a failed refresh marks the source (SV-6.5)
     return state.holds(last_row), state
 
 

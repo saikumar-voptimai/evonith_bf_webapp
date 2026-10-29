@@ -254,3 +254,203 @@ def test_the_hourly_job_skips_with_the_reason_while_a_source_is_down(store, monk
     monkeypatch.setattr(twin_service, "evaluate", evaluate)
     with pytest.raises(SkipJob, match="InfluxDB unreachable since 15 May 10:10 IST"):
         asyncio.run(twin_kind.evaluate(job, TwinEvaluateParams(backfill_hours=0, strata=False)))
+
+
+def test_a_failed_refresh_of_the_hourly_dataset_skips_the_job_without_retries(store, monkeypatch) -> None:  # noqa: F811
+    """``refresh_static_dataset`` returns its error instead of raising: the twin job used to retry to HH:25 and fail."""
+    end = pd.Timestamp("2026-05-15 10:00")
+    real = twin_service.ensure_dataset
+
+    def ensure(window_end: Any) -> Any:
+        return real(
+            window_end,
+            cfg={},
+            now=end,
+            refresh_fn=lambda cfg: {"refreshed": False, "error": "HTTPError: 503 Service Unavailable"},
+            state_fn=lambda cfg: twin_service.DatasetState(end - 2 * twin_service.HOUR, end - twin_service.HOUR),
+        )
+
+    monkeypatch.setattr(twin_service, "ensure_dataset", ensure)
+    job, bus = context("twin.evaluate", record("twin.evaluate", slot=utc_of("2026-05-15 10:10")))
+    with pytest.raises(SkipJob, match=r"Hourly dataset unreachable since .* \(refresh failed: HTTPError: 503") as e:
+        asyncio.run(twin_kind.evaluate(job, TwinEvaluateParams(backfill_hours=0, strata=False)))
+    assert e.value.source == "hourly" and source_health.HEALTH.down("hourly")
+    # a refresh that worked marks the source up with the local copy's last row
+    source_health.record_dataset_refresh({"refreshed": True}, pd.Timestamp("2026-05-15 09:00"))
+    assert not source_health.HEALTH.failed("hourly")
+    assert source_health.HEALTH.state("hourly").data_end == utc_of("2026-05-15 09:00")
+    source_health.record_dataset_refresh({"refreshed": False})  # a late build without an error records nothing
+    assert not source_health.HEALTH.failed("hourly")
+
+
+# ------------------------------------------------------------------------------------- between the processes
+def test_the_worker_registry_reaches_the_api_through_redis() -> None:
+    from tests.test_services_live_status import FakeRedis
+
+    worker, _ = registry()
+    api, _ = registry()
+    redis = FakeRedis()
+    worker.record_ok("hourly", data_end=pd.Timestamp("2026-10-27 09:00"), at=T0)
+    worker.record_failure("hourly", OSError("dataset host unreachable"), at=T0 + 10 * M)
+    worker.record_ok("dpr", data_end=pd.Timestamp("2026-10-26"), at=T0)
+    api.record_ok("influxdb", data_end=T0 + 9 * M, at=T0 + 10 * M)  # the API's own status snapshot
+    asyncio.run(source_health.publish(redis, health=worker))
+    assert asyncio.run(source_health.follow(redis, health=api))
+    hourly = api.state("hourly")
+    assert hourly.failed and hourly.failures == 1 and hourly.last_error == "OSError: dataset host unreachable"
+    assert hourly.data_end == utc_of("2026-10-27 09:00") and api.down("hourly", T0 + 11 * M)
+    assert api.state("dpr").data_end == utc_of("2026-10-26 00:00") and not api.failed("dpr")
+    influx = api.state("influxdb")  # the worker knew nothing of InfluxDB: the API's own state stands
+    assert not influx.failed and influx.data_end == T0 + 9 * M and influx.last_ok_at == T0 + 10 * M
+
+    api.record_ok("hourly", at=T0 + 20 * M)  # a newer success of this process is not undone by the older failure
+    asyncio.run(source_health.follow(redis, health=api))
+    assert not api.failed("hourly")
+    worker.record_failure("hourly", "timeout", at=T0 + 30 * M)  # the worker's newer failure is adopted
+    asyncio.run(source_health.publish(redis, health=worker))
+    asyncio.run(source_health.follow(redis, health=api))
+    assert api.failed("hourly") and api.state("hourly").last_error == "timeout" and api.state("hourly").failures == 2
+
+    assert not asyncio.run(source_health.follow(FakeRedis(), health=api))  # no worker
+    broken = FakeRedis()
+    asyncio.run(broken.set(source_health.REDIS_KEY, "not json"))
+    assert not asyncio.run(source_health.follow(broken, health=api))
+
+
+def test_the_route_shows_a_source_the_worker_found_down(client, twin) -> None:  # noqa: F811 - fixtures
+    from tests.test_services_live_status import FakeRedis
+
+    worker = SourceHealth()
+    worker.record_failure("dpr", "Neon: connection timed out")
+    live = client.app.state.live
+    redis, live.redis = live.redis, FakeRedis()
+    try:
+        asyncio.run(source_health.publish(live.redis, health=worker))
+        rows = {s["key"]: s for s in get(client, "op", "/api/twin/now").json()["sources"]}
+    finally:
+        live.redis = redis
+    assert rows["dpr"]["down"] and rows["dpr"]["stale"] and rows["dpr"]["error"] == "Neon: connection timed out"
+    assert not rows["hourly"]["down"]
+
+
+# ------------------------------------------------------------------------------- the skip in the worker runtime
+class _Jobs:
+    """The parts of ``JobStore`` ``run_job`` uses."""
+
+    def __init__(self, rec: Any) -> None:
+        self.rec, self.finished = rec, []
+
+    async def get(self, job_id: str) -> Any:
+        return self.rec
+
+    async def update(self, job_id: str, **changes: Any) -> None:
+        return None
+
+    async def finish(self, job_id: str, status: str, **kw: Any) -> None:
+        self.finished.append((status, kw.get("error")))
+
+
+def test_a_skip_ends_cancelled_and_raises_the_source_stale_alarm(store, monkeypatch) -> None:  # noqa: F811
+    from services.events import MemoryEventBus
+    from worker import runtime
+
+    async def handler(job: Any, params: Any) -> Any:
+        raise SkipJob("InfluxDB unreachable since 15 May 10:10 IST (timeout)", source="influxdb")
+
+    monkeypatch.setitem(runtime.HANDLERS, "forecast.si", handler)
+    rec = record("forecast.si", slot=utc_of("2026-05-15 10:15")).model_copy(update={"status": "queued"})
+    jobs, bus = _Jobs(rec), MemoryEventBus()
+    ctx = {"store": jobs, "bus": bus, "running": set(), "job_try": 1}
+    asyncio.run(runtime.run_job(ctx, rec.id))
+    assert jobs.finished == [("cancelled", "Skipped: InfluxDB unreachable since 15 May 10:10 IST (timeout)")]
+    events = asyncio.run(bus.recent(10))
+    assert [e.type for e in events] == ["job.progress", "job.done", "alarm.raised"]
+    assert events[1].data.status == "cancelled"
+    (alarm,) = store.alarms.open_alarms()  # no job_failed: a skip leaves that alarm as it is
+    assert (alarm.kind, alarm.subject) == ("source_stale", "influxdb") and "unreachable" in alarm.message
+    asyncio.run(runtime.run_job(ctx, rec.id))  # the next skip updates the open alarm
+    raised = [e.type for e in asyncio.run(bus.recent(10))].count("alarm.raised")
+    assert len(store.alarms.open_alarms()) == 1 and raised == 1
+
+
+# ------------------------------------------------------------------------------------------ the forecast jobs
+def test_the_si_reads_record_influxdb_and_hm_slag(monkeypatch) -> None:
+    from data.bmo import si_forecast_context
+    from services import forecasts
+
+    def down(*args: Any, **kwargs: Any) -> Any:
+        raise ConnectionError("influx.local:8086 refused")
+
+    monkeypatch.setattr(si_forecast_context, "fetch_online_df", down)
+    with pytest.raises(SourceDown, match="InfluxDB unreachable since"):
+        forecasts._observed_online(selected_measurements=["process_params"])
+    assert source_health.HEALTH.down("influxdb")
+    reads: list[str] = []
+    monkeypatch.setattr(
+        si_forecast_context, "fetch_offline_data", lambda **kw: reads.append(kw["table_name"]) or pd.DataFrame()
+    )
+    forecasts._observed_offline(table_name=forecasts.HM_SLAG_TABLE, query_type="raw")
+    forecasts._observed_offline(table_name="offline_feed.charge_data", query_type="raw")
+    assert reads == [forecasts.HM_SLAG_TABLE, "offline_feed.charge_data"]
+    assert source_health.HEALTH.state("hm_slag").last_ok_at is not None  # the charge table is no tracked source
+    source = forecasts.live_si_source(bundle_dir=forecasts.si_paths().default_bundle, static_dataset_path="x.csv")
+    assert source.online_fetch is forecasts._observed_online and source.offline_fetch is forecasts._observed_offline
+
+
+def test_the_forecast_jobs_skip_with_an_attempt_while_their_source_is_down(tmp_path, monkeypatch) -> None:
+    from services import forecasts
+    from services.jobs import CATALOG, NoParams
+    from tests.test_forecast_jobs import SI_BUNDLE, _cfg
+    from worker.kinds import forecasts as forecast_kinds
+    from worker.runtime import JobContext
+
+    def job(kind: str, attempt: int = 1) -> JobContext:
+        return JobContext(job_id="j1", kind=CATALOG[kind], attempt=attempt, store=None, bus=None, pool=None)
+
+    skips: list[tuple[str, str]] = []
+    monkeypatch.setattr(forecasts, "record_skip", lambda forecast, reason: skips.append((forecast, reason)))
+    monkeypatch.setattr(forecasts, "issue_si", lambda: pytest.fail("a down source is not probed"))
+    source_health.HEALTH.record_failure("influxdb", "no reading; measurements not read: process_params")
+    with pytest.raises(SkipJob, match="InfluxDB unreachable since") as e:
+        asyncio.run(forecast_kinds.si(job("forecast.si"), NoParams()))
+    assert e.value.source == "influxdb" and skips[0][0] == "si" and skips[0][1].startswith("InfluxDB unreachable")
+
+    def failed_read() -> Any:  # the read itself fails (recorded by the observed fetch, attempt logged as failed)
+        raise SourceDown("hm_slag", "HM/slag unreachable since 15 May 10:10 IST (timeout)")
+
+    source_health.HEALTH.reset()
+    monkeypatch.setattr(forecasts, "issue_si", failed_read)
+    with pytest.raises(SkipJob, match="HM/slag unreachable") as e:
+        asyncio.run(forecast_kinds.si(job("forecast.si"), NoParams()))
+    assert e.value.source == "hm_slag" and len(skips) == 1
+
+    # charged coke: the refresh of the hourly dataset failed while the build is late: no retries
+    attempt = {"forecast": "charged_coke", "status": "cruise", "written": False, "behind": True}
+
+    def issue_charged() -> dict[str, Any]:
+        source_health.record_dataset_refresh({"refreshed": False, "error": "HTTPError: 503"})
+        return {"attempt": attempt, "record": {"data_row": None}}
+
+    monkeypatch.setattr(forecasts, "issue_charged", issue_charged)
+    with pytest.raises(SkipJob, match=r"Hourly dataset unreachable since .*refresh failed: HTTPError: 503") as e:
+        asyncio.run(forecast_kinds.charged_coke(job("forecast.charged_coke"), NoParams()))
+    assert e.value.source == "hourly"
+    with pytest.raises(SkipJob, match="next try after"):  # the next run within the hold does not probe
+        asyncio.run(forecast_kinds.charged_coke(job("forecast.charged_coke", attempt=2), NoParams()))
+    assert skips[-1][0] == "charged_coke"
+
+    # the skipped attempt is in the attempt log: the gap check names it and page 9 shows the reason
+    monkeypatch.undo()
+    cfg = _cfg(tmp_path)
+    origin = pd.Timestamp("2026-10-20T04:30:00Z")
+    out = forecasts.record_skip("si", "InfluxDB unreachable since 20 Oct 09:55 IST (timeout)", now=origin, cfg=cfg)
+    assert out["status"] == "skipped" and out["key"] == origin and not out["written"]
+    view = forecasts.si_for_page(tmp_path / "si", SI_BUNDLE, now=origin + pd.Timedelta(minutes=1))
+    assert view.record["status"] == "insufficient_data" and "InfluxDB unreachable" in view.record["reasons"][0]
+    window = dict(start=origin - pd.Timedelta(hours=1), end=origin + pd.Timedelta(hours=1))
+    gaps = forecasts.gaps("si", tmp_path / "si", limit=pd.Timedelta(minutes=10), **window)
+    assert gaps and gaps[0].statuses == {"skipped": 1} and "InfluxDB unreachable" in gaps[0].errors[0]
+    forecasts.record_skip("charged_coke", "Hourly dataset unreachable", now=origin, cfg=cfg)
+    assert forecasts.AttemptLog(tmp_path / "cc").latest()["status"] == "skipped"
+    legacy = _cfg(tmp_path, si_forecast={**cfg["si_forecast"], "mode": "legacy"})
+    assert forecasts.record_skip("si", "x", now=origin, cfg=legacy) is None

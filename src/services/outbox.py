@@ -110,7 +110,8 @@ class _BufferedJobs(_BufferedRepository):
         rows = [dict(r) for r in records]
         if not rows:
             return 0
-        return self._buffered.write("job.upsert_many", ",".join(str(r.get("id")) for r in rows), rows)
+        key = str(rows[0].get("id")) if len(rows) == 1 else f"{rows[0].get('id')} +{len(rows) - 1}"
+        return self._buffered.write("job.upsert_many", key, rows)
 
 
 class BufferedTwinStore:

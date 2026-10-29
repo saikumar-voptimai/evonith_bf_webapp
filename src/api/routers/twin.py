@@ -206,15 +206,17 @@ async def now(request: Request, store: Annotated[TwinStore, Depends(twin_store)]
 
 
 async def _follow_producer(request: Request) -> None:
-    """Record InfluxDB from the worker's latest status snapshot in Redis, when there is one (``read_latest`` feeds
-    the registry); Redis down or absent changes nothing."""
+    """Merge the worker's source registry (``source_health.follow``: the hourly dataset, HM/slag, DPR and Open-Meteo
+    failures its jobs found) and record InfluxDB from its latest status snapshot in Redis, when there are; Redis down
+    or absent changes nothing."""
     redis = getattr(getattr(request.app.state, "live", None), "redis", None)
     if redis is None:
         return
     try:
+        await source_health.follow(redis)
         await live_status.read_latest(redis)
     except Exception as exc:  # noqa: BLE001 - the registry keeps what this process saw
-        log.debug("live snapshot not read from Redis (%s)", type(exc).__name__)
+        log.debug("source health not read from Redis (%s)", type(exc).__name__)
 
 
 @router.get("/window", response_model=TwinSnapshotData, summary="One stored window")
