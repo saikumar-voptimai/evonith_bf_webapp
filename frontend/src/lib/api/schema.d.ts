@@ -1462,7 +1462,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Running version */
+        /**
+         * Running version
+         * @description The running release: its record (tag, commit, installation time) wins over ``BF_API_GIT_SHA``, which is shared
+         *     by every release directory on the host (#318).
+         */
         get: operations["system_version"];
         put?: never;
         post?: never;
@@ -12688,15 +12692,30 @@ export interface components {
              */
             environment: string;
             /**
+             * Frontend Build
+             * @description Version name of the SPA build installed with the release (frontend/build/_app/version.json); None without a build
+             */
+            frontend_build?: string | null;
+            /**
              * Git Sha
              * @description Commit of the running release ('unknown' in development)
              */
             git_sha: string;
             /**
+             * Installed At
+             * @description Installation time of the running release (UTC)
+             */
+            installed_at?: string | null;
+            /**
              * Python
              * @description Python version
              */
             python: string;
+            /**
+             * Release
+             * @description Release tag of the running directory (RELEASE.json of deploy/jetson/release.sh); None in development
+             */
+            release?: string | null;
             /**
              * Started At
              * Format: date-time

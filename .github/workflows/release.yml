@@ -6,6 +6,8 @@
 #   uv.lock, pnpm-lock.yaml the lock files of the tagged commit (uv sync --frozen on the Jetson)
 #   SHA256SUMS              SHA-256 of the three files
 #
+# deploy/jetson/release.sh <tag> installs them with the tag's source archive on the Jetson (SV-6.4, #318).
+#
 # Re-running the workflow for an existing release replaces its files. Manual runs only (user decision 29 Oct 2026, to
 # save GitHub Actions minutes): pushing a tag starts nothing; run it on the tag with
 # `gh workflow run release.yml --ref v<x.y.z>` (github.ref_name is then the tag).
@@ -54,6 +56,8 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Build the SPA
         working-directory: frontend
+        env:
+          BF_BUILD_VERSION: ${{ github.ref_name }} # build/_app/version.json = the tag (footer, release.sh smoke test)
         run: |
           pnpm install --frozen-lockfile
           pnpm build

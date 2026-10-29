@@ -9,7 +9,7 @@ Production host for the Svelte frontend, the twin-api, the twin-worker and Strea
 | #315 (SV-6.1) | `provision.sh`, `verify_base.sh`: JetPack 6.x, NVMe at `/var/lib/bf-webapp`, nvpmodel MAXN, chrony, ufw, user `bfapp`, directory layout, logrotate (below) |
 | #316 (SV-6.2) | `install_python.sh`: uv 0.7.13 and uv-managed CPython 3.12, `uv sync --frozen`, import check; wheel audit (`docs/jetson_wheel_audit.md`); `benchmark.sh`: optimiser runtimes against the plan's targets (`docs/jetson_benchmark.md`) (below) |
 | #317 (SV-6.3) | `systemd/`: units of Caddy, twin-api, twin-worker, Streamlit, Redis, furnace-data-service, the target `bf-webapp.target` and the health check (`healthcheck.sh`, timer); installed by `provision.sh` (below) |
-| #318 (SV-6.4) | `release.sh <tag>`: CI artefact, `uv sync --frozen`, `alembic -n twin upgrade head`, smoke test, rollback |
+| #318 (SV-6.4) | `release.sh <tag>`, `rollback.sh`: CI artefacts checked against `SHA256SUMS`, `uv sync --frozen`, `alembic -n twin upgrade head`, switch, restart, smoke test, automatic rollback (below) |
 
 ## Base system (`provision.sh`, `verify_base.sh`, SV-6.1)
 
@@ -62,8 +62,10 @@ Steps (`main`, in this order):
 
 | Path | Owner | Mode | Content |
 |---|---|---|---|
-| `/opt/bf-webapp/releases/<tag>` | root:root | 755 | One directory per release (`release.sh`, SV-6.4) |
+| `/opt/bf-webapp/releases/<tag>` | bfapp:bfapp | 755 | One directory per release (`release.sh`, SV-6.4): the tag's source, `frontend/build`, `.venv` (`uv sync` runs as bfapp), `RELEASE.json`; `src/storage` → `/var/lib/bf-webapp/storage` |
 | `/opt/bf-webapp/current` | root | symlink | → `releases/<tag>`, set by `release.sh`; absent until the first release. The Caddyfile's `BF_SPA_ROOT` default is `/opt/bf-webapp/current/frontend/build` |
+| `/opt/bf-webapp/previous` | root | symlink | → the release `current` replaced: the default target of `rollback.sh` |
+| `/opt/bf-webapp/release.log` | root:root | 644 | One line per update or rollback: time (UTC), action, tag, from, result, seconds |
 | `/var/lib/bf-webapp` | bfapp:bfapp | 750 | NVMe mount point; `storage/` (application state: the releases' `src/storage`), `cache/` (`UV_CACHE_DIR`, `XDG_CACHE_HOME`) |
 | `/var/log/bf-webapp` | bfapp:bfapp | 750 | Log files of the services (`*.log`, 14 days) |
 | `/etc/bf-webapp/env` | root:bfapp | 640 | `EnvironmentFile=` of the units (SV-6.3): `BF_API_ENVIRONMENT=prod`, the JWT secret, `BF_REDIS_URL`; `DATABASE_URL` and the InfluxDB, LLM and Qdrant keys are filled in by hand before the first release |
@@ -249,7 +251,87 @@ A tag `v*` runs `.github/workflows/release.yml`: the full CI suite, then the Git
 | `uv.lock`, `pnpm-lock.yaml` | Lock files of the tagged commit (`uv sync --frozen` on the Jetson) |
 | `SHA256SUMS` | SHA-256 of the three files; `sha256sum --check SHA256SUMS` before unpacking |
 
-`release.sh` (SV-6.4, #318) consumes these files.
+`release.sh` (SV-6.4, #318) consumes these files. The SPA is built with `BF_BUILD_VERSION` = the tag, so
+`build/_app/version.json` names the tag (SvelteKit's `version.name`; `git describe` outside a release build): the
+footer shows it, and open tabs offer a reload once another build is installed.
+
+## Release and update (`release.sh`, `rollback.sh`, SV-6.4)
+
+`release.sh` installs a release made by `.github/workflows/release.yml` and switches to it; `rollback.sh` switches back.
+Both run as root, one at a time (lock directory `/run/lock/bf-webapp-release`), and both end with one release serving:
+when the restart or the smoke test fails after a switch, the release before it is switched back, restarted and smoke
+tested without a manual step.
+
+```bash
+# first release, from a checkout or a copy of deploy/jetson (gh logged in as root, or GH_TOKEN)
+sudo --preserve-env=GH_TOKEN deploy/jetson/release.sh v1.2.0
+# later releases, from the current one
+sudo --preserve-env=GH_TOKEN /opt/bf-webapp/current/deploy/jetson/release.sh v1.3.0
+# without GitHub on the Jetson: fetch the five files on a connected PC, copy them over
+gh release download v1.3.0 --repo saikumar-voptimai/evonith_bf_webapp --dir rel-v1.3.0
+gh release download v1.3.0 --repo saikumar-voptimai/evonith_bf_webapp --archive tar.gz --output rel-v1.3.0/source.tar.gz
+sudo /opt/bf-webapp/current/deploy/jetson/release.sh v1.3.0 --artefacts ~/rel-v1.3.0
+# back to the previous release, or to an installed one
+sudo /opt/bf-webapp/current/deploy/jetson/rollback.sh
+sudo /opt/bf-webapp/current/deploy/jetson/rollback.sh v1.2.0
+```
+
+| Option | Meaning |
+|---|---|
+| `<tag>` | Release tag (`v1.2.0`): the GitHub release with `frontend-build.tar.gz`, `uv.lock`, `pnpm-lock.yaml`, `SHA256SUMS` |
+| `--repo OWNER/NAME` | Repository of the release (default `saikumar-voptimai/evonith_bf_webapp`) |
+| `--artefacts DIR` | Take the four files and the tag's source archive (`source.tar.gz`) from DIR instead of GitHub (no `gh` needed) |
+| `--keep N` | Release directories kept, newest first (default 3, at least 2); `current` and `previous` are never removed |
+| `--smoke-timeout S` | Seconds the smoke test may take after the restart (default 180) |
+| `--no-check` | Skip the import check after `uv sync` (`install_python.sh --no-check`): a faster update |
+| `--rollback [<tag>]` | Switch to an installed release (default `previous`); what `rollback.sh` runs |
+
+Steps of an update (`main_update`); every step prints the seconds since the start:
+
+| Step | Result |
+|---|---|
+| fetch | `gh release download <tag>`: the four files and the source archive of the tag (or `--artefacts DIR`) |
+| verify | `sha256sum --check SHA256SUMS`, which must list the three files once each; the commit from the source archive's pax header (`git archive`) |
+| unpack | Source into `releases/<tag>` (staged as `.stage-<tag>`, then renamed); the archive's `uv.lock` and `frontend/pnpm-lock.yaml` must equal the release's (the source is the commit CI built); the SPA build into `frontend/build` (`200.html`, `_app/version.json`); `src/storage` → `/var/lib/bf-webapp/storage`, seeded with the release's files the state does not hold yet (existing state is never overwritten); owner bfapp |
+| sync | The release's `install_python.sh --release releases/<tag>`: `uv sync --frozen` as bfapp, the import check |
+| migrate | `alembic -n twin upgrade head` as bfapp with the variables of `/etc/bf-webapp/env` and `uv.env` only (the file is parsed, never sourced: a URL with `&` stays intact); skipped when `BF_TWIN_DB_URL` is `off` or no database URL is set |
+| record | `releases/<tag>/RELEASE.json`: tag, commit, SPA build, installation time (UTC), twin schema revision before and after. The twin-api reads its own release's record: `GET /api/version` (`release`, `git_sha`, `installed_at`, `frontend_build`), shown in the SPA footer |
+| switch | `current` → `releases/<tag>`, `previous` → the release it replaced (each a new symlink renamed over the old: atomic); from here `INT`/`TERM` are ignored |
+| restart | `systemctl restart bf-webapp.target` (every `bf-*` unit; each resolves `current` once at its start) |
+| smoke | Below, retried every 3 s until `--smoke-timeout` |
+| rollback | Only when the restart or the smoke test failed: `current` → the release before, `previous` as before the update, restart, smoke test. `releases/<tag>` stays for diagnosis |
+| prune | Release directories beyond `--keep` removed (oldest first) |
+
+A failure before the switch changes nothing that runs: the new directory is removed and the current release keeps
+serving. The migration runs before the switch, so the running release meets the new schema for a few seconds;
+migrations only add (the twin store's rule), and a rollback never downgrades the schema. To go below a release's
+schema, run `alembic -n twin downgrade <twin_revision_before of its RELEASE.json>` by hand from the older release.
+A release whose units in `deploy/jetson/systemd/` differ from the installed ones is reported (WARN): install them with
+that release's `provision.sh`.
+
+**Smoke test** (through Caddy: `https://$BF_SITE:$BF_HTTPS_PORT` resolved to 127.0.0.1, as a client reaches it):
+
+| Check | Passes when |
+|---|---|
+| `/api/health` | 200, `status` ok |
+| `/api/version` | 200, `release` = the tag and `git_sha` = its commit: the processes of the new release answer, not the old ones |
+| `/api/health/deep` | 2xx; 404 = not present in this release (passes); 401/403 = needs a session (not checked) |
+| `/legacy/_stcore/health` | 200 (Streamlit) |
+| `/` | 200 with the SPA index |
+| `/_app/version.json` | 200, `version` = the release's build: Caddy serves the new `frontend/build` |
+
+| Exit status | Meaning |
+|---|---|
+| 0 | Installed (rolled back, for `rollback.sh`); nothing to do when the tag is already current |
+| 1 | Failed before the switch (nothing changed), or failed after it and the rollback failed too (manual action: `journalctl -u bf-twin-api -u bf-twin-worker -u bf-streamlit -u bf-caddy`) |
+| 2 | Usage |
+| 3 | The update (or rollback) failed; the release before it serves again |
+
+Acceptance on the device (open until measured, #318): an update and a rollback each below 5 min (the summary line and
+`release.log` give the seconds; a WARN line above 300 s), and a failed smoke test rolls back without a manual step.
+`tests/test_jetson_release.py` runs both on a fake host: real tarballs and checksums, stubs for `gh`, `systemctl`,
+`curl` (Caddy answering for the release `current` names) and `runuser`; a release whose `/api` answers 502 is rolled
+back automatically (exit 3), and a checksum, source, sync or migration failure leaves the running release alone.
 
 ## Python and uv (`install_python.sh`, SV-6.2)
 

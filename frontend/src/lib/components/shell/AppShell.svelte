@@ -1,7 +1,8 @@
 <!--
 @component
 Application frame: dark navigation sidebar (from 1024 px; a drawer below), page header on the light canvas, the
-page, and notifications. Starts the shared clock and the server connection check while mounted.
+page, the footer with the running release (`VersionInfo`), and notifications. Starts the shared clock and the server
+connection check while mounted.
 -->
 <script lang="ts">
 	import { afterNavigate } from '$app/navigation';
@@ -14,6 +15,7 @@ page, and notifications. Starts the shared clock and the server connection check
 	import Toaster from '../Toaster.svelte';
 	import NavRail from './NavRail.svelte';
 	import PageHeader from './PageHeader.svelte';
+	import VersionInfo from './VersionInfo.svelte';
 
 	interface Props {
 		heading: PageHeading;
@@ -78,7 +80,8 @@ page, and notifications. Starts the shared clock and the server connection check
 		</main>
 		<footer class="foot">
 			<span>BF-02 Twin <span class="by">by V-OptimAIse</span></span>
-			<span>Times in IST. Shifts A 06:00, B 14:00, C 22:00.</span>
+			<VersionInfo online={connection.state === 'online'} />
+			<span class="note">Times in IST. Shifts A 06:00, B 14:00, C 22:00.</span>
 		</footer>
 	</div>
 </div>
@@ -144,8 +147,10 @@ page, and notifications. Starts the shared clock and the server connection check
 	}
 	.foot {
 		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
 		justify-content: space-between;
-		gap: var(--vo-space-4);
+		gap: var(--vo-space-2) var(--vo-space-4);
 		margin: 0 var(--vo-gutter);
 		padding: var(--vo-space-4) 0 var(--vo-space-5);
 		border-top: 1px solid var(--vo-border);
@@ -165,7 +170,7 @@ page, and notifications. Starts the shared clock and the server connection check
 		}
 	}
 	@media (max-width: 767px) {
-		.foot span:last-child {
+		.foot .note {
 			display: none;
 		}
 	}

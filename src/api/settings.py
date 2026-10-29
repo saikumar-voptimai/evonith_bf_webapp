@@ -19,7 +19,7 @@ class ApiSettings(SessionSettings):
     model_config = SettingsConfigDict(env_prefix="BF_API_", env_file=REPO_ROOT / ".env", extra="ignore")
 
     environment: str = "dev"  # "dev" or "prod"
-    git_sha: str = "unknown"  # set by the release script (#318)
+    git_sha: str = "unknown"  # fallback; a release directory's RELEASE.json (deploy/jetson/release.sh, #318) wins
     # Serve the built SPA from the API when no Caddy is in front (development preview, first Jetson boot).
     static_dir: Path | None = None
     log_level: str = "INFO"
