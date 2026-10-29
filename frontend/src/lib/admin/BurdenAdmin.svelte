@@ -212,7 +212,7 @@ snapshots stay; deleting them is explicit.
 					<fieldset class="charge">
 						<legend>{c.label}</legend>
 						{#if c.rings.length}
-							<h4>Rings, chute rotations</h4>
+							<h3>Rings, chute rotations</h3>
 							<div class="grid">
 								{#each c.rings as f (f.name)}
 									{@render numberField(f, `P${String(f.position).padStart(2, '0')} rings`)}
@@ -220,7 +220,7 @@ snapshots stay; deleting them is explicit.
 							</div>
 						{/if}
 						{#if c.angles.length}
-							<h4>Chute angles</h4>
+							<h3>Chute angles</h3>
 							<div class="grid">
 								{#each c.angles as f (f.name)}
 									{@render numberField(f, `P${String(f.position).padStart(2, '0')} angle`)}
@@ -330,7 +330,7 @@ snapshots stay; deleting them is explicit.
 		padding: 0 var(--vo-space-2);
 		font-weight: 600;
 	}
-	h4 {
+	h3 {
 		margin: 0;
 		font-size: var(--vo-fs-label);
 		letter-spacing: var(--vo-tracking-eyebrow);

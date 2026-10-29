@@ -375,7 +375,7 @@
 				icon={RefreshCw}
 				disabled={healthLoading}
 				onclick={() => void loadHealth()}
-				aria-label="Check the health again">Check now</Button
+				aria-label="Check now: read the health again">Check now</Button
 			>
 		{/snippet}
 
