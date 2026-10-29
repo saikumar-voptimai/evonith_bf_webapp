@@ -44,9 +44,11 @@ TABLES = (
     "fm_conversation",
     "fm_message",
     "optimiser_commentary",
+    "fm_feedback",
 )
 FM_TABLES = {"fm_conversation", "fm_message"}  # twin_0006 (SV-5.1)
 COMMENTARY = {"optimiser_commentary"}  # twin_0007 (SV-3.2)
+FEEDBACK = {"fm_feedback"}  # twin_0008 (SV-5.2)
 T0 = datetime(2026, 10, 27, 0, 30, tzinfo=UTC)  # 06:00 IST, start of shift A
 H = timedelta(hours=1)
 ALICE = Actor("alice", "admin", "10.0.0.5")
@@ -108,25 +110,31 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
         config = alembic_config(url)
         command.upgrade(config, "head")
         assert twin_tables(url) == {*TABLES, "alembic_version"}
-        assert TwinStore.from_url(url).revision() == "twin_0007"
+        assert TwinStore.from_url(url).revision() == "twin_0008"
         assert {"scheduled_for", "run_s"} <= job_columns(url)
         assert {"before", "after"} <= job_columns(url, "audit_log")
 
+        command.downgrade(config, "-1")  # twin_0008: the feedback on FurnaceMind answers (SV-5.2)
+        assert TwinStore.from_url(url).revision() == "twin_0007"
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK
+
         command.downgrade(config, "-1")  # twin_0007: the optimiser commentaries (SV-3.2)
         assert TwinStore.from_url(url).revision() == "twin_0006"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY
 
         command.downgrade(config, "-1")  # twin_0006: the FurnaceMind conversations and messages (SV-5.1)
         assert TwinStore.from_url(url).revision() == "twin_0005"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY - FM_TABLES
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY - FM_TABLES
 
         command.downgrade(config, "-1")  # twin_0005: the versions of the operator inputs (SV-3.1)
         assert TwinStore.from_url(url).revision() == "twin_0004"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY - FM_TABLES - {"operator_inputs"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY - FM_TABLES - {
+            "operator_inputs"
+        }
 
         command.downgrade(config, "-1")  # twin_0004: the shift reports (SV-2.3)
         assert TwinStore.from_url(url).revision() == "twin_0003"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY - FM_TABLES - {
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY - FM_TABLES - {
             "shift_report",
             "operator_inputs",
         }
@@ -137,7 +145,7 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
 
         command.downgrade(config, "-1")  # twin_0002: the slot and execution time of the jobs
         assert TwinStore.from_url(url).revision() == "twin_0001"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - COMMENTARY - FM_TABLES - {
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FEEDBACK - COMMENTARY - FM_TABLES - {
             "shift_report",
             "operator_inputs",
         }
@@ -753,6 +761,40 @@ def test_furnacemind_messages_are_numbered_per_conversation(store) -> None:
     with store.engine.begin() as connection:
         connection.execute(text("DELETE FROM twin.fm_conversation WHERE id = :id"), {"id": first.id})
         assert connection.execute(text("SELECT count(*) FROM twin.fm_message")).scalar_one() == 1
+
+
+@needs_postgres
+def test_furnacemind_feedback_is_one_row_per_answer_with_its_audit_rows(store) -> None:
+    """SV-5.2: a save creates the row, a later save changes it; each save writes its audit row with the values before
+    and after; only answers can be rated; deleting the conversation deletes the feedback."""
+    op = Actor("op", "user", "10.0.0.9")
+    conversation = store.fm.create(owner="op", reasoning_level="Medium", at=T0)
+    store.fm.append(conversation.id, role="user", content="Why did the fuel rate rise?", at=T0)
+    store.fm.append(conversation.id, role="assistant", content="Because ...", at=T0 + H)
+    first = store.fm.rate(conversation.id, 2, op, rating="down", comment="Missed the PCI drop.", at=T0 + 2 * H)
+    assert (first.rating, first.comment, first.author) == ("down", "Missed the PCI drop.", "op")
+    second = store.fm.rate(conversation.id, 2, op, rating="up", author_id="u-17", at=T0 + 3 * H)
+    rows = store.fm.feedback(conversation.id)
+    assert len(rows) == 1 and (rows[0].rating, rows[0].comment, rows[0].author_id) == ("up", "", "u-17")
+    assert rows[0].created_at == T0 + 2 * H and rows[0].updated_at == T0 + 3 * H == second.updated_at
+    audit = store.audit.query(action="fm.feedback")
+    assert [(a.before, a.after) for a in audit] == [
+        ({"rating": "down", "comment": "Missed the PCI drop."}, {"rating": "up", "comment": ""}),
+        (None, {"rating": "down", "comment": "Missed the PCI drop."}),
+    ]  # newest first
+    assert audit[0].object_type == "fm_message" and audit[0].object_id == f"{conversation.id}/2"
+    assert audit[0].actor == "op" and audit[0].client_ip == "10.0.0.9"
+    for seq in (1, 3):  # the question, and a message that does not exist
+        with pytest.raises(NotFound):
+            store.fm.rate(conversation.id, seq, op, rating="up")
+    with pytest.raises(NotFound):
+        store.fm.rate(uuid.uuid4(), 2, op, rating="up")
+    assert len(store.audit.query(action="fm.feedback")) == 2  # a refused save writes no audit row
+    with pytest.raises(IntegrityError), store.engine.begin() as connection:
+        connection.execute(text("UPDATE twin.fm_feedback SET rating = 'meh'"))
+    with store.engine.begin() as connection:
+        connection.execute(text("DELETE FROM twin.fm_conversation WHERE id = :id"), {"id": conversation.id})
+        assert connection.execute(text("SELECT count(*) FROM twin.fm_feedback")).scalar_one() == 0
 
 
 @needs_postgres

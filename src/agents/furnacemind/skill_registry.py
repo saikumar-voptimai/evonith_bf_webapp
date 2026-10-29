@@ -447,16 +447,27 @@ class SkillRegistry:
                 shift_label=shift_label,
             )
 
-        display = _format_template(
+        return SkillExecution(
+            prompt=prompt,
+            display=self.display_text(
+                definition, shift_date=shift_date, shift_label=shift_label
+            ),
+            skill_id=definition.slug,
+            skill_context=self.skill_context(definition),
+        )
+
+    def display_text(
+        self,
+        definition: SkillDefinition,
+        *,
+        shift_date: date,
+        shift_label: str,
+    ) -> str:
+        """Return the chat text of a click on ``definition`` at the given shift."""
+        return _format_template(
             definition.display_template or definition.name,
             shift_date=shift_date,
             shift_label=shift_label,
-        )
-        return SkillExecution(
-            prompt=prompt,
-            display=display,
-            skill_id=definition.slug,
-            skill_context=self.skill_context(definition),
         )
 
     def skill_context(self, definition: SkillDefinition) -> str:

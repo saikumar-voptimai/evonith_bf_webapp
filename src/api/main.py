@@ -44,6 +44,7 @@ from api.routers import (
 )
 from api.security.origin import OriginGuardMiddleware
 from api.settings import ApiSettings, get_settings
+from services import furnacemind as furnacemind_service
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s [%(request_id)s] %(message)s"
 
@@ -88,6 +89,8 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         live = LiveState(settings)
         await live.start()
         app.state.live = live
+        if settings.fm_warm_up:
+            furnacemind_service.warm_up()
         try:
             yield
         finally:

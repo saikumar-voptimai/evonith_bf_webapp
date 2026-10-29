@@ -18,6 +18,7 @@ os.environ.setdefault("BF_WORKER_CATCH_UP", "0")
 os.environ.setdefault("BF_WORKER_LIVE_STATUS", "0")       # no InfluxDB snapshot query from a test worker's heartbeat
 # STRATA-Flow network solves one after the other; the parallel tests start their solver processes themselves.
 os.environ.setdefault("BF_STRATA_SOLVERS", "0")
+os.environ.setdefault("BF_API_FM_WARM_UP", "0")  # no FurnaceMind agent-stack import thread per test app
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")  # utils.settings needs a Qdrant URL; no test connects
 os.environ.setdefault("OPENROUTER_API_KEY", "test-openrouter-key")  # utils.settings needs an LLM key; no test calls one
 
