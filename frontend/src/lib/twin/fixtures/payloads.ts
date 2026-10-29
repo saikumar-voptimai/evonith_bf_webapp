@@ -104,6 +104,7 @@ export const twinNow: Schemas['TwinNow'] = {
 			stale_after_h: 0.5,
 			stale: true,
 			provisional: false,
+			down: false,
 			recorded_at: '2026-10-27T05:40:12Z'
 		},
 		{
@@ -114,6 +115,7 @@ export const twinNow: Schemas['TwinNow'] = {
 			stale_after_h: 2.5,
 			stale: false,
 			provisional: false,
+			down: false,
 			recorded_at: '2026-10-27T05:40:12Z'
 		},
 		{
@@ -124,6 +126,7 @@ export const twinNow: Schemas['TwinNow'] = {
 			stale_after_h: 6,
 			stale: false,
 			provisional: false,
+			down: false,
 			recorded_at: '2026-10-27T05:40:12Z'
 		},
 		{
@@ -134,6 +137,7 @@ export const twinNow: Schemas['TwinNow'] = {
 			stale_after_h: 48,
 			stale: false,
 			provisional: true,
+			down: false,
 			recorded_at: '2026-10-27T05:40:12Z'
 		},
 		{
@@ -144,6 +148,7 @@ export const twinNow: Schemas['TwinNow'] = {
 			stale_after_h: 36,
 			stale: true,
 			provisional: false,
+			down: false,
 			recorded_at: '2026-10-27T05:40:12Z'
 		}
 	],

@@ -824,12 +824,17 @@ export interface SourceRow {
 	provisional: boolean;
 	/** InfluxDB followed on `live.status` (10 s) rather than the hourly evaluation. */
 	live: boolean;
+	/** The last fetch of the source failed (SV-6.5): stale whatever the data age. */
+	down: boolean;
+	/** The error of that fetch, while down. */
+	error: string | null;
 }
 
 /**
  * Data age of each source at `now`, from the latest evaluation (`/api/twin/now` sources); InfluxDB follows the newest
  * reading of `live.status` when the worker publishes one. The age is recomputed at `now`, so a source turns stale
- * within one update of the page clock (1 s) of crossing its limit, not at the next poll.
+ * within one update of the page clock (1 s) of crossing its limit, not at the next poll. A source whose last fetch
+ * failed (`down`, SV-6.5), or InfluxDB while `live.status` reports no reading (`stale`), is stale at once.
  */
 export function sourceRows(
 	twinNow: TwinNow | null | undefined,
@@ -847,15 +852,18 @@ export function sourceRows(
 			}
 		}
 		const ageH = end === null ? null : (now - end) / H;
+		const down = Boolean(s.down) || (s.key === 'influxdb' && status?.stale === true);
 		return {
 			key: s.key,
 			label: s.label,
 			dataEnd: end === null ? null : new Date(end),
 			ageH,
 			staleAfterH: s.stale_after_h,
-			stale: ageH === null || ageH >= s.stale_after_h,
+			stale: down || ageH === null || ageH >= s.stale_after_h,
 			provisional: s.provisional,
-			live
+			live,
+			down,
+			error: s.error ?? null
 		};
 	});
 }

@@ -29,7 +29,7 @@ from typing import Any
 from arq import Retry
 from pydantic import BaseModel
 
-from services import schedule, twin_alarms
+from services import outbox, schedule, twin_alarms
 from services.events import EventBus, JobDoneData, JobProgressData, LiveStatusData, WorkerStatus
 from services.jobs import CATALOG, JobKind, JobStore
 
@@ -46,6 +46,11 @@ HANDLERS: dict[str, Handler] = {}
 
 class TransientJobError(RuntimeError):
     """A failure worth another try (data source timeout, Neon or InfluxDB unavailable)."""
+
+
+class SkipJob(RuntimeError):
+    """The job cannot run now and another try would not help (a source it needs is down, SV-6.5): the record ends
+    ``cancelled`` with the reason as its message, logged once, and no ``job_failed`` alarm is raised."""
 
 
 def handles(kind_name: str) -> Callable[[Handler], Handler]:
@@ -178,6 +183,11 @@ async def run_job(ctx: dict[str, Any], job_id: str) -> None:
         await store.finish(job_id, "failed", error=message, run_s=run_s())
         await _publish_done(ctx, job_id, kind.name, "failed", message, t0)
         log.warning("job %s %s: %s", job_id, kind.name, message)
+    except SkipJob as exc:
+        message = f"Skipped: {str(exc)[:400]}"
+        await store.finish(job_id, "cancelled", error=message, run_s=run_s())
+        await _publish_done(ctx, job_id, kind.name, "cancelled", message, t0)
+        log.warning("job %s %s skipped: %s", job_id, kind.name, exc)
     except TransientJobError as exc:
         if attempt < kind.max_tries:
             message = f"Try {attempt} failed ({_short(exc)}); next try in {kind.retry_delay_s:g} s."
@@ -298,8 +308,15 @@ async def heartbeat_loop(ctx: dict[str, Any]) -> None:
     the plant snapshot of the beat (``ctx["live_status"]``, a ``services.live_status.LiveStatusProducer``: one
     InfluxDB snapshot query per beat for all clients, SV-2.1)."""
     warned = 0.0
+    replayed_at = 0.0
     while True:
         await asyncio.sleep(HEARTBEAT_S - (time.time() % HEARTBEAT_S))
+        if time.monotonic() - replayed_at >= outbox.REPLAY_INTERVAL_S:  # buffered twin-store writes (SV-6.5)
+            replayed_at = time.monotonic()
+            try:
+                await asyncio.to_thread(outbox.replay_pending)
+            except Exception as exc:  # noqa: BLE001 - the replay is retried at the next interval
+                log.warning("outbox replay failed: %s", _short(exc))
         try:
             redis = ctx["store"].redis
             await mark_alive(redis)

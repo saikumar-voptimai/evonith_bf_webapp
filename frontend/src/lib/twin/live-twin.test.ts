@@ -283,6 +283,25 @@ describe('zone 8: freshness', () => {
 		expect(sourceRows(P.twinNow, P.liveStatus, limit - 1_000)[1]!.stale).toBe(false);
 		expect(sourceRows(P.twinNow, P.liveStatus, limit)[1]!.stale).toBe(true);
 	});
+
+	it('marks a source down at once when its last fetch failed or live.status has no reading (SV-6.5)', () => {
+		const sources = (P.twinNow.sources ?? []).map((s) =>
+			s.key === 'hourly' ? { ...s, down: true, error: 'OSError: dataset host unreachable' } : s
+		);
+		const rows = Object.fromEntries(
+			sourceRows({ ...P.twinNow, sources }, P.liveStatus, P.NOW_MS).map((r) => [r.key, r])
+		);
+		expect(rows['hourly']).toMatchObject({ ageH: 1.5, down: true, stale: true });
+		expect(rows['hourly']!.error).toBe('OSError: dataset host unreachable');
+		expect(rows['influxdb']).toMatchObject({ down: false, stale: false, error: null });
+		// InfluxDB: the worker's beat reports no reading (stale) although the last reading is 10 s old.
+		const offline = { ...P.liveStatus, stale: true };
+		expect(sourceRows(P.twinNow, offline, P.NOW_MS)[0]).toMatchObject({
+			down: true,
+			stale: true,
+			live: true
+		});
+	});
 });
 
 describe('drill-down', () => {

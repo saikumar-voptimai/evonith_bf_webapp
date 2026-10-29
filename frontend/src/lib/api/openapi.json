@@ -13252,6 +13252,37 @@
             "description": "Newest time the source held at the evaluation (UTC)",
             "title": "Data End"
           },
+          "down": {
+            "default": false,
+            "description": "The last fetch of the source failed (SV-6.5); stale at once",
+            "title": "Down",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The error of the last fetch while down",
+            "title": "Error"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the failed fetch while down (UTC)",
+            "title": "Failed At"
+          },
           "key": {
             "enum": [
               "influxdb",
@@ -20433,7 +20464,7 @@
     },
     "/api/twin/now": {
       "get": {
-        "description": "The latest stored evaluation, how far it lags the expected window and the number of open alarms.",
+        "description": "The latest stored evaluation, how far it lags the expected window and the number of open alarms. The sources\ncarry the live fetches of this process and of the worker's status producer (SV-6.5): one that failed is down.",
         "operationId": "twin_now",
         "responses": {
           "200": {

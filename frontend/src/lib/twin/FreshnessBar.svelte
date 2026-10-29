@@ -3,7 +3,7 @@
 Zone 8 of the Live Twin (SV-1.9): data age of each source the twin reads: InfluxDB (followed on `live.status`), the
 hourly dataset, HM/slag, the DPR (provisional when its date is carried forward) and Open-Meteo. Ages are recomputed
 every second, so a source turns stale within one update of crossing its limit (`config/coke_energy.yml ->
-twin.freshness`).
+twin.freshness`). A source whose last fetch failed shows "Down" (SV-6.5): its last values are kept and served stale.
 -->
 <script lang="ts">
 	import StatusChip from '../components/StatusChip.svelte';
@@ -35,14 +35,17 @@ twin.freshness`).
 			class="source"
 			data-source={r.key}
 			data-stale={r.stale}
-			title={r.dataEnd
-				? `Newest data ${istDateTime(r.dataEnd)} IST; stale from ${r.staleAfterH} h`
-				: 'No data recorded'}
+			data-down={r.down}
+			title={r.down
+				? `Source down: ${r.error ?? 'last fetch failed'}; last values kept${r.dataEnd ? `, newest data ${istDateTime(r.dataEnd)} IST` : ''}`
+				: r.dataEnd
+					? `Newest data ${istDateTime(r.dataEnd)} IST; stale from ${r.staleAfterH} h`
+					: 'No data recorded'}
 		>
 			<span class="name">{r.label}</span>
 			<StatusChip
 				kind={r.stale ? 'stale' : 'ok'}
-				label={r.stale ? `Stale, ${ageText(r.ageH)}` : ageText(r.ageH)}
+				label={r.down ? `Down, ${ageText(r.ageH)}` : r.stale ? `Stale, ${ageText(r.ageH)}` : ageText(r.ageH)}
 				size="sm"
 			/>
 			{#if r.provisional}<StatusChip kind="info" label="Provisional" size="sm" />{/if}

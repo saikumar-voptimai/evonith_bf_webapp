@@ -28,7 +28,7 @@ import pandas as pd
 
 from data.coke_energy import sources
 from services import coke_energy as ce
-from services import transit
+from services import source_health, transit
 from services.events import TwinSnapshotData
 from utils.coke_energy.pipeline import PipelineSettings
 from utils.coke_energy.twin import Window, WindowEvaluation, evaluate_window
@@ -56,12 +56,38 @@ def now_ist() -> pd.Timestamp:
 
 def load_frames(keys: ce.DataKeys, loaders: ce.Loaders = ce.CACHED_LOADERS) -> TwinFrames:
     """The sources through ``loaders`` (memoised by default, shared with the Coke Energy service)."""
-    fd = loaders.hourly(keys.hourly_path, keys.hourly_mtime_ns)
-    m10 = loaders.online(
-        keys.history_start, keys.clock, keys.nonce, keys.fields_json, keys.cache_dir, keys.online_refresh_minutes
+    health = source_health.HEALTH  # a loader that fails marks its source (SV-6.5) and raises SourceDown
+    fd = health.observe("hourly", loaders.hourly, keys.hourly_path, keys.hourly_mtime_ns, data_end=_last_of("time"))
+    m10 = health.observe(
+        "influxdb",
+        loaders.online,
+        keys.history_start,
+        keys.clock,
+        keys.nonce,
+        keys.fields_json,
+        keys.cache_dir,
+        keys.online_refresh_minutes,
+        data_end=_last_of("ts"),
     )
-    hm, dpr, provisional = loaders.neon(keys.history_start, keys.clock, keys.nonce)
+    try:
+        hm, dpr, provisional = loaders.neon(keys.history_start, keys.clock, keys.nonce)
+    except Exception as exc:
+        for key in ("hm_slag", "dpr"):  # one Neon fetch serves both
+            health.record_failure(key, exc)
+        raise source_health.SourceDown("hm_slag", health.reason("hm_slag") or str(exc)) from exc
+    real_dpr = dpr[~dpr.index.isin(pd.to_datetime(list(provisional)))] if len(dpr) else dpr
+    health.record_ok("hm_slag", data_end=_last(hm["t"]) if "t" in hm else None)
+    health.record_ok("dpr", data_end=_last(real_dpr.index))
     return TwinFrames(fd, m10, hm, dpr, tuple(provisional))
+
+
+def _last(values: Any) -> pd.Timestamp | None:
+    series = pd.Series(values).dropna()
+    return None if series.empty else pd.Timestamp(series.max())
+
+
+def _last_of(column: str) -> Callable[[pd.DataFrame], pd.Timestamp | None]:
+    return lambda frame: _last(frame[column]) if column in frame else None
 
 
 def evaluate(
@@ -126,9 +152,12 @@ def open_meteo_end() -> pd.Timestamp | None:
 
     try:
         record = weather.open_meteo_rh(refresh=False).dropna()
-    except Exception:  # noqa: BLE001 - a missing record is a missing data age, not a failed evaluation
+    except Exception as exc:  # noqa: BLE001 - a missing record is a missing data age, not a failed evaluation
+        source_health.HEALTH.record_failure("open_meteo", exc)
         return None
-    return None if record.empty else pd.Timestamp(record.index.max()).normalize()
+    end = None if record.empty else pd.Timestamp(record.index.max()).normalize()
+    source_health.HEALTH.record_ok("open_meteo", data_end=end)
+    return end
 
 
 def hmt_gate_status(cfg: Mapping[str, Any]) -> str:
