@@ -27,6 +27,8 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 		busy?: boolean;
 		/** Remove the body padding, e.g. for an edge-to-edge table. */
 		flush?: boolean;
+		/** In print the panel may continue on the next page (between blocks that keep together); default: kept whole. */
+		breakable?: boolean;
 		actions?: Snippet;
 		footer?: Snippet;
 		children: Snippet;
@@ -44,6 +46,7 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 		staleAfterMin,
 		busy = false,
 		flush = false,
+		breakable = false,
 		actions,
 		footer,
 		children
@@ -52,7 +55,11 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 	const uid = $props.id();
 </script>
 
-<section class={['panel', tone]} aria-labelledby="{uid}-title" aria-busy={busy || undefined}>
+<section
+	class={['panel', tone, breakable && 'breakable']}
+	aria-labelledby="{uid}-title"
+	aria-busy={busy || undefined}
+>
 	<header>
 		{#if Icon}<span class="icon" aria-hidden="true"><Icon size={22} strokeWidth={1.75} /></span>{/if}
 		<div class="heading">
@@ -162,6 +169,36 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 		}
 		.body {
 			padding: var(--vo-space-3) var(--vo-space-4) var(--vo-space-4);
+		}
+	}
+	/* Print (SV-2.4): a ruled region on the paper, kept on one page; actions and icon tiles are left out. */
+	@media print {
+		.panel {
+			break-inside: avoid;
+			border-width: 0 0 1px;
+			border-radius: 0;
+			background: transparent;
+		}
+		.panel.breakable {
+			break-inside: auto;
+		}
+		header {
+			padding: 2mm 0 0;
+			break-after: avoid;
+		}
+		.icon,
+		.actions {
+			display: none;
+		}
+		.title {
+			line-height: 1.25;
+		}
+		.body,
+		.body.flush {
+			padding: 1.5mm 0 2.5mm;
+		}
+		footer {
+			padding: 1mm 0;
 		}
 	}
 </style>

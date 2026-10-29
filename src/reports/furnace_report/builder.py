@@ -20,6 +20,9 @@ from reports.furnace_report.materials import (
     MaterialAliasResolver,
     material_code_candidates,
 )
+from reports.furnace_report.status import Thresholds
+from reports.furnace_report.status import evaluate as evaluate_status
+from reports.furnace_report.status import overall as overall_status
 
 # Online report metrics use canonical InfluxDB field ids from setting_ds_dv.yml.
 # _series() also accepts legacy display-prefixed columns during migration.
@@ -78,7 +81,7 @@ _FINES_SOURCE_BY_CHARGE_COL = {
     for col in _charge_columns(spec)
 }
 # Status thresholds.
-_THRESH = dict(_SHIFT_REPORT_CONFIG.get("status_thresholds") or {})
+_THRESH = Thresholds.from_config(_SHIFT_REPORT_CONFIG.get("status_thresholds") or {})
 
 
 # Helpers.
@@ -437,32 +440,11 @@ def _status(
     raft: Optional[float],
     perm: Optional[float],
 ) -> tuple[Literal["STABLE", "ATTENTION REQUIRED", "UNSTABLE"], list[str]]:
-    flags: list[str] = []
-
-    if etaco is not None:
-        if etaco < _THRESH["etaco"]["crit"]:
-            flags.append(f"ETA CO {etaco:.2f}% (critical < 40%)")
-        elif etaco < _THRESH["etaco"]["warn"]:
-            flags.append(f"ETA CO {etaco:.2f}% (< 42% normal)")
-
-    if fuel_rate is not None:
-        if fuel_rate > _THRESH["fuel_rate"]["crit"]:
-            flags.append(f"Fuel Rate {fuel_rate:.2f} kg/tHM (critical > 570)")
-        elif fuel_rate > _THRESH["fuel_rate"]["warn"]:
-            flags.append(f"Fuel Rate {fuel_rate:.2f} kg/tHM (> 530 attention)")
-
-    if raft is not None and (raft < _THRESH["raft_lo"] or raft > _THRESH["raft_hi"]):
-        flags.append(f"RAFT {raft:.2f}°C (normal 2100–2350)")
-
-    if perm is not None and (perm < _THRESH["perm_lo"] or perm > _THRESH["perm_hi"]):
-        flags.append(f"Permeability {perm:.2f} (normal 1000–1600)")
-
-    n = len(flags)
-    if n == 0:
-        return "STABLE", flags
-    if n <= 2:
-        return "ATTENTION REQUIRED", flags
-    return "UNSTABLE", flags
+    # One rule with the twin-api's KPI levels (SV-2.4): reports.furnace_report.status.
+    checks = evaluate_status(
+        etaco=etaco, fuel_rate=fuel_rate, raft=raft, perm=perm, thresholds=_THRESH
+    )
+    return overall_status(checks)
 
 
 # Builder.

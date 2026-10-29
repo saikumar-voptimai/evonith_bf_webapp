@@ -210,9 +210,10 @@ export const NAV: NavGroup[] = [
 				href: '/reports',
 				label: 'Shift reports',
 				title: 'Shift reports',
-				subtitle: 'Shift, daily and weekly reports with flagged parameters.',
+				subtitle: 'Shift handover reports: KPI status, burden, temperatures, twin and narrative.',
 				icon: ClipboardList,
-				summary: 'Shift, daily and weekly reports with flagged parameters, stability and operator notes.',
+				summary:
+					'Shift handover reports with KPI status against the thresholds, burden, temperatures, twin values and the LLM narrative; print on A4.',
 				issue: 296
 			},
 			{

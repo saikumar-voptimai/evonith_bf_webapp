@@ -1,0 +1,32 @@
+/*
+ * Print stylesheet (SV-2.4, #296): A4 portrait, the paper tint of the print theme (tokens.css), the application chrome
+ * hidden. Elements marked `data-print="hide"` (page actions, filters, lists) are left out; panels keep together and
+ * table rows never split (Panel.svelte, DataTable.svelte). reports/print.ts plans a shift report on these sizes.
+ */
+@page {
+	size: A4 portrait;
+	margin: 12mm; /* --vo-print-margin: @page descriptors cannot read custom properties */
+}
+
+@media print {
+	html,
+	body {
+		background: var(--vo-print-paper);
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+
+	body {
+		min-height: 0;
+		font-size: var(--vo-print-fs);
+	}
+
+	[data-print='hide'] {
+		display: none !important;
+	}
+
+	a {
+		color: inherit;
+		text-decoration: none;
+	}
+}

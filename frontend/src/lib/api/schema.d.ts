@@ -789,6 +789,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports/thresholds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status thresholds of the reports
+         * @description The thresholds of config/shift_report.yml as they are now (read at every request).
+         */
+        get: operations["reports_thresholds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/{report_id}": {
         parameters: {
             query?: never;
@@ -5132,6 +5152,65 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * KpiStatusView
+         * @description One KPI of the report against the current thresholds of config/shift_report.yml.
+         */
+        KpiStatusView: {
+            /**
+             * Crit
+             * @description Critical threshold, in unit (ETA CO: below, fuel rate: above)
+             */
+            crit?: number | null;
+            /**
+             * Flag
+             * @description The Reports tab's flag text when the KPI breaches
+             */
+            flag?: string | null;
+            /**
+             * Hi
+             * @description Upper edge of the normal band, in unit (RAFT, permeability)
+             */
+            hi?: number | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "etaco" | "fuel_rate" | "raft" | "permeability";
+            /** Label */
+            label: string;
+            /**
+             * Level
+             * @description ok, warning or critical against the thresholds; no_data without a value
+             * @enum {string}
+             */
+            level: "ok" | "warning" | "critical" | "no_data";
+            /**
+             * Lo
+             * @description Lower edge of the normal band, in unit (RAFT, permeability)
+             */
+            lo?: number | null;
+            /**
+             * Rule
+             * @description The thresholds as text, e.g. 'warning below 42 %, critical below 40 %'
+             */
+            rule: string;
+            /**
+             * Unit
+             * @description Unit of value and thresholds ('' for the dimensionless permeability index)
+             */
+            unit: string;
+            /**
+             * Value
+             * @description Mean over the report window, in unit
+             */
+            value?: number | null;
+            /**
+             * Warn
+             * @description Warning threshold, in unit (ETA CO: below, fuel rate: above)
+             */
+            warn?: number | null;
+        };
         /** LiveCalibration */
         LiveCalibration: {
             /**
@@ -6613,6 +6692,62 @@ export interface components {
             /** @description The report.live job; its result holds report_id once it is done */
             job: components["schemas"]["JobRecord"];
         };
+        /**
+         * ReportThresholds
+         * @description ``config/shift_report.yml -> status_thresholds`` and the rule that turns flags into the report's status.
+         */
+        ReportThresholds: {
+            /**
+             * Attention From
+             * @description Flags from which the status is ATTENTION REQUIRED, count
+             */
+            attention_from: number;
+            /**
+             * Etaco Crit Pct
+             * @description ETA CO below this: critical, %
+             */
+            etaco_crit_pct: number;
+            /**
+             * Etaco Warn Pct
+             * @description ETA CO below this: warning, %
+             */
+            etaco_warn_pct: number;
+            /**
+             * Fuel Rate Crit Kg Thm
+             * @description Fuel rate above this: critical, kg/tHM
+             */
+            fuel_rate_crit_kg_thm: number;
+            /**
+             * Fuel Rate Warn Kg Thm
+             * @description Fuel rate above this: warning, kg/tHM
+             */
+            fuel_rate_warn_kg_thm: number;
+            /**
+             * Permeability Hi
+             * @description Permeability index normal band, upper edge, dimensionless
+             */
+            permeability_hi: number;
+            /**
+             * Permeability Lo
+             * @description Permeability index normal band, lower edge, dimensionless
+             */
+            permeability_lo: number;
+            /**
+             * Raft Hi C
+             * @description RAFT normal band, upper edge, °C
+             */
+            raft_hi_c: number;
+            /**
+             * Raft Lo C
+             * @description RAFT normal band, lower edge, °C
+             */
+            raft_lo_c: number;
+            /**
+             * Unstable From
+             * @description Flags from which the status is UNSTABLE, count
+             */
+            unstable_from: number;
+        };
         /** RingInputs */
         RingInputs: {
             /**
@@ -7235,6 +7370,11 @@ export interface components {
              * @enum {string}
              */
             kind: "closed" | "live";
+            /**
+             * Kpis
+             * @description ETA CO, fuel rate, RAFT and permeability against the current thresholds
+             */
+            kpis?: components["schemas"]["KpiStatusView"][];
             /**
              * Narrative
              * @description The LLM's handover analysis (null without narrative)
@@ -11318,6 +11458,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReportSubmitted"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    reports_thresholds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportThresholds"];
                 };
             };
             /** @description Client error (problem+json) */

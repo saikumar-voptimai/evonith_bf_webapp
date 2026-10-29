@@ -258,6 +258,51 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 	tbody tr.muted td {
 		color: var(--vo-text-muted);
 	}
+	/*
+	 * Print (SV-2.4): the whole table, never clipped (no scroll box, no height limit), header repeated on a new page,
+	 * rows kept whole at the print row height; text cells wrap, figures stay on one line.
+	 */
+	@media print {
+		.wrap {
+			overflow: visible;
+			max-height: none !important;
+		}
+		table {
+			table-layout: auto;
+		}
+		thead {
+			display: table-header-group;
+		}
+		th {
+			position: static;
+			white-space: normal;
+		}
+		.head,
+		.dense .head {
+			padding: 0.6mm 1.6mm;
+			line-height: 1.25;
+		}
+		.arrow {
+			display: none;
+		}
+		tr {
+			break-inside: avoid;
+		}
+		td,
+		.dense td {
+			height: var(--vo-print-row);
+			padding: 0.4mm 1.6mm;
+			line-height: 1.25;
+			white-space: normal;
+			overflow-wrap: anywhere;
+		}
+		td.num {
+			white-space: nowrap;
+		}
+		tbody tr:hover td {
+			background: none;
+		}
+	}
 	.empty {
 		padding: 0 var(--vo-space-4);
 	}

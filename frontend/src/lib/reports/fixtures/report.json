@@ -1,0 +1,535 @@
+{
+  "source": "services.reports.detail_data of shift 2026-10-26_B built from tests.test_services_reports.raw_for (ShiftBuilder, ShiftReportService.document)",
+  "thresholds": {
+    "etaco_warn_pct": 42.0,
+    "etaco_crit_pct": 40.0,
+    "fuel_rate_warn_kg_thm": 530.0,
+    "fuel_rate_crit_kg_thm": 570.0,
+    "raft_lo_c": 2100.0,
+    "raft_hi_c": 2350.0,
+    "permeability_lo": 1000.0,
+    "permeability_hi": 1600.0,
+    "attention_from": 1,
+    "unstable_from": 3
+  },
+  "detail": {
+    "id": "6f1c2a4e-2d8b-4c1e-9a57-0c3d5e7f9b21",
+    "shift_key": "2026-10-26_B",
+    "shift": "B",
+    "shift_date": "2026-10-26",
+    "shift_start": "2026-10-26T08:30:00Z",
+    "shift_end": "2026-10-26T16:30:00Z",
+    "kind": "closed",
+    "trigger": "schedule",
+    "requested_by": "scheduler",
+    "job_id": null,
+    "generated_at": "2026-10-26T16:51:00Z",
+    "status": "complete",
+    "narrative_status": "ok",
+    "furnace_status": "ATTENTION REQUIRED",
+    "production_rate_t_h": 112.5,
+    "fuel_rate_kg_thm": 541.72,
+    "coke_rate_kg_thm": 352.73,
+    "pci_rate_kg_thm": 151.13,
+    "etaco_pct": 46.24,
+    "hm_si_pct": 0.51,
+    "narrative": "Shift B needs **attention**: fuel rate 541.7 kg/tHM, above 530; ETA CO 46.2 %.\n\nAgainst shift A:\n- production up 1.2 t/h\n- belly spread wider\n\nWatch the belly Q4 and keep the blast at 231,000 Nm\u00b3/h.",
+    "narrative_error": null,
+    "narrative_tries": 1,
+    "narrative_model": "fake/model-1",
+    "data": {
+      "shift_date": "2026-10-26",
+      "shift_label": "B",
+      "shift_start_ist": "2026-10-26T14:00:00+05:30",
+      "shift_end_ist": "2026-10-26T22:00:00+05:30",
+      "report_type": "Shift",
+      "window_id": "2026-10-26_SHIFT_B",
+      "duration_h": 8.0,
+      "status": "ATTENTION REQUIRED",
+      "status_flags": [
+        "Fuel Rate 541.72 kg/tHM (> 530 attention)"
+      ],
+      "production_rate": 112.5,
+      "theoretical_production": 900.0,
+      "total_charges": 46,
+      "coke_t": 413.89,
+      "nut_coke_t": 45.53,
+      "sinter_t": 915.3,
+      "ore_t": 369.41,
+      "pellet_t": 138.26,
+      "flux_t": 37.14,
+      "fuel_rate": 541.72,
+      "coke_rate": 352.73,
+      "nut_coke_rate": 37.86,
+      "pci_rate": 151.13,
+      "hm_si": 0.51,
+      "hm_s": 0.03,
+      "hm_temp": 1482.12,
+      "slag_basicity": 1.06,
+      "total_taps": 6,
+      "blast_volume": {
+        "mean": 231718.95,
+        "std": 2895.41
+      },
+      "blast_temp": {
+        "mean": 1105.58,
+        "std": 6.55
+      },
+      "blast_pressure": {
+        "mean": 3.41,
+        "std": 0.04
+      },
+      "furnace_top_dp": {
+        "mean": 0.63,
+        "std": 0.03
+      },
+      "furnace_bottom_dp": {
+        "mean": 0.9,
+        "std": 0.04
+      },
+      "furnace_total_dp": {
+        "mean": 1.52,
+        "std": 0.04
+      },
+      "o2_flow": {
+        "mean": 14186.26,
+        "std": 251.59
+      },
+      "total_o2_flow": null,
+      "o2_enrichment": {
+        "mean": 4.21,
+        "std": 0.21
+      },
+      "permeability": {
+        "mean": 1323.8,
+        "std": 57.61
+      },
+      "etaco": {
+        "mean": 46.24,
+        "std": 0.84
+      },
+      "raft": {
+        "mean": 2216.99,
+        "std": 33.63
+      },
+      "uptake": {
+        "q1": 178.85,
+        "q2": 180.67,
+        "q3": 178.78,
+        "q4": 180.06,
+        "spread_std": 0.93
+      },
+      "lower_stack": {
+        "q1": 421.41,
+        "q2": 422.03,
+        "q3": 421.95,
+        "q4": 421.18,
+        "spread_std": 0.41
+      },
+      "belly": {
+        "q1": 424.29,
+        "q2": 423.32,
+        "q3": 418.16,
+        "q4": 420.09,
+        "spread_std": 2.84
+      },
+      "skin_flow": {
+        "q1": 179.12,
+        "q2": 174.33,
+        "q3": 178.83,
+        "q4": 179.04,
+        "spread_std": 2.34
+      },
+      "bosh": {
+        "q1": 422.26,
+        "q2": 417.95,
+        "q3": 420.62,
+        "q4": 419.01,
+        "spread_std": 1.89
+      },
+      "hearth_4_3_a": 420.76,
+      "hearth_5_4_c": 420.99,
+      "hearth_5_7_c": 418.29,
+      "hearth_6_1_b": 418.24,
+      "burden_moisture_input": 44.07,
+      "fines_input": 133.29,
+      "burden_ratio": "64.3: 26.0: 9.7",
+      "ibrm": 1.56,
+      "used_materials": {
+        "Flux": "- Dolomite - 37.14 mt",
+        "Ore": "- Ore A - 276.79 mt - 19.45% in burden\n- Ore B - 92.61 mt - 6.51% in burden"
+      }
+    },
+    "document": {
+      "title": "Live Report (2026-10-26_SHIFT_B)",
+      "pre_blocks": [
+        "**SHIFT HANDOVER REPORT - BF2 EVONITH STEEL**\n**Shift ID:** B &nbsp; **Period:** 2026-10-26 14:00 -> 2026-10-26 22:00 (IST)"
+      ],
+      "sections": [
+        {
+          "title": "Fuel Rate",
+          "headers": [
+            "Fuel rate (kg/thm)",
+            "Coke rate (kg/thm)",
+            "Nut Coke rate (kg/thm)",
+            "PCI rate (kg/thm)"
+          ],
+          "rows": [
+            [
+              "541.72",
+              "352.73",
+              "37.86",
+              "151.13"
+            ]
+          ],
+          "placement": "left"
+        },
+        {
+          "title": "Parameters",
+          "headers": [
+            "Parameter",
+            "UOM",
+            "Value",
+            "Std.Dev"
+          ],
+          "rows": [
+            [
+              "**Production**",
+              "",
+              "",
+              ""
+            ],
+            [
+              "Production rate",
+              "t/hr",
+              "112.50",
+              "-"
+            ],
+            [
+              "Theoretical Production",
+              "tons",
+              "900.00",
+              "-"
+            ],
+            [
+              "Total Charges",
+              "no's",
+              "46",
+              "-"
+            ],
+            [
+              "Burden Ratio",
+              "Sinter:Ore:Pellet",
+              "64.3: 26.0: 9.7",
+              "-"
+            ],
+            [
+              "**Process Parameters**",
+              "",
+              "",
+              ""
+            ],
+            [
+              "Hot blast volume",
+              "Nm3/hr",
+              "231719",
+              "2895"
+            ],
+            [
+              "Hot blast temperature",
+              "degC",
+              "1106",
+              "7"
+            ],
+            [
+              "Hot blast pressure",
+              "bar",
+              "3.41",
+              "0.04"
+            ],
+            [
+              "Furnace Top DP",
+              "bar",
+              "0.63",
+              "0.03"
+            ],
+            [
+              "Furnace Bottom DP",
+              "bar",
+              "0.90",
+              "0.04"
+            ],
+            [
+              "Furnace Total DP",
+              "bar",
+              "1.52",
+              "0.04"
+            ],
+            [
+              "Oxygen Flow",
+              "Nm3/hr",
+              "14186",
+              "252"
+            ],
+            [
+              "Oxygen enrichment",
+              "%",
+              "4.21",
+              "0.21"
+            ],
+            [
+              "Permeability",
+              "-",
+              "1324",
+              "58"
+            ],
+            [
+              "ETA CO",
+              "%",
+              "46.24",
+              "0.84"
+            ],
+            [
+              "RAFT",
+              "degC",
+              "2217",
+              "34"
+            ],
+            [
+              "Burden Moisture Input",
+              "kg/thm",
+              "44",
+              "-"
+            ],
+            [
+              "Fines Input",
+              "kg/thm",
+              "133",
+              "-"
+            ],
+            [
+              "IBRM",
+              "-",
+              "1.6",
+              "-"
+            ],
+            [
+              "**Quality**",
+              "",
+              "",
+              ""
+            ],
+            [
+              "HM Si",
+              "%",
+              "0.51",
+              "-"
+            ],
+            [
+              "HM S",
+              "%",
+              "0.03",
+              "-"
+            ],
+            [
+              "HM Temperature",
+              "degC",
+              "1482",
+              "-"
+            ],
+            [
+              "Slag Basicity",
+              "-",
+              "1.06",
+              "-"
+            ]
+          ],
+          "placement": "left"
+        },
+        {
+          "title": "Temperature Profile",
+          "headers": [
+            "Parameter",
+            "Q1",
+            "Q2",
+            "Q3",
+            "Q4",
+            "Std.Dev"
+          ],
+          "rows": [
+            [
+              "Uptake Temp (degC)",
+              "179",
+              "181",
+              "179",
+              "180",
+              "1"
+            ],
+            [
+              "Skin flow",
+              "179",
+              "174",
+              "179",
+              "179",
+              "2"
+            ],
+            [
+              "Lower stack (degC)",
+              "421",
+              "422",
+              "422",
+              "421",
+              "0"
+            ],
+            [
+              "Belly (degC)",
+              "424",
+              "423",
+              "418",
+              "420",
+              "3"
+            ],
+            [
+              "Bosh (degC)",
+              "422",
+              "418",
+              "421",
+              "419",
+              "2"
+            ]
+          ],
+          "placement": "right"
+        },
+        {
+          "title": "Hearth Pad Temperature",
+          "headers": [
+            "Parameter",
+            "4.3mtr A",
+            "5.4mtr C",
+            "5.7mtr C",
+            "6.1mtr B"
+          ],
+          "rows": [
+            [
+              "Hearth Pad Temp (degC)",
+              "421",
+              "421",
+              "418",
+              "418"
+            ]
+          ],
+          "placement": "right"
+        },
+        {
+          "title": "Tapping Summary",
+          "headers": [
+            "Total Taps (no's)",
+            "Tap Duration (mins)",
+            "Slag Duration (mins)",
+            "Slag Ratio (%)",
+            "Casting Rate (T/min)"
+          ],
+          "rows": [
+            [
+              "6",
+              "-",
+              "-",
+              "-",
+              "-"
+            ]
+          ],
+          "placement": "right"
+        },
+        {
+          "title": "Consumption",
+          "headers": [
+            "Coke (tons)",
+            "Nut coke (tons)",
+            "Ore (tons)",
+            "Flux (tons)",
+            "Sinter (tons)",
+            "Pellet (tons)"
+          ],
+          "rows": [
+            [
+              "413.89",
+              "45.53",
+              "369.41",
+              "37.14",
+              "915.30",
+              "138.26"
+            ]
+          ],
+          "placement": "right"
+        }
+      ],
+      "notes": [
+        {
+          "text": "Flux :\n- Dolomite - 37.14 mt\n\nOre :\n- Ore A - 276.79 mt - 19.45% in burden\n- Ore B - 92.61 mt - 6.51% in burden",
+          "placement": "right",
+          "kind": "material_usage"
+        },
+        {
+          "text": "**Report Analysis**\n\nShift B needs **attention**: fuel rate 541.7 kg/tHM, above 530; ETA CO 46.2 %.\n\nAgainst shift A:\n- production up 1.2 t/h\n- belly spread wider\n\nWatch the belly Q4 and keep the blast at 231,000 Nm\u00b3/h.",
+          "placement": "right",
+          "kind": "analysis"
+        }
+      ],
+      "generated_at_ist": "2026-10-26T16:51:00Z"
+    },
+    "kpis": [
+      {
+        "key": "etaco",
+        "label": "ETA CO",
+        "unit": "%",
+        "value": 46.24,
+        "level": "ok",
+        "rule": "warning below 42 %, critical below 40 %",
+        "flag": null,
+        "warn": 42.0,
+        "crit": 40.0,
+        "lo": null,
+        "hi": null
+      },
+      {
+        "key": "fuel_rate",
+        "label": "Fuel rate",
+        "unit": "kg/tHM",
+        "value": 541.72,
+        "level": "warning",
+        "rule": "warning above 530 kg/tHM, critical above 570 kg/tHM",
+        "flag": "Fuel Rate 541.72 kg/tHM (> 530 attention)",
+        "warn": 530.0,
+        "crit": 570.0,
+        "lo": null,
+        "hi": null
+      },
+      {
+        "key": "raft",
+        "label": "RAFT",
+        "unit": "\u00b0C",
+        "value": 2216.99,
+        "level": "ok",
+        "rule": "normal 2100\u20132350 \u00b0C",
+        "flag": null,
+        "warn": null,
+        "crit": null,
+        "lo": 2100.0,
+        "hi": 2350.0
+      },
+      {
+        "key": "permeability",
+        "label": "Permeability",
+        "unit": "",
+        "value": 1323.8,
+        "level": "ok",
+        "rule": "normal 1000\u20131600",
+        "flag": null,
+        "warn": null,
+        "crit": null,
+        "lo": 1000.0,
+        "hi": 1600.0
+      }
+    ]
+  }
+}

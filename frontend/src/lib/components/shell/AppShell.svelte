@@ -169,4 +169,20 @@ page, and notifications. Starts the shared clock and the server connection check
 			display: none;
 		}
 	}
+	/* Print (SV-2.4): the page content only, on the paper of the print theme. */
+	@media print {
+		.skip,
+		.rail-column,
+		.foot {
+			display: none;
+		}
+		.shell,
+		.shell.collapsed {
+			display: block;
+			min-height: 0;
+		}
+		main {
+			padding: 0;
+		}
+	}
 </style>

@@ -26,8 +26,9 @@ HINT = "Regenerate with: python scripts/export_chart_fixtures.py"
         (exporter.RIST_OUT, exporter.rist_fixture),
         (exporter.SCHEMATIC_OUT, exporter.schematic_fixture),
         (exporter.STATUS_OUT, exporter.status_fixture),
+        (exporter.REPORT_OUT, exporter.report_fixture),
     ],
-    ids=["rist", "schematic", "status"],
+    ids=["rist", "schematic", "status", "report"],
 )
 def test_fixture_is_current(path: Path, build) -> None:
     committed = json.loads(path.read_text(encoding="utf-8"))

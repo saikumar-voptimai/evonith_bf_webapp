@@ -74,6 +74,11 @@ server connection and the IST clock. Below 1024 px it carries the button that op
 </header>
 
 <style>
+	@media print {
+		.header {
+			display: none !important;
+		}
+	}
 	.header {
 		position: sticky;
 		top: 0;

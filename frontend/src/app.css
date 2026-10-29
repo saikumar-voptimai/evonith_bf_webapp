@@ -7,3 +7,4 @@
 @import '@fontsource-variable/inter/wght.css';
 @import './lib/theme/tokens.css';
 @import './lib/theme/base.css';
+@import './lib/theme/print.css';
