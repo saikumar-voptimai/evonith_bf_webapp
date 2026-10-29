@@ -20,10 +20,10 @@ import json
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from services.auth import Role
 from services.events import JobState
@@ -317,6 +317,124 @@ class BmoRunParams(BaseModel):
     fuel_prices: BmoFuelPrices | None = None
 
 
+UUID_PATTERN = r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$"
+WHATIF_MAX_CASES = 4
+
+
+class ForgeLevers(BaseModel):
+    """FORGE what-if levers (``coke_energy.whatif.run_scenario``): each set field replaces the calibration point's
+    value; unset fields keep it."""
+
+    model_config = {"extra": "forbid"}
+
+    coke_fc_pct: float | None = Field(None, ge=70, le=95, description="Coke fixed carbon, dry mass %")
+    coke_ash_pct: float | None = Field(None, ge=5, le=25, description="Coke ash, dry mass %")
+    coke_vm_pct: float | None = Field(None, ge=0, le=5, description="Coke volatile matter, dry mass %")
+    coke_moisture_pct: float | None = Field(None, ge=0, le=15, description="Coke moisture as charged, mass %")
+    pci_kg_thm: float | None = Field(None, ge=0, le=260, description="PCI as injected, kg/tHM")
+    nut_coke_kg_thm: float | None = Field(None, ge=0, le=150, description="Nut coke as charged, kg/tHM")
+    eta_co_pct: float | None = Field(
+        None,
+        ge=30,
+        le=55,
+        description="Top-gas CO utilisation, % (oxygen-balance model; the two-zone model computes it)",
+    )
+    hm_si_pct: float | None = Field(None, ge=0.1, le=1.5, description="Hot-metal Si, mass %")
+    hmt_c: float | None = Field(None, ge=1400, le=1600, description="Hot-metal temperature, °C")
+    hbt_c: float | None = Field(None, ge=900, le=1300, description="Hot-blast temperature, °C")
+    o2_per_air: float | None = Field(
+        None, ge=0, le=0.12, description="Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air"
+    )
+    blast_moisture_g_nm3: float | None = Field(None, ge=0, le=40, description="Blast moisture, g/Nm³")
+    production_t_h: float | None = Field(
+        None, ge=60, le=130, description="Hot-metal production, t/h (heat losses held in GJ/h)"
+    )
+    shaft_efficiency: float | None = Field(
+        None,
+        ge=0.6,
+        le=1.0,
+        description="Shaft efficiency ω (two-zone model; the oxygen-balance model holds ηCO), dimensionless",
+    )
+
+
+class ForgeCaseParams(BaseModel):
+    """One FORGE what-if case: a name and its levers."""
+
+    model_config = {"extra": "forbid"}
+
+    case_id: str | None = Field(None, pattern=UUID_PATTERN, description="Saved case the result is stored with (UUID)")
+    name: str = Field(..., min_length=1, max_length=80, description="Name of the case")
+    levers: ForgeLevers = Field(default_factory=ForgeLevers, description="Levers changed against the calibration point")
+
+
+class WhatIfForgeParams(BaseModel):
+    """FORGE what-if (``whatif.forge``): up to four cases against the calibration point of a day (or the shipped Jul-Oct
+    2026 calibration), each solved by the two-zone balance (ω held) and the oxygen-balance model (ηCO held)."""
+
+    model_config = {"extra": "forbid"}
+
+    calibration: Literal["day", "reference"] = Field(
+        "day",
+        description="day = the calibration calibration.nightly stored for the what-if day; reference = the shipped "
+        "Jul-Oct 2026 calibration",
+    )
+    day: date | None = Field(None, description="What-if day (IST) of a day calibration; default: the latest stored day")
+    cases: list[ForgeCaseParams] = Field(..., min_length=1, max_length=WHATIF_MAX_CASES, description="Cases, 1-4")
+
+
+class StrataCaseParams(BaseModel):
+    """One STRATA plan what-if case: a forced ferrous blend (or the cheapest blend) and the controls that differ."""
+
+    model_config = {"extra": "forbid"}
+
+    case_id: str | None = Field(None, pattern=UUID_PATTERN, description="Saved case the result is stored with (UUID)")
+    name: str = Field(..., min_length=1, max_length=80, description="Name of the case")
+    blend: dict[str, float] | None = Field(
+        None,
+        description="Forced ferrous blend: material id → share of the wet ferrous burden, % (renormalised to 100); "
+        "null = the cheapest blend at the production (Step 2)",
+    )
+    settings: OptimiserSettings | None = Field(None, description="Controls and thermal targets instead of the basis")
+
+    @field_validator("blend")
+    @classmethod
+    def _blend(cls, value: dict[str, float] | None) -> dict[str, float] | None:
+        if value is None:
+            return None
+        shares = {str(k): float(v) for k, v in value.items() if float(v) != 0.0}
+        if not shares or len(shares) > 15:
+            raise ValueError("a forced blend names 1-15 materials with a share above 0 %")
+        if any(not 0.0 < v <= 100.0 for v in shares.values()):
+            raise ValueError("every share of a forced blend lies in (0, 100] %")
+        if not 95.0 <= sum(shares.values()) <= 105.0:
+            raise ValueError(f"the shares of a forced blend add up to {sum(shares.values()):.1f} %, not 95-105 %")
+        return shares
+
+
+class WhatIfStrataParams(BaseModel):
+    """STRATA plan what-if (``whatif.strata``): up to four plans on one basis (calibration of the what-if day, yard,
+    production, shaft-efficiency model), each a forced blend (``scenarios.run_today``) or the cheapest blend."""
+
+    model_config = {"extra": "forbid"}
+
+    calibration: Literal["day", "reference"] = Field(
+        "day",
+        description="day = the calibration calibration.nightly stored for the what-if day (blast moisture: that day's "
+        "Open-Meteo value); reference = the shipped Jul-Oct 2026 calibration at its own blast moisture",
+    )
+    day: date | None = Field(None, description="What-if day (IST) of a day calibration; default: the latest stored day")
+    omega_mode: Literal["strata", "fixed"] = Field(
+        "strata", description="Shaft efficiency: STRATA-ω (blend-dependent, ASM-18) or Fixed-ω (calibration, ASM-01)"
+    )
+    yard: Literal["live", "reference"] = Field(
+        "live", description="Yard: live = Neon chemistry and prices (else the reference yard), reference = 16 Oct 2026"
+    )
+    production_t_d: float | None = Field(
+        None, ge=1500, le=3000, description="Hot-metal production, t/d (default: the regime median, page 11's)"
+    )
+    cases: list[StrataCaseParams] = Field(..., min_length=1, max_length=WHATIF_MAX_CASES, description="Cases, 1-4")
+
+
 @dataclass(frozen=True)
 class JobKind:
     name: str
@@ -594,6 +712,36 @@ register(
         description=(
             "Page 9's Balanced Optimizer (LP) at a fixed production with page 9's inputs and the requested changes; "
             "the plan is the job result (POST /api/bmo/runs, SV-3.5)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="whatif.forge",
+        title="FORGE what-if",
+        role="admin",
+        timeout_s=120,  # two balances per case, milliseconds each; the calibration is a file read
+        max_tries=1,
+        params=WhatIfForgeParams,
+        description=(
+            "Up to four FORGE what-if cases (coke chemistry, PCI, nut coke, ηCO, HM Si, HMT, HBT, O₂, moisture, "
+            "production) against the calibration point of a day: two-zone balance with ω held and oxygen-balance model "
+            "with ηCO held (coke_energy.whatif); results stored with the saved cases (SV-4.3)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="whatif.strata",
+        title="STRATA plan what-if",
+        role="admin",
+        timeout_s=3600,  # STRATA-ω: network solves per SLP iterate; a new calibration's Jacobian is 16 solves
+        max_tries=1,
+        params=WhatIfStrataParams,
+        description=(
+            "Up to four Burden & Fuel Optimiser plans on the calibration of a what-if day: forced ferrous blends "
+            "(scenarios.run_today) or the cheapest blend, with STRATA-ω or Fixed-ω; results stored with the saved "
+            "cases (SV-4.3)."
         ),
     )
 )

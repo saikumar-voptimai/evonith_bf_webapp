@@ -16,6 +16,7 @@
 | ``fm_conversation`` | FurnaceMind conversations of the agent service: owner, title, reasoning level | API (SV-5.1) |
 | ``fm_message`` | Their messages in order: text and parts (tool calls and results, figures, dataset previews) | API |
 | ``fm_feedback`` | The owner's rating (up or down) and comment on an answer, with its audit row | API (SV-5.2) |
+| ``whatif_case`` | An administrator's saved what-if case (FORGE, STRATA) and its latest result | API, worker (SV-4.3) |
 
 Times are ``timestamptz`` in UTC. Columns queried by time range are indexed (``ix_<table>_<column>``). Values that are
 plotted or filtered have typed columns with the unit in the name (``k_trace`` kg/tHM); everything else of a result is
@@ -91,6 +92,8 @@ FM_MESSAGE_STATES = ("complete", "failed")
 #: Rating of a FurnaceMind answer: page 7's thumbs (polarity positive / negative).
 FM_RATINGS = ("up", "down")
 REASONING_LEVELS = ("Low", "Medium", "High")
+#: Model of a what-if case: FORGE (two-zone balance at a calibration point) or a STRATA plan (SV-4.3).
+WHATIF_KINDS = ("forge", "strata")
 #: Server default of the JSON list columns (message parts).
 EMPTY_JSON_LIST = text("'[]'")
 
@@ -578,6 +581,38 @@ class FmFeedback(TwinBase):
     )
 
 
+class WhatIfCase(TwinBase):
+    """A what-if case saved by an administrator (SV-4.3): FORGE levers or a STRATA plan (forced blend, controls), and
+    the result of its latest run (``whatif.forge`` / ``whatif.strata``, with the calibration, the what-if day and the
+    fact-register version it used). Saves and deletes write their audit row (``whatif.save``, ``whatif.delete``) in the
+    same transaction; the worker's result is not an admin write.
+    """
+
+    __tablename__ = "whatif_case"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    #: Username of the administrator who saved it; only that user lists, changes, runs or deletes it.
+    owner: Mapped[str] = mapped_column(String(128))
+    kind: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str] = mapped_column(String(80))
+    #: The case: FORGE ``{"levers": {...}}``; STRATA ``{"blend": {...} | null, "settings": {...} | null}``.
+    inputs: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=EMPTY_JSON)
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+    #: Latest result of the case, null before its first run.
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON_DOC)
+    result_job_id: Mapped[str | None] = mapped_column(String(64))
+    result_at: Mapped[datetime | None]
+    #: Fact-register version the latest result used (``FactRegister.label``, e.g. ``1.8 + overlay 2``).
+    facts_version: Mapped[str | None] = mapped_column(String(32))
+
+    __table_args__ = (
+        CheckConstraint(_in("kind", WHATIF_KINDS), name="kind"),
+        Index("ix_whatif_case_updated_at", "updated_at"),
+        Index("ix_whatif_case_owner_kind", "owner", "kind"),
+    )
+
+
 #: Tables whose rows are written once; the migration's trigger refuses UPDATE and DELETE on PostgreSQL.
 APPEND_ONLY = ("shift_record", "plan_decision", "audit_log")
 
@@ -597,4 +632,5 @@ TIME_INDEXED = {
     "fm_conversation": ("updated_at",),
     "fm_message": ("created_at",),
     "fm_feedback": ("updated_at",),
+    "whatif_case": ("updated_at",),
 }

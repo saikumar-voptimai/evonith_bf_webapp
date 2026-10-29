@@ -464,6 +464,8 @@ def default_case(
     limits: Mapping[str, Any] | None = None,
     nonce: int = 0,
     cfg: Mapping[str, Any] | None = None,
+    plan_day: Any = None,
+    calibration_info: tuple[CalibrationInfo, dict[str, Any]] | None = None,
 ) -> Case:
     """The run page 11 would start for ``mode`` with its defaults: live yard (else the reference yard) and
     calibration (else the shipped one), today's controls, PCI and nut coke (regime medians), today's Open-Meteo
@@ -473,7 +475,9 @@ def default_case(
     ``omega_mode`` strata (default, certainty filter and risk aversion as given) or fixed. ``calibration_basis`` live
     (page 11's), day (the calibration of 02:30) or reference (the shipped one, ``case_calibration``); ``yard_basis``
     live (else the reference yard) or reference. ``settings`` and ``limits`` (``SETTINGS_FIELDS``,
-    ``LIMITS_FIELDS``: the API's names) replace the defaults last, so a request's controls are held as given."""
+    ``LIMITS_FIELDS``: the API's names) replace the defaults last, so a request's controls are held as given.
+    ``plan_day`` (default today, IST) is the day whose Open-Meteo blast moisture the plan takes; ``calibration_info``
+    (a ``case_calibration`` result) replaces the calibration of ``calibration_basis`` (the what-if days, SV-4.3)."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {', '.join(MODES)}")
     if omega_mode not in OMEGA_MODES:
@@ -490,7 +494,7 @@ def default_case(
         yard_rows, yard_source, yard_message = reference_yard(cfg), "reference", "The reference yard was requested."
     else:
         yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce, operator_inputs.token())
-    info, chosen = case_calibration(cfg, nonce, calibration_basis)
+    info, chosen = calibration_info or case_calibration(cfg, nonce, calibration_basis)
     regime = info.regime
     engine_mode = MODES[mode]
     process = engine_mode in ("cheapest", "max")
@@ -503,7 +507,7 @@ def default_case(
         elif (regime or {}).get("prod_th"):
             target = float(round(float(regime["prod_th"]) * 24, -1))
             source = "median of the regime window (page 11's default)"
-    humidity_g, _, _ = plan_blast_moisture()
+    humidity_g, _, _ = plan_blast_moisture(plan_day)
     thermal_cfg = cfg.get("thermal", {})
     th = {**thermal_cfg, **fuel_defaults(regime, thermal_cfg, info.cal)}
     thermal = dict(

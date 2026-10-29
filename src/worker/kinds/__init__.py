@@ -12,4 +12,5 @@ from worker.kinds import (  # noqa: F401
     system,
     trace,
     twin,
+    whatif,
 )

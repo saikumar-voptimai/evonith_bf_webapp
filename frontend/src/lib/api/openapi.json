@@ -6105,6 +6105,29 @@
         "title": "ForecastSiEvent",
         "type": "object"
       },
+      "ForgeBase": {
+        "properties": {
+          "fixed_eta": {
+            "$ref": "#/components/schemas/ForgeModelResult",
+            "description": "Oxygen-balance model at the calibration point"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/ForgeInputs",
+            "description": "The calibration point's lever values"
+          },
+          "two_zone": {
+            "$ref": "#/components/schemas/ForgeModelResult",
+            "description": "Two-zone balance at the calibration point"
+          }
+        },
+        "required": [
+          "inputs",
+          "two_zone",
+          "fixed_eta"
+        ],
+        "title": "ForgeBase",
+        "type": "object"
+      },
       "ForgeCalibration": {
         "properties": {
           "complete": {
@@ -6223,6 +6246,572 @@
           "shifts"
         ],
         "title": "ForgeCalibration",
+        "type": "object"
+      },
+      "ForgeCaseResult": {
+        "properties": {
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Saved case (UUID)",
+            "title": "Case Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the case failed",
+            "title": "Error"
+          },
+          "fixed_eta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForgeModelResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen-balance model (\u03b7CO held)"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/ForgeInputs",
+            "description": "Every lever's value in the case"
+          },
+          "levers": {
+            "$ref": "#/components/schemas/ForgeLevers",
+            "description": "The levers the case set"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "description": "Levers one of the two models does not take",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "two_zone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForgeModelResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance (\u03c9 held), FORGE's what-if model"
+          },
+          "warnings": {
+            "description": "Plausibility bands breached (register BAND-01..03)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "levers",
+          "inputs"
+        ],
+        "title": "ForgeCaseResult",
+        "type": "object"
+      },
+      "ForgeCaseRun": {
+        "description": "A FORGE case's latest result, as stored with the case.",
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/ForgeBase",
+            "description": "The calibration point the case changes"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/WhatIfBasis"
+          },
+          "computed_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Computed At",
+            "type": "string"
+          },
+          "facts_version": {
+            "description": "Fact-register version used (e.g. 1.8, 1.8 + overlay 2)",
+            "title": "Facts Version",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ForgeCaseResult"
+          }
+        },
+        "required": [
+          "computed_at",
+          "facts_version",
+          "basis",
+          "base",
+          "result"
+        ],
+        "title": "ForgeCaseRun",
+        "type": "object"
+      },
+      "ForgeInputs": {
+        "description": "The values of every FORGE lever in a case (the calibration point's where the case leaves a lever unset).",
+        "properties": {
+          "blast_moisture_g_nm3": {
+            "description": "Blast moisture, g/Nm\u00b3",
+            "title": "Blast Moisture G Nm3",
+            "type": "number"
+          },
+          "coke_ash_pct": {
+            "description": "Coke ash, dry mass %",
+            "title": "Coke Ash Pct",
+            "type": "number"
+          },
+          "coke_fc_pct": {
+            "description": "Coke fixed carbon, dry mass %",
+            "title": "Coke Fc Pct",
+            "type": "number"
+          },
+          "coke_moisture_pct": {
+            "description": "Coke moisture as charged, mass %",
+            "title": "Coke Moisture Pct",
+            "type": "number"
+          },
+          "coke_vm_pct": {
+            "description": "Coke volatile matter, dry mass %",
+            "title": "Coke Vm Pct",
+            "type": "number"
+          },
+          "eta_co_pct": {
+            "description": "\u03b7CO the oxygen-balance model holds, %",
+            "title": "Eta Co Pct",
+            "type": "number"
+          },
+          "hbt_c": {
+            "description": "Hot-blast temperature, \u00b0C",
+            "title": "Hbt C",
+            "type": "number"
+          },
+          "hm_si_pct": {
+            "description": "Hot-metal Si, mass %",
+            "title": "Hm Si Pct",
+            "type": "number"
+          },
+          "hmt_c": {
+            "description": "Hot-metal temperature, \u00b0C",
+            "title": "Hmt C",
+            "type": "number"
+          },
+          "nut_coke_kg_thm": {
+            "description": "Nut coke as charged, kg/tHM",
+            "title": "Nut Coke Kg Thm",
+            "type": "number"
+          },
+          "o2_per_air": {
+            "description": "Oxygen enrichment on the model basis, Nm\u00b3 O\u2082 per Nm\u00b3 air",
+            "title": "O2 Per Air",
+            "type": "number"
+          },
+          "pci_kg_thm": {
+            "description": "PCI as injected, kg/tHM",
+            "title": "Pci Kg Thm",
+            "type": "number"
+          },
+          "production_t_h": {
+            "description": "Hot-metal production, t/h",
+            "title": "Production T H",
+            "type": "number"
+          },
+          "shaft_efficiency": {
+            "description": "Shaft efficiency the two-zone balance holds, dimensionless",
+            "title": "Shaft Efficiency",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coke_fc_pct",
+          "coke_ash_pct",
+          "coke_vm_pct",
+          "coke_moisture_pct",
+          "pci_kg_thm",
+          "nut_coke_kg_thm",
+          "eta_co_pct",
+          "hm_si_pct",
+          "hmt_c",
+          "hbt_c",
+          "o2_per_air",
+          "blast_moisture_g_nm3",
+          "production_t_h",
+          "shaft_efficiency"
+        ],
+        "title": "ForgeInputs",
+        "type": "object"
+      },
+      "ForgeLevers": {
+        "additionalProperties": false,
+        "description": "FORGE what-if levers (``coke_energy.whatif.run_scenario``): each set field replaces the calibration point's\nvalue; unset fields keep it.",
+        "properties": {
+          "blast_moisture_g_nm3": {
+            "anyOf": [
+              {
+                "maximum": 40.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blast moisture, g/Nm\u00b3",
+            "title": "Blast Moisture G Nm3"
+          },
+          "coke_ash_pct": {
+            "anyOf": [
+              {
+                "maximum": 25.0,
+                "minimum": 5.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke ash, dry mass %",
+            "title": "Coke Ash Pct"
+          },
+          "coke_fc_pct": {
+            "anyOf": [
+              {
+                "maximum": 95.0,
+                "minimum": 70.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke fixed carbon, dry mass %",
+            "title": "Coke Fc Pct"
+          },
+          "coke_moisture_pct": {
+            "anyOf": [
+              {
+                "maximum": 15.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke moisture as charged, mass %",
+            "title": "Coke Moisture Pct"
+          },
+          "coke_vm_pct": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke volatile matter, dry mass %",
+            "title": "Coke Vm Pct"
+          },
+          "eta_co_pct": {
+            "anyOf": [
+              {
+                "maximum": 55.0,
+                "minimum": 30.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top-gas CO utilisation, % (oxygen-balance model; the two-zone model computes it)",
+            "title": "Eta Co Pct"
+          },
+          "hbt_c": {
+            "anyOf": [
+              {
+                "maximum": 1300.0,
+                "minimum": 900.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-blast temperature, \u00b0C",
+            "title": "Hbt C"
+          },
+          "hm_si_pct": {
+            "anyOf": [
+              {
+                "maximum": 1.5,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal Si, mass %",
+            "title": "Hm Si Pct"
+          },
+          "hmt_c": {
+            "anyOf": [
+              {
+                "maximum": 1600.0,
+                "minimum": 1400.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal temperature, \u00b0C",
+            "title": "Hmt C"
+          },
+          "nut_coke_kg_thm": {
+            "anyOf": [
+              {
+                "maximum": 150.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut coke as charged, kg/tHM",
+            "title": "Nut Coke Kg Thm"
+          },
+          "o2_per_air": {
+            "anyOf": [
+              {
+                "maximum": 0.12,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen enrichment on the model basis, Nm\u00b3 O\u2082 per Nm\u00b3 air",
+            "title": "O2 Per Air"
+          },
+          "pci_kg_thm": {
+            "anyOf": [
+              {
+                "maximum": 260.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI as injected, kg/tHM",
+            "title": "Pci Kg Thm"
+          },
+          "production_t_h": {
+            "anyOf": [
+              {
+                "maximum": 130.0,
+                "minimum": 60.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal production, t/h (heat losses held in GJ/h)",
+            "title": "Production T H"
+          },
+          "shaft_efficiency": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.6,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency \u03c9 (two-zone model; the oxygen-balance model holds \u03b7CO), dimensionless",
+            "title": "Shaft Efficiency"
+          }
+        },
+        "title": "ForgeLevers",
+        "type": "object"
+      },
+      "ForgeModelResult": {
+        "description": "One model's answer for a FORGE case.",
+        "properties": {
+          "blast_air_nm3_thm": {
+            "description": "Blast air, Nm\u00b3/tHM",
+            "title": "Blast Air Nm3 Thm",
+            "type": "number"
+          },
+          "coke_kg_thm": {
+            "description": "Coke rate, kg/tHM dry",
+            "title": "Coke Kg Thm",
+            "type": "number"
+          },
+          "coke_wet_kg_thm": {
+            "description": "Coke rate as charged, kg/tHM",
+            "title": "Coke Wet Kg Thm",
+            "type": "number"
+          },
+          "d_coke_kg_thm": {
+            "description": "Coke rate minus the calibration point's (same model), kg/tHM dry",
+            "title": "D Coke Kg Thm",
+            "type": "number"
+          },
+          "direct_reduction_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Degree of direct reduction, % (two-zone)",
+            "title": "Direct Reduction Pct"
+          },
+          "eta_co_pct": {
+            "description": "Top-gas CO utilisation, % (an input of the oxygen-balance model)",
+            "title": "Eta Co Pct",
+            "type": "number"
+          },
+          "fuel_rate_kg_thm": {
+            "description": "Coke as charged + nut coke + PCI, kg/tHM",
+            "title": "Fuel Rate Kg Thm",
+            "type": "number"
+          },
+          "limestone_kg_thm": {
+            "description": "Limestone added to hold the basicity, kg/tHM",
+            "title": "Limestone Kg Thm",
+            "type": "number"
+          },
+          "o2_nm3_thm": {
+            "description": "Enrichment oxygen, Nm\u00b3/tHM",
+            "title": "O2 Nm3 Thm",
+            "type": "number"
+          },
+          "quartzite_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quartzite added to hold the basicity, kg/tHM (two-zone)",
+            "title": "Quartzite Kg Thm"
+          },
+          "shaft_efficiency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency, dimensionless (two-zone)",
+            "title": "Shaft Efficiency"
+          },
+          "slag_al2o3_pct": {
+            "description": "Slag Al\u2082O\u2083, mass %",
+            "title": "Slag Al2O3 Pct",
+            "type": "number"
+          },
+          "slag_cao_sio2": {
+            "description": "Slag CaO/SiO\u2082, dimensionless",
+            "title": "Slag Cao Sio2",
+            "type": "number"
+          },
+          "slag_kg_thm": {
+            "description": "Slag, kg/tHM",
+            "title": "Slag Kg Thm",
+            "type": "number"
+          },
+          "slag_mgo_pct": {
+            "description": "Slag MgO, mass %",
+            "title": "Slag Mgo Pct",
+            "type": "number"
+          },
+          "top_gas_c": {
+            "description": "Top-gas temperature, \u00b0C (an input of the oxygen-balance model)",
+            "title": "Top Gas C",
+            "type": "number"
+          },
+          "top_gas_nm3_thm": {
+            "description": "Top gas, Nm\u00b3/tHM",
+            "title": "Top Gas Nm3 Thm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coke_kg_thm",
+          "coke_wet_kg_thm",
+          "d_coke_kg_thm",
+          "fuel_rate_kg_thm",
+          "eta_co_pct",
+          "top_gas_c",
+          "blast_air_nm3_thm",
+          "o2_nm3_thm",
+          "top_gas_nm3_thm",
+          "slag_kg_thm",
+          "slag_cao_sio2",
+          "slag_al2o3_pct",
+          "slag_mgo_pct",
+          "limestone_kg_thm"
+        ],
+        "title": "ForgeModelResult",
         "type": "object"
       },
       "ForgePrediction": {
@@ -9013,6 +9602,35 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MaterialOption": {
+        "properties": {
+          "id": {
+            "description": "Material id of the engine",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "description": "live: in the latest optimiser run's yard; reference: the yard of 16 Oct 2026",
+            "enum": [
+              "live",
+              "reference"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source"
+        ],
+        "title": "MaterialOption",
         "type": "object"
       },
       "MessageCreate": {
@@ -15681,6 +16299,629 @@
         "title": "StatusZone",
         "type": "object"
       },
+      "StrataBasis": {
+        "properties": {
+          "blast_moisture_g_nm3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blast moisture of the calibration point, g/Nm\u00b3",
+            "title": "Blast Moisture G Nm3"
+          },
+          "calibration": {
+            "description": "day = calibration.nightly's for the what-if day; reference = the shipped Jul-Oct 2026 one",
+            "enum": [
+              "day",
+              "reference"
+            ],
+            "title": "Calibration",
+            "type": "string"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke of the calibration point, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What-if day (IST) of a day calibration",
+            "title": "Day"
+          },
+          "n_shifts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable shifts of the calibration, count",
+            "title": "N Shifts"
+          },
+          "omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency of the calibration, dimensionless",
+            "title": "Omega"
+          },
+          "omega_mode": {
+            "description": "STRATA-\u03c9 (blend-dependent) or Fixed-\u03c9",
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "production_source": {
+            "default": "",
+            "description": "Where the production came from",
+            "title": "Production Source",
+            "type": "string"
+          },
+          "q_lz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower-zone heat loss of the calibration, GJ/h",
+            "title": "Q Lz Gj H"
+          },
+          "q_uz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper-zone heat loss of the calibration, GJ/h",
+            "title": "Q Uz Gj H"
+          },
+          "r_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hydrogen share of the reduction work of the calibration, dimensionless",
+            "title": "R H"
+          },
+          "window": {
+            "description": "Shifts the calibration was made on (IST dates)",
+            "title": "Window",
+            "type": "string"
+          },
+          "yard": {
+            "description": "Yard the plans used: live or reference",
+            "title": "Yard",
+            "type": "string"
+          },
+          "yard_message": {
+            "default": "",
+            "description": "Why the yard fell back to the reference, if it did",
+            "title": "Yard Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calibration",
+          "window",
+          "omega_mode",
+          "yard"
+        ],
+        "title": "StrataBasis",
+        "type": "object"
+      },
+      "StrataCaseInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "blend": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Forced ferrous blend: material id \u2192 share of the wet ferrous burden, %; null = cheapest",
+            "title": "Blend"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptimiserSettings"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Controls and targets instead of the basis"
+          }
+        },
+        "title": "StrataCaseInputs",
+        "type": "object"
+      },
+      "StrataCaseResult": {
+        "properties": {
+          "blast_nm3_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot blast (meter basis), Nm\u00b3/h",
+            "title": "Blast Nm3 H"
+          },
+          "blend": {
+            "description": "Ferrous materials of the plan",
+            "items": {
+              "$ref": "#/components/schemas/WhatIfMaterialRow"
+            },
+            "title": "Blend",
+            "type": "array"
+          },
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Saved case (UUID)",
+            "title": "Case Id"
+          },
+          "certainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "High, Medium, Low or Investigate (STRATA-\u03c9); Held (Fixed-\u03c9)",
+            "title": "Certainty"
+          },
+          "charges_per_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charging rate, charges/h",
+            "title": "Charges Per H"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "coke_sd_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the coke rate (STRATA-\u03c9), kg/tHM dry",
+            "title": "Coke Sd Kg Thm"
+          },
+          "coke_wet_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate as charged, kg/tHM",
+            "title": "Coke Wet Kg Thm"
+          },
+          "cost_gross_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + flux + fuel, Rs/tHM",
+            "title": "Cost Gross Rs Thm"
+          },
+          "cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + flux + fuel \u2212 slag credit, Rs/tHM",
+            "title": "Cost Rs Thm"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the case is infeasible or failed",
+            "title": "Error"
+          },
+          "eta_co_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top-gas CO utilisation, %",
+            "title": "Eta Co Pct"
+          },
+          "facts_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fact-register version the engine used",
+            "title": "Facts Version"
+          },
+          "flux": {
+            "description": "Flux of the plan",
+            "items": {
+              "$ref": "#/components/schemas/WhatIfMaterialRow"
+            },
+            "title": "Flux",
+            "type": "array"
+          },
+          "flux_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flux, Rs/tHM",
+            "title": "Flux Rs Thm"
+          },
+          "forced": {
+            "description": "The ferrous blend was forced (else the cheapest blend)",
+            "title": "Forced",
+            "type": "boolean"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke as charged + nut coke + PCI, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "fuel_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke + nut coke + PCI, Rs/tHM",
+            "title": "Fuel Rs Thm"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "o2_nm3_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen flow, Nm\u00b3/h",
+            "title": "O2 Nm3 H"
+          },
+          "ore_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ferrous burden, Rs/tHM",
+            "title": "Ore Rs Thm"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal production, t/d",
+            "title": "Production T D"
+          },
+          "raft_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RAFT (plant workbook), \u00b0C",
+            "title": "Raft C"
+          },
+          "requested_blend": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The forced shares as given, % of wet ferrous",
+            "title": "Requested Blend"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StrataSettingsUsed"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Controls and targets of the plan"
+          },
+          "shaft_efficiency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency, dimensionless",
+            "title": "Shaft Efficiency"
+          },
+          "slag_al2o3_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag Al\u2082O\u2083, mass %",
+            "title": "Slag Al2O3 Pct"
+          },
+          "slag_cao_sio2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag CaO/SiO\u2082, dimensionless",
+            "title": "Slag Cao Sio2"
+          },
+          "slag_credit_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag sold, Rs/tHM",
+            "title": "Slag Credit Rs Thm"
+          },
+          "slag_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag, kg/tHM",
+            "title": "Slag Kg Thm"
+          },
+          "slag_mgo_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag MgO, mass %",
+            "title": "Slag Mgo Pct"
+          },
+          "status": {
+            "description": "infeasible: the LP has no solution, a band refused the inputs, or a limit stays breached",
+            "enum": [
+              "ok",
+              "infeasible",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "top_gas_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top-gas temperature, \u00b0C",
+            "title": "Top Gas C"
+          },
+          "violations": {
+            "description": "Limits the plan breaches",
+            "items": {
+              "type": "string"
+            },
+            "title": "Violations",
+            "type": "array"
+          },
+          "warnings": {
+            "description": "The engine's warnings",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "forced"
+        ],
+        "title": "StrataCaseResult",
+        "type": "object"
+      },
+      "StrataCaseRun": {
+        "description": "A STRATA case's latest result, as stored with the case.",
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/StrataBasis"
+          },
+          "computed_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Computed At",
+            "type": "string"
+          },
+          "facts_version": {
+            "description": "Fact-register version used (e.g. 1.8, 1.8 + overlay 2)",
+            "title": "Facts Version",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "result": {
+            "$ref": "#/components/schemas/StrataCaseResult"
+          }
+        },
+        "required": [
+          "computed_at",
+          "facts_version",
+          "basis",
+          "result"
+        ],
+        "title": "StrataCaseRun",
+        "type": "object"
+      },
       "StrataOmega": {
         "properties": {
           "count": {
@@ -15719,6 +16960,56 @@
           "cusum"
         ],
         "title": "StrataOmega",
+        "type": "object"
+      },
+      "StrataSettingsUsed": {
+        "properties": {
+          "blast_moisture_g_nm3": {
+            "description": "Blast moisture, g/Nm\u00b3",
+            "title": "Blast Moisture G Nm3",
+            "type": "number"
+          },
+          "hbt_c": {
+            "description": "Hot-blast temperature, \u00b0C",
+            "title": "Hbt C",
+            "type": "number"
+          },
+          "hm_si_pct": {
+            "description": "Hot-metal Si target, mass %",
+            "title": "Hm Si Pct",
+            "type": "number"
+          },
+          "hmt_c": {
+            "description": "Hot-metal temperature target, \u00b0C",
+            "title": "Hmt C",
+            "type": "number"
+          },
+          "nut_coke_kg_thm": {
+            "description": "Nut coke as charged, kg/tHM",
+            "title": "Nut Coke Kg Thm",
+            "type": "number"
+          },
+          "o2_per_air": {
+            "description": "Oxygen enrichment on the model basis, Nm\u00b3 O\u2082 per Nm\u00b3 air",
+            "title": "O2 Per Air",
+            "type": "number"
+          },
+          "pci_kg_thm": {
+            "description": "PCI as injected, kg/tHM",
+            "title": "Pci Kg Thm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "hmt_c",
+          "hm_si_pct",
+          "pci_kg_thm",
+          "nut_coke_kg_thm",
+          "blast_moisture_g_nm3",
+          "hbt_c",
+          "o2_per_air"
+        ],
+        "title": "StrataSettingsUsed",
         "type": "object"
       },
       "StrataSummary": {
@@ -18464,6 +19755,480 @@
         "title": "Violation",
         "type": "object"
       },
+      "WhatIfBasis": {
+        "properties": {
+          "blast_moisture_g_nm3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blast moisture of the calibration point, g/Nm\u00b3",
+            "title": "Blast Moisture G Nm3"
+          },
+          "calibration": {
+            "description": "day = calibration.nightly's for the what-if day; reference = the shipped Jul-Oct 2026 one",
+            "enum": [
+              "day",
+              "reference"
+            ],
+            "title": "Calibration",
+            "type": "string"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke of the calibration point, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What-if day (IST) of a day calibration",
+            "title": "Day"
+          },
+          "n_shifts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable shifts of the calibration, count",
+            "title": "N Shifts"
+          },
+          "omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency of the calibration, dimensionless",
+            "title": "Omega"
+          },
+          "q_lz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower-zone heat loss of the calibration, GJ/h",
+            "title": "Q Lz Gj H"
+          },
+          "q_uz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper-zone heat loss of the calibration, GJ/h",
+            "title": "Q Uz Gj H"
+          },
+          "r_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hydrogen share of the reduction work of the calibration, dimensionless",
+            "title": "R H"
+          },
+          "window": {
+            "description": "Shifts the calibration was made on (IST dates)",
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calibration",
+          "window"
+        ],
+        "title": "WhatIfBasis",
+        "type": "object"
+      },
+      "WhatIfBasisView": {
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForgeBase"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The calibration point the FORGE cases change"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WhatIfBasis"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The calibration asked for; null when it is not stored"
+          },
+          "days": {
+            "description": "What-if days with a stored day calibration (IST), newest first",
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "facts_version": {
+            "description": "Fact-register version in force (e.g. 1.8, 1.8 + overlay 2)",
+            "title": "Facts Version",
+            "type": "string"
+          },
+          "materials": {
+            "description": "Ferrous materials a forced blend can name",
+            "items": {
+              "$ref": "#/components/schemas/MaterialOption"
+            },
+            "title": "Materials",
+            "type": "array"
+          },
+          "max_cases": {
+            "description": "Cases a run compares at most, count",
+            "title": "Max Cases",
+            "type": "integer"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why there is no basis",
+            "title": "Message"
+          }
+        },
+        "required": [
+          "days",
+          "facts_version",
+          "materials",
+          "max_cases"
+        ],
+        "title": "WhatIfBasisView",
+        "type": "object"
+      },
+      "WhatIfCaseSave": {
+        "additionalProperties": false,
+        "properties": {
+          "forge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForgeLevers"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FORGE levers (kind forge)"
+          },
+          "kind": {
+            "enum": [
+              "forge",
+              "strata"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the case",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StrataCaseInputs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Forced blend and controls (kind strata)"
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "WhatIfCaseSave",
+        "type": "object"
+      },
+      "WhatIfCaseView": {
+        "properties": {
+          "created_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "forge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForgeLevers"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FORGE levers (kind forge)"
+          },
+          "forge_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForgeCaseRun"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest FORGE result; null before the first run"
+          },
+          "id": {
+            "description": "Case id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "forge",
+              "strata"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StrataCaseInputs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Forced blend and controls (kind strata)"
+          },
+          "strata_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StrataCaseRun"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest STRATA result; null before the first run"
+          },
+          "updated_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "owner",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WhatIfCaseView",
+        "type": "object"
+      },
+      "WhatIfMaterialRow": {
+        "properties": {
+          "id": {
+            "description": "Material id",
+            "title": "Id",
+            "type": "string"
+          },
+          "kg_thm": {
+            "description": "Wet mass, kg/tHM",
+            "title": "Kg Thm",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "share_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the wet ferrous burden, % (ferrous only)",
+            "title": "Share Pct"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kg_thm"
+        ],
+        "title": "WhatIfMaterialRow",
+        "type": "object"
+      },
+      "WhatIfRunRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "calibration": {
+            "default": "day",
+            "description": "day = calibration.nightly's for the what-if day; reference = the shipped Jul-Oct 2026 one",
+            "enum": [
+              "day",
+              "reference"
+            ],
+            "title": "Calibration",
+            "type": "string"
+          },
+          "case_ids": {
+            "description": "The user's saved cases, in column order",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Case Ids",
+            "type": "array"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What-if day (IST); default: the latest stored day calibration",
+            "title": "Day"
+          },
+          "kind": {
+            "enum": [
+              "forge",
+              "strata"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "omega_mode": {
+            "default": "strata",
+            "description": "STRATA cases: STRATA-\u03c9 or Fixed-\u03c9",
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "maximum": 3000.0,
+                "minimum": 1500.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA cases: hot-metal production, t/d (default: the regime median)",
+            "title": "Production T D"
+          },
+          "yard": {
+            "default": "live",
+            "description": "STRATA cases: live or reference yard",
+            "enum": [
+              "live",
+              "reference"
+            ],
+            "title": "Yard",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "case_ids"
+        ],
+        "title": "WhatIfRunRequest",
+        "type": "object"
+      },
+      "WhatIfRunSubmitted": {
+        "properties": {
+          "duplicate": {
+            "description": "True when an identical run was already queued or running",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          }
+        },
+        "required": [
+          "job",
+          "duplicate"
+        ],
+        "title": "WhatIfRunSubmitted",
+        "type": "object"
+      },
       "WorkerStatus": {
         "properties": {
           "name": {
@@ -19414,6 +21179,366 @@
           }
         },
         "summary": "Approve or reject a version",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/whatif/basis": {
+      "get": {
+        "description": "The stored what-if days, the calibration asked for with its FORGE calibration point (two balances, a few ms),\nthe register version in force and the ferrous materials of the live and the reference yard.",
+        "operationId": "admin_basis",
+        "parameters": [
+          {
+            "description": "day or reference",
+            "in": "query",
+            "name": "calibration",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "description": "day or reference",
+              "enum": [
+                "day",
+                "reference"
+              ],
+              "title": "Calibration",
+              "type": "string"
+            }
+          },
+          {
+            "description": "What-if day (IST); default: the latest stored",
+            "in": "query",
+            "name": "day",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What-if day (IST); default: the latest stored",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatIfBasisView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "What-if days, the calibration point and materials",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/whatif/cases": {
+      "get": {
+        "description": "The signed-in administrator's cases, most recently changed first, each with its latest result.",
+        "operationId": "admin_list_cases",
+        "parameters": [
+          {
+            "description": "Only FORGE or only STRATA cases",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "forge",
+                    "strata"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only FORGE or only STRATA cases",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WhatIfCaseView"
+                  },
+                  "title": "Response Admin List Cases",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "The user's saved what-if cases",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "admin_create_case",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatIfCaseSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatIfCaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Save a new what-if case",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/whatif/cases/{case_id}": {
+      "delete": {
+        "operationId": "admin_delete_case",
+        "parameters": [
+          {
+            "description": "Case id (UUID)",
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "description": "Case id (UUID)",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Delete a saved what-if case",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "description": "A change of the inputs clears the case's result; a new name keeps it.",
+        "operationId": "admin_update_case",
+        "parameters": [
+          {
+            "description": "Case id (UUID)",
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "description": "Case id (UUID)",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatIfCaseSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatIfCaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Change a saved what-if case",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/whatif/runs": {
+      "post": {
+        "description": "Queue ``whatif.forge`` or ``whatif.strata`` for up to four of the user's cases; follow it with\n``GET /api/jobs/{id}`` or the ``job.progress`` / ``job.done`` events, then read the cases (their results).",
+        "operationId": "admin_start_run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatIfRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatIfRunSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Run saved what-if cases",
         "tags": [
           "admin"
         ]
