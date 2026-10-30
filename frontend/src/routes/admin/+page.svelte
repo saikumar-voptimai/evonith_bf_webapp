@@ -2,30 +2,36 @@
 	import { resolve } from '$app/paths';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Panel from '#lib/components/Panel.svelte';
-	import { ADMIN_VIEWS } from '#lib/nav.ts';
+	import { ADMIN_ROWS } from '#lib/nav.ts';
 </script>
 
-<Panel
-	title="Admin views"
-	note="Every change made in these views is written to the audit log, with the values before and after."
->
-	<ul class="views">
-		{#each ADMIN_VIEWS as view (view.href)}
-			<li>
-				<a class="card" href={resolve(view.href)}>
-					<span class="icon" aria-hidden="true"><view.icon size={20} strokeWidth={1.75} /></span>
-					<span class="text">
-						<span class="title">{view.title}</span>
-						<span class="summary">{view.summary}</span>
-					</span>
-					<span class="go" aria-hidden="true"><ArrowRight size={18} strokeWidth={1.75} /></span>
-				</a>
-			</li>
-		{/each}
-	</ul>
-</Panel>
+<div class="rows">
+	{#each ADMIN_ROWS as row (row.label)}
+		<Panel title={row.label} note={row.note}>
+			<ul class="views">
+				{#each row.items as view (view.href)}
+					<li>
+						<a class="card" href={resolve(view.href)}>
+							<span class="icon" aria-hidden="true"><view.icon size={20} strokeWidth={1.75} /></span>
+							<span class="text">
+								<span class="title">{view.title}</span>
+								<span class="summary">{view.summary}</span>
+							</span>
+							<span class="go" aria-hidden="true"><ArrowRight size={18} strokeWidth={1.75} /></span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</Panel>
+	{/each}
+</div>
 
 <style>
+	.rows {
+		display: flex;
+		flex-direction: column;
+		gap: var(--vo-space-5);
+	}
 	.views {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
