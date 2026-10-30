@@ -60,10 +60,12 @@ const VIEWPORTS = [
 	{ name: '1366x768', width: 1366, height: 768 },
 	{ name: '768x1024', width: 768, height: 1024 }
 ];
+// `/` redirects to /status (SV-7.2, #325) and is checked below, not listed here: every entry must land on its path.
 const ROUTES = [
-	{ name: 'live-twin', path: '/' },
-	{ name: 'trace', path: '/trace' },
-	{ name: 'strata', path: '/strata' },
+	{ name: 'models', path: '/models' },
+	{ name: 'live-twin', path: '/admin/live-twin' },
+	{ name: 'trace', path: '/admin/trace' },
+	{ name: 'strata', path: '/admin/strata' },
 	{ name: 'catalogue', path: '/dev/components' },
 	{ name: 'admin', path: '/admin' },
 	{ name: 'admin-audit', path: '/admin/audit' },
@@ -74,7 +76,7 @@ const ROUTES = [
 	{ name: 'admin-validation', path: '/admin/validation' },
 	{ name: 'not-found', path: '/no-such-page' },
 	// Reads not mocked: the page's error state (shell, headings, error panels) is audited.
-	{ name: 'forge', path: '/forge', mocked: false },
+	{ name: 'forge', path: '/admin/forge', mocked: false },
 	{ name: 'status', path: '/status', mocked: false },
 	{ name: 'reports', path: '/reports', mocked: false },
 	{ name: 'furnacemind', path: '/furnacemind', mocked: false },
@@ -404,12 +406,32 @@ try {
 		expect((await page.evaluate(() => document.activeElement?.id)) === 'main', 'focus did not reach main');
 	});
 
-	await check('rail marks the current page', async () => {
+	await check('rail marks the current page; the Admin section marks the current model view', async () => {
 		const current = await page.locator('nav[aria-label="Main"] [aria-current="page"]').count();
 		expect(current === 0, 'catalogue is not a navigation item, nothing should be current');
-		await page.goto(`${base}/forge`, { waitUntil: 'networkidle' });
-		const label = await page.locator('nav[aria-label="Main"] [aria-current="page"]').innerText();
-		expect(label.trim() === 'FORGE', `current item is "${label}"`);
+		await page.goto(`${base}/models`, { waitUntil: 'networkidle' });
+		let label = await page.locator('nav[aria-label="Main"] [aria-current="page"]').innerText();
+		expect(label.trim() === 'Models', `current item is "${label}"`);
+		await page.goto(`${base}/admin/forge`, { waitUntil: 'networkidle' });
+		label = await page.locator('nav[aria-label="Main"] [aria-current="page"]').innerText();
+		expect(label.trim() === 'Admin', `current rail item on a model view is "${label}"`);
+		const view = await page.locator('nav[aria-label="Admin pages"] [aria-current="page"]').innerText();
+		expect(view.trim() === 'FORGE', `current admin view is "${view}"`);
+		// Row labels are upper-cased by CSS: compare the text content, not innerText.
+		const rows = await page.locator('nav[aria-label="Admin pages"] .row-label').allTextContents();
+		expect(
+			rows.map((r) => r.trim()).join('|') === 'Admin views|Model views',
+			`admin sub-navigation rows are ${JSON.stringify(rows)}`
+		);
+		await page.goto(`${base}/dev/components`, { waitUntil: 'networkidle' });
+		await settle(page);
+	});
+
+	await check('the root opens Furnace status (SV-7.2, #325)', async () => {
+		await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+		await page.waitForURL('**/status');
+		const title = await page.locator('header.header h1').innerText();
+		expect(title.trim() === 'Furnace status', `landing page title is "${title}"`);
 		await page.goto(`${base}/dev/components`, { waitUntil: 'networkidle' });
 		await settle(page);
 	});
@@ -566,7 +588,7 @@ try {
 		await settle(page);
 		const width = await page.locator('.rail-slot').evaluate((el) => el.getBoundingClientRect().width);
 		expect(width <= 70, `collapsed rail is ${width}px wide`);
-		expect(await page.getByRole('link', { name: 'STRATA' }).isVisible(), 'STRATA link not visible');
+		expect(await page.getByRole('link', { name: 'Models' }).isVisible(), 'Models link not visible');
 		await page.screenshot({ path: join(OUT, 'rail-collapsed-1366x768.png') });
 		await axe(page, 'rail-collapsed@1366x768');
 		await page.getByRole('button', { name: 'Expand navigation' }).click();
@@ -574,7 +596,7 @@ try {
 
 	await check('navigation drawer replaces the rail below 1024 px', async () => {
 		await page.setViewportSize({ width: 768, height: 1024 });
-		await page.goto(`${base}/trace`, { waitUntil: 'networkidle' });
+		await page.goto(`${base}/admin/trace`, { waitUntil: 'networkidle' });
 		await settle(page);
 		expect(!(await page.locator('.rail-slot').isVisible()), 'rail visible at 768 px');
 		await page.getByRole('button', { name: 'Open navigation' }).click();
@@ -583,9 +605,46 @@ try {
 		await settle(page);
 		await axe(page, 'nav-drawer@768x1024');
 		await page.screenshot({ path: join(OUT, 'nav-drawer-768x1024.png') });
-		await dialog.getByRole('link', { name: 'STRATA' }).click();
-		await page.waitForURL('**/strata');
+		await dialog.getByRole('link', { name: 'Models' }).click();
+		await page.waitForURL('**/models');
 		await dialog.waitFor({ state: 'hidden' });
+	});
+
+	await check('a user sees the six client pages in the rail and no model view (SV-7.2, #325)', async () => {
+		auth.role = 'user';
+		try {
+			await page.setViewportSize({ width: 1366, height: 768 });
+			await page.goto(`${base}/status`, { waitUntil: 'networkidle' });
+			await settle(page);
+			const rail = page.locator('nav[aria-label="Main"] .groups');
+			const labels = (await rail.getByRole('link').allInnerTexts()).map((t) => t.trim());
+			const want = [
+				'Furnace status',
+				'Shift reports',
+				'FurnaceMind',
+				'Blend Mix Optimiser',
+				'Blend Simulator',
+				'Models'
+			];
+			expect(labels.join('|') === want.join('|'), `a user's rail is ${JSON.stringify(labels)}`);
+			// Group labels are upper-cased by CSS: compare the text content, not innerText.
+			const groups = (await rail.locator('.group-label').allTextContents()).map((t) => t.trim());
+			expect(
+				groups.join('|') === 'Furnace|Optimisers|Digital twin',
+				`a user's groups are ${JSON.stringify(groups)}`
+			);
+			await page.goto(`${base}/admin/trace`, { waitUntil: 'networkidle' });
+			await settle(page);
+			const text = await page.locator('main').innerText();
+			expect(
+				text.includes('The Admin pages are for administrators.'),
+				`a model view shows a user "${text.slice(0, 80)}"`
+			);
+			await axe(page, 'model-view-403@1366x768');
+			await page.screenshot({ path: join(OUT, 'model-view-403-1366x768.png') });
+		} finally {
+			auth.role = 'admin';
+		}
 	});
 
 	await check(
@@ -656,8 +715,8 @@ try {
 	await check('signed-out visit goes to the sign-in page and back', async () => {
 		auth.role = null;
 		await page.setViewportSize({ width: 1366, height: 768 });
-		await page.goto(`${base}/strata`, { waitUntil: 'networkidle' });
-		await page.waitForURL('**/login?next=%2Fstrata');
+		await page.goto(`${base}/admin/strata`, { waitUntil: 'networkidle' });
+		await page.waitForURL('**/login?next=%2Fadmin%2Fstrata');
 		await settle(page);
 		for (const vp of VIEWPORTS) {
 			await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -679,14 +738,14 @@ try {
 		);
 		await page.getByLabel('Password', { exact: true }).fill('correct-horse');
 		await page.getByRole('button', { name: 'Sign in' }).click();
-		await page.waitForURL('**/strata');
-		const current = await page.locator('nav[aria-label="Main"] [aria-current="page"]').innerText();
+		await page.waitForURL('**/admin/strata');
+		const current = await page.locator('nav[aria-label="Admin pages"] [aria-current="page"]').innerText();
 		expect(current.trim() === 'STRATA', `after sign-in the current page is "${current}"`);
 	});
 
 	await check('the Admin pages refuse a supervisor', async () => {
 		auth.role = 'supervisor';
-		await page.goto(`${base}/trace`, { waitUntil: 'networkidle' });
+		await page.goto(`${base}/status`, { waitUntil: 'networkidle' });
 		expect(
 			(await page.getByRole('link', { name: 'Admin' }).count()) === 0,
 			'Admin link shown to a supervisor'
@@ -704,7 +763,7 @@ try {
 
 	await check('sign-out ends the session and shows the sign-in page', async () => {
 		auth.role = 'admin';
-		await page.goto(`${base}/forge`, { waitUntil: 'networkidle' });
+		await page.goto(`${base}/admin/forge`, { waitUntil: 'networkidle' });
 		await page.getByRole('button', { name: /account menu/ }).click();
 		await page.getByRole('button', { name: 'Sign out' }).click();
 		await page.waitForURL('**/login');

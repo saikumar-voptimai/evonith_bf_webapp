@@ -109,11 +109,11 @@ shadowed cards, and readouts use Inter's tabular figures rather than a monospace
 ┌ sidebar 260 ──────────┬ header: Group / Page title     [C] ▮▮▮▮▮▮▯▯ 22:00–06:00 39 min left   ✓ Connected   05:20 IST ┐
 │ ▣ V-OptimAIse    [⇤]  │         one-line subtitle                                                                    │
 │   BF-02, Evonith Steel│ ──────────────────────────────────────────────────────────────────────────────────────────── │
-│ DIGITAL TWIN          │                                                                                              │
-│ ▌Live Twin (olive)    │  page: panels on the canvas, 32 px gutter                                                    │
-│  TRACE, FORGE, STRATA │                                                                                              │
 │ FURNACE               │                                                                                              │
+│ ▌Furnace status(olive)│  page: panels on the canvas, 32 px gutter                                                    │
+│  Shift reports, F'Mind│                                                                                              │
 │ OPTIMISERS            │                                                                                              │
+│ DIGITAL TWIN: Models  │                                                                                              │
 │ ADMIN (administrators)│                                                                                              │
 │ ───────────────────── │                                                                                              │
 │  Streamlit pages ↗    │ ──────────────────────────────────────────────────────────────────────────────────────────── │
@@ -126,9 +126,12 @@ The shift band is the strongest element of the header: the shift letter on yello
 the time left. Below 1024 px the sidebar becomes a navigation drawer opened from the menu button of the header; the
 subtitle and the shift window are dropped. When the sections do not fit the height (1366×768 laptops), the list
 scrolls and fades at the edge that has more items; focused items scroll clear of the fade. The collapse control sits
-in the product row. The Admin group is shown to administrators only; the section lists its views (`ADMIN_VIEWS`) in
-its own sub-navigation (`shell/SectionNav`), one route per view (`routes/admin/<view>/`). Navigation, page titles,
-subtitles and planned-page placeholders read `src/lib/nav.ts`. The footer names the release the
+in the product row. A user's rail (SV-7.2, #325) is Furnace (Furnace status, the landing page `/` redirects to; Shift
+reports; FurnaceMind), Optimisers (Blend Mix Optimiser, Blend Simulator) and Digital twin with the one entry Models.
+The Admin group is shown to administrators only; the section lists its views in rows (`ADMIN_ROWS`: the admin views,
+then the model views Live Twin, TRACE, FORGE and STRATA) in its own sub-navigation (`shell/SectionNav`, one labelled
+line per row), one route per view (`routes/admin/<view>/`). Navigation, page titles, subtitles and planned-page
+placeholders read `src/lib/nav.ts`. The footer names the release the
 twin-api runs and the SPA build of the tab (`shell/VersionInfo`, `GET /api/version`, SV-6.4); when a newer build is
 installed it adds a warning and a Reload button, and the next in-app navigation loads the page in full.
 
