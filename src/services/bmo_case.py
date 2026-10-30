@@ -762,6 +762,9 @@ class CaseSources:
     charged: Callable[..., tuple[ChargedCokePrediction, dict[str, Any]]]
     model_service: Callable[[], FuelUnitCostModelService]
     warnings: list[str] = field(default_factory=list)  # about the sources themselves (e.g. operator inputs from YAML)
+    #: The live-inputs snapshot the sources were read from (``services.live_inputs.LiveInputsRef`` as JSON, SV-7.3):
+    #: its ``snapshot_id`` is stored with the run so the run's inputs can be matched with the panel's values.
+    live_inputs: Mapping[str, Any] | None = None
 
 
 @dataclass
@@ -822,6 +825,8 @@ class ComposedCase:
     pellet_confirmed: bool
     warnings: list[str] = field(default_factory=list)
     tables: dict[str, pd.DataFrame] = field(default_factory=dict)
+    #: ``CaseSources.live_inputs``: the live-inputs snapshot the case was built from (SV-7.3).
+    live_inputs: Mapping[str, Any] | None = None
 
     @property
     def pellet_blocked(self) -> bool:
@@ -1003,6 +1008,7 @@ def compose_case(sources: CaseSources, inputs: CaseInputs) -> ComposedCase:
         pellet_confirmed=bool(inputs.pellet_inputs_confirmed),
         warnings=warnings,
         tables={"ore": ore_table, "flux": flux_table, "fuel_ash": fuel_ash_table, "dust": dust_table},
+        live_inputs=sources.live_inputs,
     )
 
 
@@ -1145,13 +1151,15 @@ def run_lp(sources: CaseSources, composed: ComposedCase, inputs: CaseInputs) -> 
 def live_sources(cfg: Mapping[str, Any] | None = None, *, now: pd.Timestamp | None = None) -> CaseSources:
     """The sources of a live run (worker): Neon / InfluxDB through the provider, the hourly dataset (fetched when
     stale, as page 9 does), the operator inputs in force (twin store, else the YAML file, as page 9 since SV-3.1), the
-    Si and charged-coke ledgers (issued here only while no worker issues them)."""
+    Si and charged-coke ledgers (issued here only while no worker issues them).
+
+    Stock, chemistry and the operator inputs come through ``services.live_inputs`` (SV-7.3): the provider is the one
+    on the shared TTL reads, and ``live_inputs`` is the snapshot (id and as-of times) the run was built from."""
 
     import copy
 
-    from data.bmo import EvonithBmoContextProvider
     from data.coke_energy import sources as dataset_sources
-    from services import forecasts, operator_inputs
+    from services import forecasts, live_inputs, operator_inputs
     from utils.bmo.charged_coke.bmo import _built_at
 
     cfg = copy.deepcopy(dict(forecasts.bmo_config() if cfg is None else cfg))
@@ -1165,8 +1173,14 @@ def live_sources(cfg: Mapping[str, Any] | None = None, *, now: pd.Timestamp | No
             log.warning("Hourly dataset refresh failed, using the local copy: %s", outcome["error"])
         status = dataset_sources.static_dataset_status(data_cfg)
     static_path = str(status["path"])
-    inputs = operator_inputs.load_current(yaml_path=preferences_path(cfg))
+    prefs_path = preferences_path(cfg)
+    inputs = live_inputs.operator_inputs_read(yaml_path=prefs_path).record
     fallback = operator_inputs.fallback_warning(inputs.provenance())
+    snapshot_ref, _ = live_inputs.snapshot_ref(
+        chemistry_mode=cfg.get("chemistry_mode"),
+        chemistry_window_days=cfg.get("chemistry_window_days"),
+        yaml_path=prefs_path,
+    )
     live_tags: dict[str, Any] = {}
 
     def tags() -> Mapping[str, float]:  # one read per run, as the page's 10-min cache
@@ -1199,7 +1213,7 @@ def live_sources(cfg: Mapping[str, Any] | None = None, *, now: pd.Timestamp | No
 
     return CaseSources(
         cfg=cfg,
-        provider=EvonithBmoContextProvider(),
+        provider=live_inputs.provider(),
         preferences=inputs.inputs,
         now=clock,
         fuel_rates_static=lambda: read_recent_fuel_rates_static(static_path),
@@ -1213,6 +1227,7 @@ def live_sources(cfg: Mapping[str, Any] | None = None, *, now: pd.Timestamp | No
         charged=charged,
         model_service=lambda: fuel_model_service(cfg),
         warnings=[fallback] if fallback else [],
+        live_inputs=snapshot_ref.model_dump(mode="json") if snapshot_ref is not None else None,
     )
 
 

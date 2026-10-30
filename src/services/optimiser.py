@@ -2,7 +2,9 @@
 
 * Yard: the Blend Mix Optimiser's provider (Neon chemistry + stock) and the operator's saved inputs (the version in
   force, ``services.operator_inputs``; a new version reads the yard again); if that fails (no database connection),
-  the reference yard of 16 Oct 2026 shipped with the engine, clearly labelled.
+  the reference yard of 16 Oct 2026 shipped with the engine, clearly labelled. Since SV-7.3 the provider is the one on
+  the shared live-input reads (``services.live_inputs``): a live case takes the live-inputs snapshot first, the yard is
+  composed from the same reads and keyed on them, and the case carries the snapshot's id.
 * Calibration and regime: from the Coke Energy pipeline result (``services.coke_energy``), so the optimiser and the
   Coke Energy views calibrate on the same shifts; the shipped Jul-Oct 2026 calibration if the pipeline cannot run.
 * Runs: keyed on every input, so repeating a request does not re-solve.
@@ -25,9 +27,10 @@ from typing import Any
 
 from config.config_loader import load_config
 from data.burden_engine.calibration import CalibrationInfo, fallback_calibration, live_calibration
-from data.burden_engine.inputs import build_engine_inputs, load_charged_blend, load_yard
+from data.burden_engine.inputs import build_engine_inputs, load_charged_blend
 from services import coke_energy as ce
-from services import operator_inputs
+from services import live_inputs, operator_inputs
+from services.live_inputs import load_yard  # the yard on the shared live-input reads (SV-7.3)
 from utils.burden_engine.engine import REFERENCE_INPUTS_PATH, Engine, Limits, Settings
 from utils.burden_engine.facts import load_register
 from utils.burden_engine.scenarios import (
@@ -129,15 +132,19 @@ def read_yard_for(cfg_json: str, inputs_token: str) -> tuple[dict[str, Any], str
 
 
 @memo(ttl_seconds=1800)
-def cached_yard(cfg_json: str, nonce: int, inputs_token: str = "") -> tuple[dict[str, Any], str, str]:
+def cached_yard(
+    cfg_json: str, nonce: int, inputs_token: str = "", live_key: str = ""
+) -> tuple[dict[str, Any], str, str]:
     return read_yard_for(cfg_json, inputs_token)
 
 
-def yard(cfg_json: str, nonce: int, inputs_token: str = "") -> tuple[dict[str, Any], str, str]:
+def yard(cfg_json: str, nonce: int, inputs_token: str = "", live_key: str = "") -> tuple[dict[str, Any], str, str]:
     """``read_yard`` kept 30 min per ``inputs_token`` (``operator_inputs.token()``: a new version of the operator
-    inputs is read at once); a yard whose operator inputs do not fit the token is used once and not kept."""
+    inputs is read at once) and ``live_key`` (``LiveInputsView.yard_key``: the stock, chemistry and operator-input
+    reads of the live-inputs snapshot, so a yard is recomposed when a read refreshed, SV-7.3); a yard whose operator
+    inputs do not fit the token is used once and not kept."""
     try:
-        return cached_yard(cfg_json, nonce, inputs_token)
+        return cached_yard(cfg_json, nonce, inputs_token, live_key)
     except operator_inputs.TokenMismatch as mismatch:
         return mismatch.value
 
@@ -341,6 +348,9 @@ class Case:
     today_window: str = ""
     #: What the request set instead of the defaults, in the API's names (SV-3.2).
     overrides: dict[str, Any] = field(default_factory=dict)
+    #: The live-inputs snapshot the live yard was built from (``services.live_inputs.LiveInputsRef`` as JSON, SV-7.3);
+    #: None on the reference yard.
+    live_inputs: dict[str, Any] | None = None
 
     def summary(self) -> dict[str, Any]:
         """The case as stored with the run (``optimiser_run.inputs``): settings, limits, target and sources."""
@@ -367,6 +377,7 @@ class Case:
             regime=self.regime,
             yard=self.yard,
             overrides=self.overrides,
+            live_inputs=self.live_inputs,
         )
 
 
@@ -490,10 +501,15 @@ def default_case(
     l_over = engine_overrides(limits, LIMITS_FIELDS, "limit")
     cfg = page_config(config_mtime("burden_optimiser.yml")) if cfg is None else cfg
     reg = load_register()
+    live_ref = None
     if yard_basis == "reference":
         yard_rows, yard_source, yard_message = reference_yard(cfg), "reference", "The reference yard was requested."
-    else:
-        yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce, operator_inputs.token())
+    else:  # the live-inputs snapshot first (SV-7.3): the yard is composed from the same reads and keyed on them
+        yard_cfg = dict(cfg.get("yard", {}))
+        live_ref, live_key = live_inputs.snapshot_ref(
+            chemistry_mode=yard_cfg.get("chemistry_mode"), chemistry_window_days=yard_cfg.get("chemistry_window_days")
+        )
+        yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce, operator_inputs.token(), live_key)
     info, chosen = calibration_info or case_calibration(cfg, nonce, calibration_basis)
     regime = info.regime
     engine_mode = MODES[mode]
@@ -593,6 +609,7 @@ def default_case(
             settings={k: v for k, v in dict(settings or {}).items() if v is not None},
             limits={k: v for k, v in dict(limits or {}).items() if v is not None},
         ),
+        live_inputs=live_ref.model_dump(mode="json") if live_ref is not None and yard_source == "live" else None,
     )
 
 

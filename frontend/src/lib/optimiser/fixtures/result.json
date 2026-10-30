@@ -713,7 +713,8 @@
       "today_window": "from 15 Oct 06:00 to 16 Oct 06:00 IST",
       "yard_message": "The reference yard was requested.",
       "operator_inputs": {},
-      "today": null
+      "today": null,
+      "live_inputs": null
     },
     "yard": {
       "materials": [
@@ -1423,7 +1424,8 @@
       "today_window": "from 15 Oct 06:00 to 16 Oct 06:00 IST",
       "yard_message": "The reference yard was requested.",
       "operator_inputs": {},
-      "today": null
+      "today": null,
+      "live_inputs": null
     },
     "yard": {
       "materials": [

@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from services.live_inputs import LiveInputsRef
 from utils.burden_engine.scenarios import binding_table, limit_label, limit_labels, plan_sentence, plan_tiles
 
 
@@ -292,6 +293,13 @@ class RunCase(BaseModel):
         default_factory=dict, description="Version of the operator inputs the yard was built with (source, version)"
     )
     today: TodayPoint | None = Field(None, description="Today's operating point (none on the shipped calibration)")
+    live_inputs: LiveInputsRef | None = Field(
+        None,
+        description=(
+            "The live-inputs snapshot the live yard was built from (SV-7.3, GET /api/inputs/live); null on the "
+            "reference yard or for a run stored before the snapshot existed"
+        ),
+    )
 
 
 class YardMaterial(BaseModel):
@@ -457,6 +465,11 @@ def case_view(inputs: Mapping[str, Any]) -> RunCase | None:
         yard_message=_text(inputs.get("yard_message")),
         operator_inputs=dict(inputs.get("operator_inputs") or {}),
         today=_today(inputs.get("regime")),
+        live_inputs=(
+            LiveInputsRef.model_validate(inputs["live_inputs"])
+            if isinstance(inputs.get("live_inputs"), Mapping)
+            else None
+        ),
     )
 
 

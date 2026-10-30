@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from services.events import ChargedCokeForecastData, SiForecastData
 from services.jobs import BmoRunParams
+from services.live_inputs import LiveInputsRef
 
 if TYPE_CHECKING:
     from services import bmo_case
@@ -178,6 +179,13 @@ class BmoRunResult(BaseModel):
     )
     computed_at: datetime = Field(..., description="UTC")
     seconds: float = Field(..., description="Run time, s")
+    live_inputs: LiveInputsRef | None = Field(
+        None,
+        description=(
+            "The live-inputs snapshot the run was built from (SV-7.3): its id equals GET /api/inputs/live's while the "
+            "stock, composition, process and operator-input data are the same; null for a run on given sources"
+        ),
+    )
 
 
 class BmoSiForecastView(BaseModel):
@@ -519,6 +527,7 @@ def run_result(run: bmo_case.LpRun, *, computed_at: datetime, seconds: float) ->
         pellet_issues=[str(i) for i in composed.pellet_issues],
         computed_at=computed_at,
         seconds=round(seconds, 2),
+        live_inputs=LiveInputsRef.model_validate(composed.live_inputs) if composed.live_inputs else None,
     )
 
 

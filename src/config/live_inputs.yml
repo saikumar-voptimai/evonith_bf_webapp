@@ -1,0 +1,33 @@
+# Live inputs of the optimisers (SV-7.3, #326): one TTL cache per group, an as-of time per group.
+#
+# services.live_inputs reads this file at import. ttl_s: how long one upstream read serves every reader of the process
+# (the API, the worker, Streamlit). stale_after_min: age of the data (its as-of time, not the read) from which the group
+# is flagged stale; null = never stale by age (the group is then stale only when its source failed). GET /api/inputs/live
+# echoes both, so the SPA holds no copy.
+live_inputs:
+  groups:
+    stock:
+      label: Stock
+      source: Neon offline_feed.raw_material_stock (latest entry per material)
+      ttl_s: 300
+      # Stock is entered shift-wise (8-hourly): one missed shift and a little slack.
+      stale_after_min: 720
+    rm_composition:
+      label: Raw-material composition
+      source: Neon ore / sinter chemistry (page 9's chemistry snapshot)
+      ttl_s: 600
+      # Lab samples arrive per lot; the latest sample used before a charge may be days old. 7 days.
+      stale_after_min: 10080
+    process_conditions:
+      label: Process conditions
+      source: InfluxDB process_params through the furnace-status snapshot (one per 10-s slot)
+      ttl_s: 10
+      # furnace_status.yml -> settings.stale_after_minutes: a reading is not shown after this age.
+      stale_after_min: 15
+    operator_inputs:
+      label: Operator inputs
+      source: twin.operator_inputs (version in force), bmo_operator_inputs.yml as fallback
+      # services.operator_inputs.TOKEN_TTL_S: a saved version is picked up within this time.
+      ttl_s: 10
+      # A version is in force until the next save: stale only while the YAML file stands in for a failed store.
+      stale_after_min: null
