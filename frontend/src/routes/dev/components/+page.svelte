@@ -36,6 +36,8 @@ The values are illustrative and are not plant data.
 	import ScatterChart from '#lib/charts/ScatterChart.svelte';
 	import TimeSeriesChart from '#lib/charts/TimeSeriesChart.svelte';
 	import FurnaceSchematic, { type SchematicReading } from '#lib/furnace/FurnaceSchematic.svelte';
+	import LiveInputsStrip from '#lib/inputs/LiveInputsStrip.svelte';
+	import { sampleLiveInputs } from '#lib/inputs/sample.ts';
 	import { formatNumber, formatQuantity } from '#lib/format/number.ts';
 	import { JobTracker } from '#lib/live/jobs.svelte.ts';
 	import { hasRole, session } from '#lib/session/session.svelte.ts';
@@ -334,6 +336,20 @@ The values are illustrative and are not plant data.
 						<li><Freshness at={minutesAgo(190)} /></li>
 						<li><Freshness at={null} /></li>
 					</ul>
+				</div>
+			</Panel>
+		</div>
+
+		<div class="span-12">
+			<Panel
+				title="Live inputs"
+				note="The four input groups of the optimisers with their as-of times (SV-7.3); SV-7.4 places the strip on the Blend Mix Optimiser"
+			>
+				<div class="stack">
+					<LiveInputsStrip inputs={sampleLiveInputs(loadedAt)} />
+					<LiveInputsStrip inputs={sampleLiveInputs(loadedAt, { staleStock: true, processDown: true })} />
+					<LiveInputsStrip inputs={null} loading />
+					<LiveInputsStrip inputs={null} error={sampleError} onretry={() => {}} />
 				</div>
 			</Panel>
 		</div>

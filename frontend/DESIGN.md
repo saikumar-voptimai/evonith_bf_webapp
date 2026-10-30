@@ -158,6 +158,7 @@ mark and the headline.
 | `DateRange`                                                        | IST calendar days with presets                                                                                                 |
 | `EmptyState`, `ErrorState`, `Skeleton`                             | Empty, failed and loading states                                                                                               |
 | `Button`, `Formula`, `PlannedPage`                                 | Actions; chemical subscripts; highlighted placeholder of a page in preparation                                                 |
+| `inputs/LiveInputsStrip` (`src/lib/inputs/`)                       | The four live-input groups of the optimisers, each with a `Freshness` on its as-of time and a Stale chip (SV-7.3)              |
 
 ## 6. Charts and schematic (`src/lib/charts/`, `src/lib/furnace/`)
 

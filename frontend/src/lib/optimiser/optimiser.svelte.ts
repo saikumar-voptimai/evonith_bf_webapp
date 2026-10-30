@@ -8,6 +8,7 @@
  * worker in the same runs table; the card reads `/api/optimiser/latest` on the job's `job.done`, so a run started here
  * appears there.
  */
+import { cached } from '../api/cache.ts';
 import { api, ApiError, type Schemas } from '../api/client.ts';
 import { jobErrorText, JobTracker } from '../live/jobs.svelte.ts';
 import { live as defaultStream, type LiveStream } from '../live/stream.svelte.ts';
@@ -30,6 +31,8 @@ import {
 export const RUN_KIND = 'optimiser.run';
 export const COMMENTARY_KIND = 'optimiser.commentary';
 export const RUNS_LIMIT = 30;
+/** The reference (plant bands, facts, assumptions) changes with a release or a fact version: shared for 5 min. */
+export const REFERENCE_TTL_MS = 5 * 60_000;
 
 export interface OptimiserApi {
 	runs(limit: number): Promise<RunSummary[]>;
@@ -57,7 +60,11 @@ export const optimiserApi: OptimiserApi = {
 			.data!;
 	},
 	async reference() {
-		return (await api.GET('/api/optimiser/reference')).data!;
+		return cached(
+			'optimiser/reference',
+			REFERENCE_TTL_MS,
+			async () => (await api.GET('/api/optimiser/reference')).data!
+		);
 	},
 	async inputs() {
 		return (await api.GET('/api/operator-inputs')).data!;
