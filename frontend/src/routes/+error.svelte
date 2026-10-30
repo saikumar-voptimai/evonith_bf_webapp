@@ -6,6 +6,7 @@
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import Panel from '#lib/components/Panel.svelte';
+	import { HOME_PATH } from '#lib/nav.ts';
 </script>
 
 <div class="error-page">
@@ -14,11 +15,11 @@
 			<EmptyState
 				icon={Compass}
 				title={page.url.pathname}
-				message="The address does not match a page of the console. Open a page from the navigation, or go to the Live Twin."
+				message="The address does not match a page of the console. Open a page from the navigation, or go to Furnace status."
 				compact
 			>
 				{#snippet action()}
-					<a class="home" href={resolve('/')}>Go to the Live Twin</a>
+					<a class="home" href={resolve(HOME_PATH)}>Go to Furnace status</a>
 				{/snippet}
 			</EmptyState>
 		</Panel>
@@ -31,7 +32,7 @@
 				compact
 			>
 				{#snippet action()}
-					<a class="home" href={resolve('/')}>Go to the Live Twin</a>
+					<a class="home" href={resolve(HOME_PATH)}>Go to Furnace status</a>
 				{/snippet}
 			</EmptyState>
 		</Panel>

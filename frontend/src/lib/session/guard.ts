@@ -1,5 +1,6 @@
 /**
- * Route guards (SV-0.4, #273): every page needs a session except the sign-in page; the Admin pages need the admin
+ * Route guards (SV-0.4, #273): every page needs a session except the sign-in page; the Admin pages, the model views
+ * among them (`/admin/live-twin`, `/admin/trace`, `/admin/forge`, `/admin/strata`; SV-7.2, #325), need the admin
  * role. The API enforces the same roles on its routes; the guards only keep the pages consistent with it.
  */
 import { hasRole, type Role } from './session.svelte.ts';

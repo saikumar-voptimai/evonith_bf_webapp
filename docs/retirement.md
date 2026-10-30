@@ -29,8 +29,8 @@ One row per page of `src/config/page_registry.py`; `tests/test_page_registry.py`
 | Material Balance | none (not ported) | — | — | — | — | not retired | — |
 | FurnaceMind | `/furnacemind`, `/reports` | G2 | pending | pending | pending | not retired | — |
 | Blend Mix Optimiser | `/bmo` | G3 | pending | pending | pending | not retired | — |
-| Coke Energy Model | `/`, `/trace`, `/forge`, `/admin/calibration` | G1, G2 | pending | pending | pending | not retired | — |
-| Burden & Fuel Optimiser | `/optimiser`, `/strata`, `/admin/what-if`, `/admin/burnt-vs-charged`, `/admin/validation` | G3 | pending | pending | pending | not retired | — |
+| Coke Energy Model | `/models`, `/admin/live-twin`, `/admin/trace`, `/admin/forge`, `/admin/calibration` | G1, G2 | pending | pending | pending | not retired | — |
+| Burden & Fuel Optimiser | `/optimiser`, `/admin/strata`, `/admin/what-if`, `/admin/burnt-vs-charged`, `/admin/validation` | G3 | pending | pending | pending | not retired | — |
 | Feedback | none (not ported) | — | — | — | — | not retired | — |
 
 "Shadow use from" is the first IST day the shift team works on the Svelte page with the Streamlit page beside it;
@@ -83,7 +83,8 @@ the name and date of the shift-team approval. "Deleted on" is retirement + 30 da
 
 ### Coke Energy Model (`custom_pages/10_Coke_Energy.py`)
 
-- **Replacement:** `/` (Live Twin, SV-1.9 #289), `/trace` (SV-1.10 #290), `/forge` (SV-1.11 #291),
+- **Replacement:** `/models` (Models, SV-7.6 #329, for the operator) and the model views under Admin (SV-7.2 #325):
+  `/admin/live-twin` (Live Twin, SV-1.9 #289), `/admin/trace` (SV-1.10 #290), `/admin/forge` (SV-1.11 #291);
   `/admin/calibration` (SV-4.6 #309).
 - **Parity evidence:** `tests/test_twin_window.py::test_windows_on_completed_shifts_equal_the_pipeline`,
   `tests/test_twin_parity_script.py::test_windows_of_the_last_days_equal_the_pipeline`,
@@ -99,8 +100,9 @@ the name and date of the shift-team approval. "Deleted on" is retirement + 30 da
 
 ### Burden & Fuel Optimiser (`custom_pages/11_Burden_Fuel_Optimiser.py`)
 
-- **Replacement:** `/optimiser` (SV-3.2 #299, SV-3.3 #300), `/strata` (SV-1.12 #292), `/admin/what-if` (SV-4.3
-  #306), `/admin/burnt-vs-charged` (SV-4.4 #307), `/admin/validation` (SV-4.5 #308).
+- **Replacement:** `/optimiser` (Blend Simulator, SV-3.2 #299, SV-3.3 #300), `/admin/strata` (SV-1.12 #292, under
+  Admin since SV-7.2 #325), `/admin/what-if` (SV-4.3 #306), `/admin/burnt-vs-charged` (SV-4.4 #307),
+  `/admin/validation` (SV-4.5 #308).
 - **Parity evidence (G3, 16 Oct 2026 case report):**
   `tests/test_api_optimiser.py::test_the_recorded_result_equals_page_11`,
   `tests/test_api_optimiser.py::test_step2_reproduces_cases_1_and_2_of_the_case_report`,
