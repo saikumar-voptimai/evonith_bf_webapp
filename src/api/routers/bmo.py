@@ -6,6 +6,11 @@ composing the case reads Neon, InfluxDB and the hourly dataset, so it is a worke
 (the /bmo page opens on the newest, SV-3.6). The forecasts are read from the worker's ledgers (SV-1.5) as page 9 reads
 them; nothing is issued here. Snapshots are the runs saved on page 9, without the plant data frozen with them. Units
 are in the schemas (t/day, kg/tHM, Rs/tHM, Rs/t, mass %); times UTC unless IST.
+
+SV-7.4 (#327) adds the plan board: ``GET /api/bmo/plan`` names the burden engine's Step 2 runs the page shows (the
+shift's scheduled STRATA-ω run, the latest run, the implied production of the latest Step 1 run) and
+``POST /api/bmo/plan/runs`` queues ``optimiser.run`` with Fixed-ω from the page's constraints (``services.bmo_plan``);
+the plan itself is read from ``GET /api/optimiser/runs/{run_id}/result``.
 """
 
 from __future__ import annotations
@@ -21,8 +26,11 @@ from pydantic import BaseModel, Field, ValidationError
 from api.auth import require_role
 from api.errors import ApiError
 from api.live import job_store
-from services import bmo_views
+from api.store import twin_store
+from data.twin.repositories import TwinStore
+from services import bmo_plan, bmo_views
 from services.auth import Principal
+from services.bmo_plan import BmoPlanBoard, BmoPlanRunParams
 from services.bmo_views import (
     BmoChargedCokeView,
     BmoRunResult,
@@ -35,6 +43,7 @@ from services.jobs import BmoRunParams, JobRecord, JobStore
 router = APIRouter(prefix="/api/bmo", tags=["bmo"], dependencies=[Depends(require_role("user"))])
 
 RUN_KIND = "bmo.run"
+PLAN_RUN_KIND = "optimiser.run"
 
 
 class BmoRunSubmitted(BaseModel):
@@ -89,6 +98,38 @@ async def get_run(job_id: str, jobs: Annotated[JobStore, Depends(job_store)]) ->
     if job is None or job.kind != RUN_KIND:
         raise ApiError(404, "No Blend Mix Optimiser run with this id.")
     return _lookup(job)
+
+
+# ---------------------------------------------------------------------------------------- plan (SV-7.4, #327)
+@router.get("/plan", response_model=BmoPlanBoard, summary="The Blend Mix Optimiser plan board")
+async def plan_board(store: Annotated[TwinStore, Depends(twin_store)]) -> BmoPlanBoard:
+    """The Step 2 runs the page opens on: the implied production (latest ok Step 1 run), the shift's scheduled STRATA-ω
+    run of the last day, the latest ok Step 2 run of any kind and the last day's Step 2 runs, each with the decision
+    that applies. The plan of a run is GET /api/optimiser/runs/{run_id}/result; a decision is
+    POST /api/optimiser/runs/{run_id}/decision (supervisor)."""
+    return await asyncio.to_thread(bmo_plan.board, store)
+
+
+@router.post(
+    "/plan/runs", response_model=BmoRunSubmitted, status_code=202, summary="Run the plan from the page's constraints"
+)
+async def start_plan_run(
+    request: Request,
+    jobs: Annotated[JobStore, Depends(job_store)],
+    body: Annotated[BmoPlanRunParams | None, Body()] = None,
+) -> BmoRunSubmitted:
+    """Queue ``optimiser.run`` with Fixed-ω on the day's calibration and the live yard: Step 2 at the given production
+    (default: the current one) with page 9's slag window and charging limits, or Step 1 to recompute the implied
+    production (the shift's scheduled run refines it). Follow the job with GET /api/optimiser/runs/{job id} or the
+    ``job.done`` event. A request equal to a queued or running one returns it."""
+    principal: Principal = request.state.principal
+    params = bmo_plan.run_params(body or BmoPlanRunParams())
+    try:
+        record, duplicate = await jobs.submit(PLAN_RUN_KIND, params.model_dump(), principal.username)
+    except ValidationError as exc:
+        errors = [{**e, "loc": ("body", *e["loc"])} for e in exc.errors(include_url=False)]
+        raise RequestValidationError(jsonable_encoder(errors)) from exc
+    return BmoRunSubmitted(job=record, duplicate=duplicate)
 
 
 @router.get("/forecasts/si", response_model=BmoSiForecastView, summary="Hot-metal Si forecast")

@@ -664,6 +664,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bmo/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Blend Mix Optimiser plan board
+         * @description The Step 2 runs the page opens on: the implied production (latest ok Step 1 run), the shift's scheduled STRATA-ω
+         *     run of the last day, the latest ok Step 2 run of any kind and the last day's Step 2 runs, each with the decision
+         *     that applies. The plan of a run is GET /api/optimiser/runs/{run_id}/result; a decision is
+         *     POST /api/optimiser/runs/{run_id}/decision (supervisor).
+         */
+        get: operations["bmo_plan_board"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bmo/plan/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the plan from the page's constraints
+         * @description Queue ``optimiser.run`` with Fixed-ω on the day's calibration and the live yard: Step 2 at the given production
+         *     (default: the current one) with page 9's slag window and charging limits, or Step 1 to recompute the implied
+         *     production (the shift's scheduled run refines it). Follow the job with GET /api/optimiser/runs/{job id} or the
+         *     ``job.done`` event. A request equal to a queued or running one returns it.
+         */
+        post: operations["bmo_start_plan_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bmo/runs": {
         parameters: {
             query?: never;
@@ -2506,6 +2552,39 @@ export interface components {
             sulphur_pct?: number | null;
         };
         /**
+         * BmoImpliedProduction
+         * @description The production implied by the latest Step 1 run: the cheapest production level under the day's limits.
+         */
+        BmoImpliedProduction: {
+            /**
+             * Finished At
+             * Format: date-time
+             * @description UTC
+             */
+            finished_at: string;
+            /**
+             * Omega Mode
+             * @description strata: the shift's run; fixed: a Recompute
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /**
+             * Production T D
+             * @description Hot metal of the cheapest level, t/d
+             */
+            production_t_d: number;
+            /**
+             * Run Id
+             * @description Run id (UUID)
+             */
+            run_id: string;
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "schedule" | "user";
+        };
+        /**
          * BmoOreOverride
          * @description The operator's edit of one ore row of page 9's ore table (None keeps the table's value).
          */
@@ -2587,6 +2666,157 @@ export interface components {
              * @description Stock, t wet
              */
             stock_t?: number | null;
+        };
+        /**
+         * BmoPlanBoard
+         * @description The runs the Blend Mix Optimiser page opens on.
+         */
+        BmoPlanBoard: {
+            /** @description Latest ok Step 1 run; null while there is none */
+            implied?: components["schemas"]["BmoImpliedProduction"] | null;
+            /** @description Latest ok Step 2 run of any kind */
+            latest_run?: components["schemas"]["BmoPlanRun"] | null;
+            /**
+             * Read At
+             * Format: date-time
+             * @description UTC
+             */
+            read_at: string;
+            /**
+             * Recent
+             * @description Step 2 runs of the last day, newest first
+             */
+            recent?: components["schemas"]["BmoPlanRun"][];
+            /** @description Latest ok scheduled STRATA-ω Step 2 run of the last 24 h */
+            shift_run?: components["schemas"]["BmoPlanRun"] | null;
+            /**
+             * Slag Bands
+             * @description Plant p5–p95 bands of B2, T-basicity and IB4
+             */
+            slag_bands?: components["schemas"]["BmoSlagBand"][];
+        };
+        /** BmoPlanDecision */
+        BmoPlanDecision: {
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Decided At
+             * Format: date-time
+             * @description UTC
+             */
+            decided_at: string;
+            /** Decided By */
+            decided_by: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accepted" | "rejected";
+            /**
+             * Shift Key
+             * @description Shift of the decision (YYYY-MM-DD_A, IST date)
+             */
+            shift_key?: string | null;
+        };
+        /**
+         * BmoPlanRun
+         * @description A Step 2 run the page may show: its headline and the decision that applies.
+         */
+        BmoPlanRun: {
+            /**
+             * Certainty
+             * @description High, Medium, Low or Investigate (STRATA-ω); null for Fixed-ω
+             */
+            certainty?: string | null;
+            /**
+             * Coke Kg Thm
+             * @description Coke rate of the plan, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Cost Rs Thm
+             * @description Ore + flux + fuel − slag credit of the plan, Rs/tHM
+             */
+            cost_rs_thm?: number | null;
+            /** @description The decision that applies (the latest) */
+            decision?: components["schemas"]["BmoPlanDecision"] | null;
+            /**
+             * Finished At
+             * Format: date-time
+             * @description UTC
+             */
+            finished_at: string;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke (wet) + nut coke + PCI of the plan, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Id
+             * @description Run id (UUID)
+             */
+            id: string;
+            /**
+             * Job Id
+             * @description Job that produced the run
+             */
+            job_id?: string | null;
+            /**
+             * Omega Mode
+             * @description strata: the shift's scheduled run; fixed: a page run
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /**
+             * Production T D
+             * @description Hot metal of the plan, t/d
+             */
+            production_t_d?: number | null;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * Saving Rs Thm
+             * @description Cost of today's charged blend minus the plan's, Rs/tHM
+             */
+            saving_rs_thm?: number | null;
+            /**
+             * Started At
+             * Format: date-time
+             * @description UTC
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "infeasible" | "failed";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "schedule" | "user";
+        };
+        /**
+         * BmoPlanRunParams
+         * @description A run from the page's constraints: Step 2 at the chosen production (default), or Step 1 to recompute the
+         *     implied production. Both run with Fixed-ω on the day's calibration and the live yard; the limits are page 9's slag
+         *     window and charging capacity in the API's names; unset fields keep the saved operator inputs and the register.
+         */
+        BmoPlanRunParams: {
+            /** @description Slag window and charging limits instead of the saved ones */
+            limits?: components["schemas"]["OptimiserLimits"] | null;
+            /**
+             * Mode
+             * @description step2: the plan at a production; step1: implied
+             * @default step2
+             * @enum {string}
+             */
+            mode: "step2" | "step1";
+            /**
+             * Production T D
+             * @description Step 2 hot-metal target, t/d (default: the current production)
+             */
+            production_t_d?: number | null;
         };
         /**
          * BmoPlanView
@@ -16993,6 +17223,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BmoSiForecastView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_plan_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoPlanBoard"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_start_plan_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BmoPlanRunParams"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoRunSubmitted"];
                 };
             };
             /** @description Client error (problem+json) */

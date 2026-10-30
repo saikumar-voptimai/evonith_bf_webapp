@@ -1454,6 +1454,53 @@
         "title": "BmoHmChemistry",
         "type": "object"
       },
+      "BmoImpliedProduction": {
+        "description": "The production implied by the latest Step 1 run: the cheapest production level under the day's limits.",
+        "properties": {
+          "finished_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "omega_mode": {
+            "description": "strata: the shift's run; fixed: a Recompute",
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "production_t_d": {
+            "description": "Hot metal of the cheapest level, t/d",
+            "title": "Production T D",
+            "type": "number"
+          },
+          "run_id": {
+            "description": "Run id (UUID)",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "trigger": {
+            "enum": [
+              "schedule",
+              "user"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "production_t_d",
+          "run_id",
+          "omega_mode",
+          "trigger",
+          "finished_at"
+        ],
+        "title": "BmoImpliedProduction",
+        "type": "object"
+      },
       "BmoOreOverride": {
         "additionalProperties": false,
         "description": "The operator's edit of one ore row of page 9's ore table (None keeps the table's value).",
@@ -1641,6 +1688,324 @@
           "quantity_t_d"
         ],
         "title": "BmoOreRow",
+        "type": "object"
+      },
+      "BmoPlanBoard": {
+        "description": "The runs the Blend Mix Optimiser page opens on.",
+        "properties": {
+          "implied": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoImpliedProduction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest ok Step 1 run; null while there is none"
+          },
+          "latest_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoPlanRun"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest ok Step 2 run of any kind"
+          },
+          "read_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "recent": {
+            "description": "Step 2 runs of the last day, newest first",
+            "items": {
+              "$ref": "#/components/schemas/BmoPlanRun"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "shift_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoPlanRun"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest ok scheduled STRATA-\u03c9 Step 2 run of the last 24 h"
+          },
+          "slag_bands": {
+            "description": "Plant p5\u2013p95 bands of B2, T-basicity and IB4",
+            "items": {
+              "$ref": "#/components/schemas/BmoSlagBand"
+            },
+            "title": "Slag Bands",
+            "type": "array"
+          }
+        },
+        "required": [
+          "read_at"
+        ],
+        "title": "BmoPlanBoard",
+        "type": "object"
+      },
+      "BmoPlanDecision": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "decided_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "shift_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift of the decision (YYYY-MM-DD_A, IST date)",
+            "title": "Shift Key"
+          }
+        },
+        "required": [
+          "decision",
+          "decided_by",
+          "decided_at"
+        ],
+        "title": "BmoPlanDecision",
+        "type": "object"
+      },
+      "BmoPlanRun": {
+        "description": "A Step 2 run the page may show: its headline and the decision that applies.",
+        "properties": {
+          "certainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "High, Medium, Low or Investigate (STRATA-\u03c9); null for Fixed-\u03c9",
+            "title": "Certainty"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate of the plan, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + flux + fuel \u2212 slag credit of the plan, Rs/tHM",
+            "title": "Cost Rs Thm"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoPlanDecision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The decision that applies (the latest)"
+          },
+          "finished_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke (wet) + nut coke + PCI of the plan, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "id": {
+            "description": "Run id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that produced the run",
+            "title": "Job Id"
+          },
+          "omega_mode": {
+            "description": "strata: the shift's scheduled run; fixed: a page run",
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot metal of the plan, t/d",
+            "title": "Production T D"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "saving_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cost of today's charged blend minus the plan's, Rs/tHM",
+            "title": "Saving Rs Thm"
+          },
+          "started_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "infeasible",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "enum": [
+              "schedule",
+              "user"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "requested_by",
+          "omega_mode",
+          "status",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "BmoPlanRun",
+        "type": "object"
+      },
+      "BmoPlanRunParams": {
+        "additionalProperties": false,
+        "description": "A run from the page's constraints: Step 2 at the chosen production (default), or Step 1 to recompute the\nimplied production. Both run with Fixed-\u03c9 on the day's calibration and the live yard; the limits are page 9's slag\nwindow and charging capacity in the API's names; unset fields keep the saved operator inputs and the register.",
+        "properties": {
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptimiserLimits"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag window and charging limits instead of the saved ones"
+          },
+          "mode": {
+            "default": "step2",
+            "description": "step2: the plan at a production; step1: implied",
+            "enum": [
+              "step2",
+              "step1"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "maximum": 3000.0,
+                "minimum": 1500.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Step 2 hot-metal target, t/d (default: the current production)",
+            "title": "Production T D"
+          }
+        },
+        "title": "BmoPlanRunParams",
         "type": "object"
       },
       "BmoPlanView": {
@@ -29795,6 +30160,107 @@
           }
         },
         "summary": "Hot-metal Si forecast",
+        "tags": [
+          "bmo"
+        ]
+      }
+    },
+    "/api/bmo/plan": {
+      "get": {
+        "description": "The Step 2 runs the page opens on: the implied production (latest ok Step 1 run), the shift's scheduled STRATA-\u03c9\nrun of the last day, the latest ok Step 2 run of any kind and the last day's Step 2 runs, each with the decision\nthat applies. The plan of a run is GET /api/optimiser/runs/{run_id}/result; a decision is\nPOST /api/optimiser/runs/{run_id}/decision (supervisor).",
+        "operationId": "bmo_plan_board",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BmoPlanBoard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "The Blend Mix Optimiser plan board",
+        "tags": [
+          "bmo"
+        ]
+      }
+    },
+    "/api/bmo/plan/runs": {
+      "post": {
+        "description": "Queue ``optimiser.run`` with Fixed-\u03c9 on the day's calibration and the live yard: Step 2 at the given production\n(default: the current one) with page 9's slag window and charging limits, or Step 1 to recompute the implied\nproduction (the shift's scheduled run refines it). Follow the job with GET /api/optimiser/runs/{job id} or the\n``job.done`` event. A request equal to a queued or running one returns it.",
+        "operationId": "bmo_start_plan_run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BmoPlanRunParams"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BmoRunSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Run the plan from the page's constraints",
         "tags": [
           "bmo"
         ]
