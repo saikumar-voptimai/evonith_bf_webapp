@@ -98,10 +98,12 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 		border-color: var(--vo-cream-line);
 		box-shadow: none;
 	}
+	/* The side (age, actions) wraps under the heading in a narrow column instead of squeezing the title. */
 	header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: flex-start;
-		gap: var(--vo-space-4);
+		gap: var(--vo-space-3) var(--vo-space-4);
 		padding: 18px var(--vo-space-5) 0;
 	}
 	.icon {
@@ -115,7 +117,7 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 		color: var(--vo-accent-icon);
 	}
 	.heading {
-		flex: 1;
+		flex: 1 1 12rem;
 		min-width: 0;
 	}
 	.eyebrow {
@@ -143,6 +145,7 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 		flex-wrap: wrap;
 		justify-content: flex-end;
 		gap: var(--vo-space-3);
+		margin-left: auto;
 		min-height: 24px;
 	}
 	.actions {

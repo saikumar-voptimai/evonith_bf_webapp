@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.request_context import get_request_id
@@ -116,11 +116,33 @@ def install_error_handlers(app: FastAPI) -> None:
         log.warning("database not reachable for %s: %s", request.url.path, str(exc).splitlines()[0][:300])
         return problem(503, request, detail="The twin store is not reachable now; try again shortly.")
 
+    @app.exception_handler(ProgrammingError)
+    async def _store_not_migrated(request: Request, exc: ProgrammingError) -> JSONResponse:
+        # A database without the twin tables (the migrations were not applied) is a deployment state, not a
+        # server fault: say so instead of a 500 with a request id. Other programming errors stay 500.
+        if not missing_twin_tables(exc):
+            raise exc
+        log.error("twin tables missing for %s: %s", request.url.path, str(exc).splitlines()[0][:300])
+        return problem(503, request, title="Twin tables not installed", detail=NOT_MIGRATED_DETAIL)
+
     # Unhandled exceptions are converted in RequestContextMiddleware (inside the request context), see
     # internal_error_body below.
 
 
 INTERNAL_DETAIL = "The server could not complete the request. Quote the request id."
+NOT_MIGRATED_DETAIL = (
+    "The twin database has no twin tables yet: run `alembic -n twin upgrade head` against BF_TWIN_DB_URL "
+    "(else DATABASE_URL), see docs/deployment_handover.md."
+)
+#: PostgreSQL SQLSTATE of an undefined table and of an invalid schema name (the `twin` schema does not exist).
+MISSING_TABLE_SQLSTATES = frozenset({"42P01", "3F000"})
+
+
+def missing_twin_tables(exc: ProgrammingError) -> bool:
+    """True when the error says a table or the schema does not exist (psycopg2 ``pgcode``, psycopg ``sqlstate``)."""
+    orig = exc.orig
+    code = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+    return code in MISSING_TABLE_SQLSTATES or type(orig).__name__ in {"UndefinedTable", "InvalidSchemaName"}
 
 
 def internal_error_body(path: str) -> bytes:

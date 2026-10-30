@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from sqlalchemy.exc import ProgrammingError
 
 from api.errors import ApiError
 from api.main import create_app
@@ -40,6 +41,15 @@ def app():
     @application.get("/api/_test/conflict")
     def conflict() -> dict:
         raise ApiError(409, "Another run is in progress.")
+
+    @application.get("/api/_test/no-table")
+    def no_table() -> dict:
+        orig = type("UndefinedTable", (Exception,), {"pgcode": "42P01"})("relation twin.shift_report does not exist")
+        raise ProgrammingError("SELECT ... FROM twin.shift_report", {}, orig)
+
+    @application.get("/api/_test/bad-sql")
+    def bad_sql() -> dict:
+        raise ProgrammingError("SELEC 1", {}, type("SyntaxError_", (Exception,), {"pgcode": "42601"})("syntax error"))
 
     return application
 
@@ -100,6 +110,16 @@ def test_unhandled_error_hides_the_exception_and_logs_it(client, caplog) -> None
     assert "secret" not in r.text
     assert r.json()["request_id"] == "req-500"
     assert any("secret connection string" in (rec.exc_text or "") for rec in caplog.records)
+
+
+def test_missing_twin_tables_are_a_503_that_names_the_migration(client) -> None:
+    r = client.get("/api/_test/no-table")
+    assert r.status_code == 503 and r.headers["content-type"].startswith("application/problem+json")
+    body = r.json()
+    assert body["title"] == "Twin tables not installed" and "alembic -n twin upgrade head" in body["detail"]
+    # Any other SQL programming error stays an internal error without the statement text.
+    r = client.get("/api/_test/bad-sql")
+    assert r.status_code == 500 and "SELEC" not in r.text
 
 
 def test_spa_fallback_serves_files_and_200_html(tmp_path) -> None:

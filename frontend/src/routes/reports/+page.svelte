@@ -69,6 +69,13 @@
 				onretry={() => view.id && void reports.loadDetail(view.id)}
 				retrying={reports.detailState.loading}
 			/>
+		{:else if view.id === null && reports.list === null && reports.listState.error}
+			<Panel title="No report" icon={ClipboardList}>
+				<EmptyState
+					title="The reports could not be loaded"
+					message="Retry from the list; a report opens here once the list is back."
+				/>
+			</Panel>
 		{:else if view.id || reports.list === null}
 			<Panel title="Loading the report" icon={ClipboardList} busy>
 				<Skeleton variant="block" height="420px" label={null} />
