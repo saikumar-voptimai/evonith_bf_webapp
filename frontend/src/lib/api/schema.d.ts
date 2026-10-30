@@ -960,6 +960,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inputs/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live inputs of the optimisers
+         * @description Stock (latest entry per material), raw-material composition (page 9's chemistry snapshot), process conditions
+         *     (the furnace-status snapshot's blast, oxygen, steam, PCI, fuel-rate, top-gas, RAFT and production readings with
+         *     the plan day's blast moisture) and the operator inputs in force, each with its as-of time, stale flag, source and
+         *     limits; ``snapshot_id`` hashes the four as-of times.
+         */
+        get: operations["inputs_live"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -2158,6 +2181,25 @@ export interface components {
              */
             unit: string;
         };
+        /** BlastMoisture */
+        BlastMoisture: {
+            /**
+             * Day
+             * Format: date
+             * @description Plan day (IST)
+             */
+            day: string;
+            /**
+             * Source
+             * @description Open-Meteo daily RH, its day-of-year mean, or the monthly table
+             */
+            source: string;
+            /**
+             * Value G Nm3
+             * @description Blast moisture of the plan day, g/Nm³
+             */
+            value_g_nm3: number;
+        };
         /** BlendChangeView */
         BlendChangeView: {
             /**
@@ -2850,6 +2892,8 @@ export interface components {
              */
             errors?: string[];
             fuel_rates: components["schemas"]["BmoFuelRates"];
+            /** @description The live-inputs snapshot the run was built from (SV-7.3): its id equals GET /api/inputs/live's while the stock, composition, process and operator-input data are the same; null for a run on given sources */
+            live_inputs?: components["schemas"]["LiveInputsRef"] | null;
             /**
              * Live Si Pct
              * @description Hot-metal Si of the Si forecast the run used, mass %
@@ -6782,6 +6826,19 @@ export interface components {
              */
             pci_kg_thm: number;
         };
+        /** GroupLimits */
+        GroupLimits: {
+            /**
+             * Stale After Min
+             * @description Age of the data from which the group is stale; null: never stale by age, min
+             */
+            stale_after_min?: number | null;
+            /**
+             * Ttl S
+             * @description How long one upstream read serves every reader of the process, s
+             */
+            ttl_s: number;
+        };
         /** Health */
         Health: {
             /**
@@ -8515,6 +8572,71 @@ export interface components {
              */
             window?: string[];
         };
+        /**
+         * LiveInputsRef
+         * @description What a run stores about the live inputs it was built from.
+         */
+        LiveInputsRef: {
+            /**
+             * As Of
+             * @description As-of time per group (UTC)
+             */
+            as_of: {
+                [key: string]: string | null;
+            };
+            /**
+             * Chemistry Mode
+             * @description Chemistry mode of the composition group
+             */
+            chemistry_mode: string;
+            /**
+             * Chemistry Window Days
+             * @description Chemistry window of the composition group, d
+             */
+            chemistry_window_days: number;
+            /**
+             * Read At
+             * Format: date-time
+             * @description When the snapshot was composed (UTC)
+             */
+            read_at: string;
+            /**
+             * Snapshot Id
+             * @description Hash of the four as-of times (16 hex digits)
+             */
+            snapshot_id: string;
+            /**
+             * Stale
+             * @description Groups stale at the snapshot
+             */
+            stale?: string[];
+        };
+        /**
+         * LiveInputsView
+         * @description The four live-input groups read once per TTL, with one snapshot id.
+         */
+        LiveInputsView: {
+            operator_inputs: components["schemas"]["OperatorInputsGroup"];
+            process_conditions: components["schemas"]["ProcessGroup"];
+            /**
+             * Read At
+             * Format: date-time
+             * @description When the snapshot was composed (UTC)
+             */
+            read_at: string;
+            rm_composition: components["schemas"]["RmGroup"];
+            /**
+             * Snapshot Id
+             * @description Hash of the four as-of times (16 hex digits): equal data, equal id
+             */
+            snapshot_id: string;
+            /**
+             * Stale
+             * @description Keys of the groups that are stale
+             */
+            stale?: string[];
+            stock: components["schemas"]["StockGroup"];
+        };
         /** LivePoint */
         LivePoint: {
             calibration?: components["schemas"]["LiveCalibration"] | null;
@@ -9118,6 +9240,81 @@ export interface components {
             model_inputs?: components["schemas"]["SlagChargingInputs"] | null;
             /** @description Ferrous materials: availability, prices, bounds */
             ore_editor?: components["schemas"]["OreEditorInputs"] | null;
+        };
+        /** OperatorInputsGroup */
+        OperatorInputsGroup: {
+            /**
+             * Age Min
+             * @description Age of the data at the response, min
+             */
+            age_min?: number | null;
+            /**
+             * As Of
+             * @description Time of the data (UTC): the newest stock entry, the newest lab sample used, the newest reading, the start of the version in force; null without data
+             */
+            as_of?: string | null;
+            /**
+             * Author
+             * @description User who saved the version
+             */
+            author?: string | null;
+            /**
+             * Error
+             * @description The failure of the last read; the values are then a fallback
+             */
+            error?: string | null;
+            /** @description The document in force (units in the field descriptions) */
+            inputs: components["schemas"]["OperatorInputsDocument"];
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "stock" | "rm_composition" | "process_conditions" | "operator_inputs";
+            /** Label */
+            label: string;
+            /** @description The group's TTL and stale limit (config/live_inputs.yml) */
+            limits: components["schemas"]["GroupLimits"];
+            /**
+             * Origin
+             * @description seed, streamlit or api
+             */
+            origin?: string | null;
+            /**
+             * Read At
+             * Format: date-time
+             * @description When the source was read (UTC); readers within ttl_s share this read
+             */
+            read_at: string;
+            /**
+             * Reason
+             * @description Why the YAML file is in force
+             */
+            reason?: string | null;
+            /**
+             * Source
+             * @description Where the values come from (table, version or file)
+             */
+            source: string;
+            /**
+             * Stale
+             * @description Older than stale_after_min, without data, or the last read failed
+             */
+            stale: boolean;
+            /**
+             * Stale Reason
+             * @description Why the group is stale
+             */
+            stale_reason?: string | null;
+            /**
+             * Version
+             * @description Version of twin.operator_inputs; null for the YAML file, count
+             */
+            version?: number | null;
+            /**
+             * Warnings
+             * @description Warnings of the read
+             */
+            warnings?: string[];
         };
         /** OperatorInputsSaved */
         OperatorInputsSaved: {
@@ -10145,6 +10342,112 @@ export interface components {
              */
             type: string;
         };
+        /** ProcessGroup */
+        ProcessGroup: {
+            /**
+             * Age Min
+             * @description Age of the data at the response, min
+             */
+            age_min?: number | null;
+            /**
+             * As Of
+             * @description Time of the data (UTC): the newest stock entry, the newest lab sample used, the newest reading, the start of the version in force; null without data
+             */
+            as_of?: string | null;
+            /** @description The plan day's blast moisture; null if unread */
+            blast_moisture?: components["schemas"]["BlastMoisture"] | null;
+            /**
+             * Error
+             * @description The failure of the last read; the values are then a fallback
+             */
+            error?: string | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "stock" | "rm_composition" | "process_conditions" | "operator_inputs";
+            /** Label */
+            label: string;
+            /** @description The group's TTL and stale limit (config/live_inputs.yml) */
+            limits: components["schemas"]["GroupLimits"];
+            /**
+             * Parameters
+             * @description PROCESS_KEYS, display order
+             */
+            parameters?: components["schemas"]["ProcessValue"][];
+            /**
+             * Read At
+             * Format: date-time
+             * @description When the source was read (UTC); readers within ttl_s share this read
+             */
+            read_at: string;
+            /**
+             * Source
+             * @description Where the values come from (table, version or file)
+             */
+            source: string;
+            /**
+             * Stale
+             * @description Older than stale_after_min, without data, or the last read failed
+             */
+            stale: boolean;
+            /**
+             * Stale Reason
+             * @description Why the group is stale
+             */
+            stale_reason?: string | null;
+            /**
+             * Telemetry
+             * @description Telemetry of the status snapshot
+             * @enum {string}
+             */
+            telemetry: "live" | "partial" | "offline";
+            /**
+             * Warnings
+             * @description Warnings of the read
+             */
+            warnings?: string[];
+        };
+        /** ProcessValue */
+        ProcessValue: {
+            /**
+             * At
+             * @description Time of the reading (UTC)
+             */
+            at?: string | null;
+            /**
+             * Decimals
+             * @description Decimals the V-Board shows, count
+             */
+            decimals: number;
+            /**
+             * Key
+             * @description Catalogue key of config/furnace_status.yml
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Setpoint
+             * @description Latest setpoint where the parameter has one, in unit
+             */
+            setpoint?: number | null;
+            /**
+             * State
+             * @description ok, low, high, stale, no_data, fetch_failed or no_source
+             */
+            state: string;
+            /**
+             * Unit
+             * @description Unit of value and setpoint; empty when not confirmed
+             */
+            unit: string;
+            /**
+             * Value
+             * @description Latest reading of the status window, unrounded, in unit
+             */
+            value?: number | null;
+        };
         /** ProcessView */
         ProcessView: {
             /**
@@ -10765,6 +11068,180 @@ export interface components {
              */
             y_wc: number;
         };
+        /** RmGroup */
+        RmGroup: {
+            /**
+             * Age Min
+             * @description Age of the data at the response, min
+             */
+            age_min?: number | null;
+            /**
+             * As Of
+             * @description Time of the data (UTC): the newest stock entry, the newest lab sample used, the newest reading, the start of the version in force; null without data
+             */
+            as_of?: string | null;
+            /**
+             * Chemistry Mode
+             * @description latest: the sample used before the latest charge; avg: the window's non-zero average
+             * @enum {string}
+             */
+            chemistry_mode: "latest" | "avg";
+            /**
+             * Error
+             * @description The failure of the last read; the values are then a fallback
+             */
+            error?: string | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "stock" | "rm_composition" | "process_conditions" | "operator_inputs";
+            /** Label */
+            label: string;
+            /** @description The group's TTL and stale limit (config/live_inputs.yml) */
+            limits: components["schemas"]["GroupLimits"];
+            /**
+             * Materials
+             * @description Every configured ferrous material
+             */
+            materials?: components["schemas"]["RmMaterial"][];
+            /**
+             * Read At
+             * Format: date-time
+             * @description When the source was read (UTC); readers within ttl_s share this read
+             */
+            read_at: string;
+            /**
+             * Source
+             * @description Where the values come from (table, version or file)
+             */
+            source: string;
+            /**
+             * Stale
+             * @description Older than stale_after_min, without data, or the last read failed
+             */
+            stale: boolean;
+            /**
+             * Stale Reason
+             * @description Why the group is stale
+             */
+            stale_reason?: string | null;
+            /**
+             * Warnings
+             * @description Warnings of the read
+             */
+            warnings?: string[];
+            /**
+             * Window Days
+             * @description Chemistry window, d
+             */
+            window_days: number;
+        };
+        /** RmMaterial */
+        RmMaterial: {
+            /**
+             * Al2O3 Pct
+             * @description Al₂O₃, dry, %
+             */
+            al2o3_pct: number;
+            /**
+             * Cao Pct
+             * @description CaO, dry, %
+             */
+            cao_pct: number;
+            /**
+             * Code
+             * @description Material code of the chemistry table
+             */
+            code: string;
+            /**
+             * Fe T Pct
+             * @description Total Fe, dry, %
+             */
+            fe_t_pct: number;
+            /**
+             * Feo Pct
+             * @description FeO, dry, %
+             */
+            feo_pct: number;
+            /**
+             * Id
+             * @description Ore id of bmo_ore_mapping.yml
+             */
+            id: string;
+            /**
+             * K2O Pct
+             * @description K₂O, dry, %
+             */
+            k2o_pct: number;
+            /**
+             * Latest Used At
+             * @description Latest charge of the material (UTC)
+             */
+            latest_used_at?: string | null;
+            /**
+             * Loi Pct
+             * @description Loss on ignition, dry, %
+             */
+            loi_pct: number;
+            /**
+             * Mgo Pct
+             * @description MgO, dry, %
+             */
+            mgo_pct: number;
+            /**
+             * Mno Pct
+             * @description MnO, dry, %
+             */
+            mno_pct: number;
+            /**
+             * Moisture Pct
+             * @description Moisture, %
+             */
+            moisture_pct: number;
+            /**
+             * Na2O Pct
+             * @description Na₂O, dry, %
+             */
+            na2o_pct: number;
+            /** Name */
+            name: string;
+            /**
+             * P Pct
+             * @description P, dry, %
+             */
+            p_pct: number;
+            /**
+             * Rows Used
+             * @description Lab rows behind the values, count
+             */
+            rows_used: number;
+            /**
+             * Sample At
+             * @description Time of the sample used, or the newest averaged (UTC)
+             */
+            sample_at?: string | null;
+            /**
+             * Sio2 Pct
+             * @description SiO₂, dry, %
+             */
+            sio2_pct: number;
+            /**
+             * Source
+             * @description offline_db_latest_used: the latest sample before the latest charge; offline_db_latest_no_usage / _no_prior_sample: the latest sample; offline_db_avg_non_zero: the window's average; fallback: configured values
+             */
+            source: string;
+            /**
+             * Table
+             * @description Neon chemistry table
+             */
+            table: string;
+            /**
+             * Tio2 Pct
+             * @description TiO₂, dry, %
+             */
+            tio2_pct: number;
+        };
         /**
          * RunCase
          * @description The case a run was solved for (``Case.summary``), in the API's names.
@@ -10788,6 +11265,8 @@ export interface components {
              * @description Limits the request set (others: defaults)
              */
             limits_set?: string[];
+            /** @description The live-inputs snapshot the live yard was built from (SV-7.3, GET /api/inputs/live); null on the reference yard or for a run stored before the snapshot existed */
+            live_inputs?: components["schemas"]["LiveInputsRef"] | null;
             /**
              * Operator Inputs
              * @description Version of the operator inputs the yard was built with (source, version)
@@ -12684,6 +13163,104 @@ export interface components {
              * @description Upper edge, elevation above the hearth bottom, m
              */
             upper_m: number;
+        };
+        /** StockGroup */
+        StockGroup: {
+            /**
+             * Age Min
+             * @description Age of the data at the response, min
+             */
+            age_min?: number | null;
+            /**
+             * As Of
+             * @description Time of the data (UTC): the newest stock entry, the newest lab sample used, the newest reading, the start of the version in force; null without data
+             */
+            as_of?: string | null;
+            /**
+             * Error
+             * @description The failure of the last read; the values are then a fallback
+             */
+            error?: string | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "stock" | "rm_composition" | "process_conditions" | "operator_inputs";
+            /** Label */
+            label: string;
+            /** @description The group's TTL and stale limit (config/live_inputs.yml) */
+            limits: components["schemas"]["GroupLimits"];
+            /**
+             * Materials
+             * @description Every configured ferrous material
+             */
+            materials?: components["schemas"]["StockMaterial"][];
+            /**
+             * Read At
+             * Format: date-time
+             * @description When the source was read (UTC); readers within ttl_s share this read
+             */
+            read_at: string;
+            /**
+             * Source
+             * @description Where the values come from (table, version or file)
+             */
+            source: string;
+            /**
+             * Stale
+             * @description Older than stale_after_min, without data, or the last read failed
+             */
+            stale: boolean;
+            /**
+             * Stale Reason
+             * @description Why the group is stale
+             */
+            stale_reason?: string | null;
+            /**
+             * Table
+             * @description Neon table of the stock entries
+             */
+            table: string;
+            /**
+             * Total T
+             * @description Stock of the materials with an entry, t
+             */
+            total_t: number;
+            /**
+             * Warnings
+             * @description Warnings of the read
+             */
+            warnings?: string[];
+        };
+        /** StockMaterial */
+        StockMaterial: {
+            /**
+             * At
+             * @description Time of the stock entry (UTC); null without an entry
+             */
+            at?: string | null;
+            /**
+             * Code
+             * @description Material code of the stock table
+             */
+            code: string;
+            /**
+             * Id
+             * @description Ore id of bmo_ore_mapping.yml
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Source
+             * @description offline_db: the latest entry; offline_db_null_as_zero / offline_db_missing_as_zero: no entry, counted as no stock; sinter_fallback: planning stock
+             */
+            source: string;
+            /**
+             * Stock T
+             * @description Wet stock in the yard, t
+             */
+            stock_t: number;
         };
         /** StrataBasis */
         StrataBasis: {
@@ -17115,6 +17692,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    inputs_live: {
+        parameters: {
+            query?: {
+                /** @description Chemistry snapshot of the composition group: latest (the sample used before the latest charge) or avg (the window's average); omitted: page 9's setting (setting_bmo.yml) */
+                chemistry_mode?: ("latest" | "avg") | null;
+                /** @description Chemistry window, d; omitted: page 9's setting */
+                chemistry_window_days?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveInputsView"];
                 };
             };
             /** @description Client error (problem+json) */

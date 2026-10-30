@@ -768,6 +768,33 @@
         "title": "BindingLimit",
         "type": "object"
       },
+      "BlastMoisture": {
+        "properties": {
+          "day": {
+            "description": "Plan day (IST)",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "source": {
+            "description": "Open-Meteo daily RH, its day-of-year mean, or the monthly table",
+            "title": "Source",
+            "type": "string"
+          },
+          "value_g_nm3": {
+            "description": "Blast moisture of the plan day, g/Nm\u00b3",
+            "title": "Value G Nm3",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value_g_nm3",
+          "source",
+          "day"
+        ],
+        "title": "BlastMoisture",
+        "type": "object"
+      },
       "BlendChangeView": {
         "properties": {
           "after_pct": {
@@ -2338,6 +2365,17 @@
           },
           "fuel_rates": {
             "$ref": "#/components/schemas/BmoFuelRates"
+          },
+          "live_inputs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveInputsRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The live-inputs snapshot the run was built from (SV-7.3): its id equals GET /api/inputs/live's while the stock, composition, process and operator-input data are the same; null for a run on given sources"
           },
           "live_si_pct": {
             "anyOf": [
@@ -10050,6 +10088,32 @@
         "title": "FuelSplit",
         "type": "object"
       },
+      "GroupLimits": {
+        "properties": {
+          "stale_after_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of the data from which the group is stale; null: never stale by age, min",
+            "title": "Stale After Min"
+          },
+          "ttl_s": {
+            "description": "How long one upstream read serves every reader of the process, s",
+            "title": "Ttl S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ttl_s"
+        ],
+        "title": "GroupLimits",
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "service": {
@@ -13617,6 +13681,111 @@
         "title": "LiveCalibration",
         "type": "object"
       },
+      "LiveInputsRef": {
+        "description": "What a run stores about the live inputs it was built from.",
+        "properties": {
+          "as_of": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "As-of time per group (UTC)",
+            "title": "As Of",
+            "type": "object"
+          },
+          "chemistry_mode": {
+            "description": "Chemistry mode of the composition group",
+            "title": "Chemistry Mode",
+            "type": "string"
+          },
+          "chemistry_window_days": {
+            "description": "Chemistry window of the composition group, d",
+            "title": "Chemistry Window Days",
+            "type": "integer"
+          },
+          "read_at": {
+            "description": "When the snapshot was composed (UTC)",
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "description": "Hash of the four as-of times (16 hex digits)",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "stale": {
+            "description": "Groups stale at the snapshot",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stale",
+            "type": "array"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "read_at",
+          "as_of",
+          "chemistry_mode",
+          "chemistry_window_days"
+        ],
+        "title": "LiveInputsRef",
+        "type": "object"
+      },
+      "LiveInputsView": {
+        "description": "The four live-input groups read once per TTL, with one snapshot id.",
+        "properties": {
+          "operator_inputs": {
+            "$ref": "#/components/schemas/OperatorInputsGroup"
+          },
+          "process_conditions": {
+            "$ref": "#/components/schemas/ProcessGroup"
+          },
+          "read_at": {
+            "description": "When the snapshot was composed (UTC)",
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "rm_composition": {
+            "$ref": "#/components/schemas/RmGroup"
+          },
+          "snapshot_id": {
+            "description": "Hash of the four as-of times (16 hex digits): equal data, equal id",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "stale": {
+            "description": "Keys of the groups that are stale",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stale",
+            "type": "array"
+          },
+          "stock": {
+            "$ref": "#/components/schemas/StockGroup"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "read_at",
+          "stock",
+          "rm_composition",
+          "process_conditions",
+          "operator_inputs"
+        ],
+        "title": "LiveInputsView",
+        "type": "object"
+      },
       "LivePoint": {
         "properties": {
           "calibration": {
@@ -14967,6 +15136,164 @@
           }
         },
         "title": "OperatorInputsDocument",
+        "type": "object"
+      },
+      "OperatorInputsGroup": {
+        "properties": {
+          "age_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of the data at the response, min",
+            "title": "Age Min"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the data (UTC): the newest stock entry, the newest lab sample used, the newest reading, the start of the version in force; null without data",
+            "title": "As Of"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User who saved the version",
+            "title": "Author"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The failure of the last read; the values are then a fallback",
+            "title": "Error"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/OperatorInputsDocument",
+            "description": "The document in force (units in the field descriptions)"
+          },
+          "key": {
+            "enum": [
+              "stock",
+              "rm_composition",
+              "process_conditions",
+              "operator_inputs"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/GroupLimits",
+            "description": "The group's TTL and stale limit (config/live_inputs.yml)"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "seed, streamlit or api",
+            "title": "Origin"
+          },
+          "read_at": {
+            "description": "When the source was read (UTC); readers within ttl_s share this read",
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the YAML file is in force",
+            "title": "Reason"
+          },
+          "source": {
+            "description": "Where the values come from (table, version or file)",
+            "title": "Source",
+            "type": "string"
+          },
+          "stale": {
+            "description": "Older than stale_after_min, without data, or the last read failed",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the group is stale",
+            "title": "Stale Reason"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Version of twin.operator_inputs; null for the YAML file, count",
+            "title": "Version"
+          },
+          "warnings": {
+            "description": "Warnings of the read",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "source",
+          "read_at",
+          "stale",
+          "limits",
+          "inputs"
+        ],
+        "title": "OperatorInputsGroup",
         "type": "object"
       },
       "OperatorInputsSaved": {
@@ -17234,6 +17561,215 @@
         "title": "ProblemDetail",
         "type": "object"
       },
+      "ProcessGroup": {
+        "properties": {
+          "age_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of the data at the response, min",
+            "title": "Age Min"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the data (UTC): the newest stock entry, the newest lab sample used, the newest reading, the start of the version in force; null without data",
+            "title": "As Of"
+          },
+          "blast_moisture": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlastMoisture"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The plan day's blast moisture; null if unread"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The failure of the last read; the values are then a fallback",
+            "title": "Error"
+          },
+          "key": {
+            "enum": [
+              "stock",
+              "rm_composition",
+              "process_conditions",
+              "operator_inputs"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/GroupLimits",
+            "description": "The group's TTL and stale limit (config/live_inputs.yml)"
+          },
+          "parameters": {
+            "description": "PROCESS_KEYS, display order",
+            "items": {
+              "$ref": "#/components/schemas/ProcessValue"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "read_at": {
+            "description": "When the source was read (UTC); readers within ttl_s share this read",
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "source": {
+            "description": "Where the values come from (table, version or file)",
+            "title": "Source",
+            "type": "string"
+          },
+          "stale": {
+            "description": "Older than stale_after_min, without data, or the last read failed",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the group is stale",
+            "title": "Stale Reason"
+          },
+          "telemetry": {
+            "description": "Telemetry of the status snapshot",
+            "enum": [
+              "live",
+              "partial",
+              "offline"
+            ],
+            "title": "Telemetry",
+            "type": "string"
+          },
+          "warnings": {
+            "description": "Warnings of the read",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "source",
+          "read_at",
+          "stale",
+          "limits",
+          "telemetry"
+        ],
+        "title": "ProcessGroup",
+        "type": "object"
+      },
+      "ProcessValue": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the reading (UTC)",
+            "title": "At"
+          },
+          "decimals": {
+            "description": "Decimals the V-Board shows, count",
+            "title": "Decimals",
+            "type": "integer"
+          },
+          "key": {
+            "description": "Catalogue key of config/furnace_status.yml",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "setpoint": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest setpoint where the parameter has one, in unit",
+            "title": "Setpoint"
+          },
+          "state": {
+            "description": "ok, low, high, stale, no_data, fetch_failed or no_source",
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of value and setpoint; empty when not confirmed",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest reading of the status window, unrounded, in unit",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "decimals",
+          "state"
+        ],
+        "title": "ProcessValue",
+        "type": "object"
+      },
       "ProcessView": {
         "properties": {
           "blast_ceiling_nm3h": {
@@ -18342,6 +18878,282 @@
         "title": "RistLine",
         "type": "object"
       },
+      "RmGroup": {
+        "properties": {
+          "age_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of the data at the response, min",
+            "title": "Age Min"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the data (UTC): the newest stock entry, the newest lab sample used, the newest reading, the start of the version in force; null without data",
+            "title": "As Of"
+          },
+          "chemistry_mode": {
+            "description": "latest: the sample used before the latest charge; avg: the window's non-zero average",
+            "enum": [
+              "latest",
+              "avg"
+            ],
+            "title": "Chemistry Mode",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The failure of the last read; the values are then a fallback",
+            "title": "Error"
+          },
+          "key": {
+            "enum": [
+              "stock",
+              "rm_composition",
+              "process_conditions",
+              "operator_inputs"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/GroupLimits",
+            "description": "The group's TTL and stale limit (config/live_inputs.yml)"
+          },
+          "materials": {
+            "description": "Every configured ferrous material",
+            "items": {
+              "$ref": "#/components/schemas/RmMaterial"
+            },
+            "title": "Materials",
+            "type": "array"
+          },
+          "read_at": {
+            "description": "When the source was read (UTC); readers within ttl_s share this read",
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "source": {
+            "description": "Where the values come from (table, version or file)",
+            "title": "Source",
+            "type": "string"
+          },
+          "stale": {
+            "description": "Older than stale_after_min, without data, or the last read failed",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the group is stale",
+            "title": "Stale Reason"
+          },
+          "warnings": {
+            "description": "Warnings of the read",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "window_days": {
+            "description": "Chemistry window, d",
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "source",
+          "read_at",
+          "stale",
+          "limits",
+          "chemistry_mode",
+          "window_days"
+        ],
+        "title": "RmGroup",
+        "type": "object"
+      },
+      "RmMaterial": {
+        "properties": {
+          "al2o3_pct": {
+            "description": "Al\u2082O\u2083, dry, %",
+            "title": "Al2O3 Pct",
+            "type": "number"
+          },
+          "cao_pct": {
+            "description": "CaO, dry, %",
+            "title": "Cao Pct",
+            "type": "number"
+          },
+          "code": {
+            "description": "Material code of the chemistry table",
+            "title": "Code",
+            "type": "string"
+          },
+          "fe_t_pct": {
+            "description": "Total Fe, dry, %",
+            "title": "Fe T Pct",
+            "type": "number"
+          },
+          "feo_pct": {
+            "description": "FeO, dry, %",
+            "title": "Feo Pct",
+            "type": "number"
+          },
+          "id": {
+            "description": "Ore id of bmo_ore_mapping.yml",
+            "title": "Id",
+            "type": "string"
+          },
+          "k2o_pct": {
+            "description": "K\u2082O, dry, %",
+            "title": "K2O Pct",
+            "type": "number"
+          },
+          "latest_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest charge of the material (UTC)",
+            "title": "Latest Used At"
+          },
+          "loi_pct": {
+            "description": "Loss on ignition, dry, %",
+            "title": "Loi Pct",
+            "type": "number"
+          },
+          "mgo_pct": {
+            "description": "MgO, dry, %",
+            "title": "Mgo Pct",
+            "type": "number"
+          },
+          "mno_pct": {
+            "description": "MnO, dry, %",
+            "title": "Mno Pct",
+            "type": "number"
+          },
+          "moisture_pct": {
+            "description": "Moisture, %",
+            "title": "Moisture Pct",
+            "type": "number"
+          },
+          "na2o_pct": {
+            "description": "Na\u2082O, dry, %",
+            "title": "Na2O Pct",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "p_pct": {
+            "description": "P, dry, %",
+            "title": "P Pct",
+            "type": "number"
+          },
+          "rows_used": {
+            "description": "Lab rows behind the values, count",
+            "title": "Rows Used",
+            "type": "integer"
+          },
+          "sample_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the sample used, or the newest averaged (UTC)",
+            "title": "Sample At"
+          },
+          "sio2_pct": {
+            "description": "SiO\u2082, dry, %",
+            "title": "Sio2 Pct",
+            "type": "number"
+          },
+          "source": {
+            "description": "offline_db_latest_used: the latest sample before the latest charge; offline_db_latest_no_usage / _no_prior_sample: the latest sample; offline_db_avg_non_zero: the window's average; fallback: configured values",
+            "title": "Source",
+            "type": "string"
+          },
+          "table": {
+            "description": "Neon chemistry table",
+            "title": "Table",
+            "type": "string"
+          },
+          "tio2_pct": {
+            "description": "TiO\u2082, dry, %",
+            "title": "Tio2 Pct",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "code",
+          "source",
+          "table",
+          "rows_used",
+          "fe_t_pct",
+          "moisture_pct",
+          "feo_pct",
+          "sio2_pct",
+          "al2o3_pct",
+          "cao_pct",
+          "mgo_pct",
+          "mno_pct",
+          "tio2_pct",
+          "p_pct",
+          "na2o_pct",
+          "k2o_pct",
+          "loi_pct"
+        ],
+        "title": "RmMaterial",
+        "type": "object"
+      },
       "RunCase": {
         "description": "The case a run was solved for (``Case.summary``), in the API's names.",
         "properties": {
@@ -18374,6 +19186,17 @@
             },
             "title": "Limits Set",
             "type": "array"
+          },
+          "live_inputs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveInputsRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The live-inputs snapshot the live yard was built from (SV-7.3, GET /api/inputs/live); null on the reference yard or for a run stored before the snapshot existed"
           },
           "operator_inputs": {
             "description": "Version of the operator inputs the yard was built with (source, version)",
@@ -22105,6 +22928,181 @@
           "readings"
         ],
         "title": "StatusZone",
+        "type": "object"
+      },
+      "StockGroup": {
+        "properties": {
+          "age_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of the data at the response, min",
+            "title": "Age Min"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the data (UTC): the newest stock entry, the newest lab sample used, the newest reading, the start of the version in force; null without data",
+            "title": "As Of"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The failure of the last read; the values are then a fallback",
+            "title": "Error"
+          },
+          "key": {
+            "enum": [
+              "stock",
+              "rm_composition",
+              "process_conditions",
+              "operator_inputs"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/GroupLimits",
+            "description": "The group's TTL and stale limit (config/live_inputs.yml)"
+          },
+          "materials": {
+            "description": "Every configured ferrous material",
+            "items": {
+              "$ref": "#/components/schemas/StockMaterial"
+            },
+            "title": "Materials",
+            "type": "array"
+          },
+          "read_at": {
+            "description": "When the source was read (UTC); readers within ttl_s share this read",
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "source": {
+            "description": "Where the values come from (table, version or file)",
+            "title": "Source",
+            "type": "string"
+          },
+          "stale": {
+            "description": "Older than stale_after_min, without data, or the last read failed",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the group is stale",
+            "title": "Stale Reason"
+          },
+          "table": {
+            "description": "Neon table of the stock entries",
+            "title": "Table",
+            "type": "string"
+          },
+          "total_t": {
+            "description": "Stock of the materials with an entry, t",
+            "title": "Total T",
+            "type": "number"
+          },
+          "warnings": {
+            "description": "Warnings of the read",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "source",
+          "read_at",
+          "stale",
+          "limits",
+          "table",
+          "total_t"
+        ],
+        "title": "StockGroup",
+        "type": "object"
+      },
+      "StockMaterial": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the stock entry (UTC); null without an entry",
+            "title": "At"
+          },
+          "code": {
+            "description": "Material code of the stock table",
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "description": "Ore id of bmo_ore_mapping.yml",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "description": "offline_db: the latest entry; offline_db_null_as_zero / offline_db_missing_as_zero: no entry, counted as no stock; sinter_fallback: planning stock",
+            "title": "Source",
+            "type": "string"
+          },
+          "stock_t": {
+            "description": "Wet stock in the yard, t",
+            "title": "Stock T",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "code",
+          "stock_t",
+          "source"
+        ],
+        "title": "StockMaterial",
         "type": "object"
       },
       "StrataBasis": {
@@ -29816,6 +30814,92 @@
         "summary": "Liveness",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/inputs/live": {
+      "get": {
+        "description": "Stock (latest entry per material), raw-material composition (page 9's chemistry snapshot), process conditions\n(the furnace-status snapshot's blast, oxygen, steam, PCI, fuel-rate, top-gas, RAFT and production readings with\nthe plan day's blast moisture) and the operator inputs in force, each with its as-of time, stale flag, source and\nlimits; ``snapshot_id`` hashes the four as-of times.",
+        "operationId": "inputs_live",
+        "parameters": [
+          {
+            "description": "Chemistry snapshot of the composition group: latest (the sample used before the latest charge) or avg (the window's average); omitted: page 9's setting (setting_bmo.yml)",
+            "in": "query",
+            "name": "chemistry_mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "latest",
+                    "avg"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Chemistry snapshot of the composition group: latest (the sample used before the latest charge) or avg (the window's average); omitted: page 9's setting (setting_bmo.yml)",
+              "title": "Chemistry Mode"
+            }
+          },
+          {
+            "description": "Chemistry window, d; omitted: page 9's setting",
+            "in": "query",
+            "name": "chemistry_window_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 365,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Chemistry window, d; omitted: page 9's setting",
+              "title": "Chemistry Window Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveInputsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Live inputs of the optimisers",
+        "tags": [
+          "inputs"
         ]
       }
     },

@@ -34,6 +34,7 @@ from api.routers import (
     facts,
     forge,
     furnacemind,
+    inputs,
     jobs,
     learn,
     operator_inputs,
@@ -140,6 +141,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(learn.router)
     app.include_router(status.router)
     app.include_router(operator_inputs.router)
+    app.include_router(inputs.router)
     app.include_router(furnacemind.router)
     app.include_router(strata.router)
     app.include_router(bmo.router)
