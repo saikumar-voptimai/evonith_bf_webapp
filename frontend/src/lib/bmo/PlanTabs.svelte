@@ -1,9 +1,11 @@
 <!--
 @component
 A Blend Mix Optimiser plan in four tabs, as page 9's result cards and Comparison rows show it: Blend (ore shares,
-tonnes and costs, flux added), Fuel (rates and the coke level behind the fuel cost), Slag (ratios against the run's
+tonnes and costs, flux added), Fuel (rates and the coke rate behind the fuel cost), Slag (ratios against the run's
 window and the plant bands) and Charging (charges per hour against the charging limit, tonnes per day). Limits are
-shown when the plan comes with its run's targets (a run); a saved snapshot shows values and bands only.
+shown when the plan comes with its run's targets (a run); a saved snapshot shows values and bands only. `source`
+"engine" (SV-7.4) shows a plan of the burden engine: the coke rate dry and as charged with its certainty word, the
+columns that plan has, no blend correction rows.
 -->
 <script lang="ts">
 	import DonutChart from '../charts/DonutChart.svelte';
@@ -27,20 +29,28 @@ shown when the plan comes with its run's targets (a run); a saved snapshot shows
 		type BmoOreRow,
 		type BmoPlan,
 		type BmoSlagBand,
-		type BmoTargets
+		type Chip,
+		type TabTargets
 	} from './bmo.ts';
 	import OutcomeTable from './OutcomeTable.svelte';
 
 	interface Props {
 		plan: BmoPlan;
 		/** Limits of the run; absent for a snapshot. */
-		targets?: BmoTargets | null;
+		targets?: TabTargets | null;
 		bands?: BmoSlagBand[];
 		fuelRates?: BmoFuelRates | null;
 		anchor?: BmoAnchor | null;
 		cokeModel?: string | null;
 		/** Accessible name of the tab list, e.g. "Plan of the run". */
 		label?: string;
+		/** lp: page 9's optimiser (default); engine: the burden engine's plan (SV-7.4). */
+		source?: 'lp' | 'engine';
+		/** Engine plan: the coke rate dry, kg/tHM, and its certainty word. */
+		cokeDry?: number | null;
+		certainty?: Chip | null;
+		/** Engine plan: the slag sold is credited in the total. */
+		slagCredit?: number | null;
 	}
 
 	let {
@@ -50,7 +60,11 @@ shown when the plan comes with its run's targets (a run); a saved snapshot shows
 		fuelRates = null,
 		anchor = null,
 		cokeModel = null,
-		label = 'Plan'
+		label = 'Plan',
+		source = 'lp',
+		cokeDry = null,
+		certainty = null,
+		slagCredit = null
 	}: Props = $props();
 
 	let tab = $state('blend');
@@ -61,12 +75,16 @@ shown when the plan comes with its run's targets (a run); a saved snapshot shows
 		{ id: 'charging', label: 'Charging' }
 	];
 
+	const engine = $derived(source === 'engine');
 	const segments = $derived(blendSegments(plan));
 	const fluxes = $derived(fluxRows(plan));
 	const ores = $derived((plan.ores ?? []).filter((o) => o.share_pct > 0.05 || o.quantity_t_d > 0));
 	const hasLimits = $derived(!!targets);
+	const fuel = $derived(
+		fuelRows(plan, engine ? { engine: true, cokeDry, certainty: certainty?.label ?? null } : {})
+	);
 
-	const oreColumns: Column<BmoOreRow>[] = [
+	const lpOreColumns: Column<BmoOreRow>[] = [
 		{ key: 'ore_name', label: 'Ore' },
 		{ key: 'share_pct', label: 'Share', unit: '%', numeric: true, digits: 1 },
 		{ key: 'quantity_t_d', label: 'Wet', unit: 't/d', numeric: true, digits: 0 },
@@ -78,6 +96,13 @@ shown when the plan comes with its run's targets (a run); a saved snapshot shows
 		{ key: 'price_rs_t', label: 'Price', unit: 'Rs/t', numeric: true, digits: 0 },
 		{ key: 'cost_rs_d', label: 'Cost', unit: 'Rs/d', numeric: true, digits: 0 }
 	];
+	const engineOreColumns: Column<BmoOreRow>[] = [
+		{ key: 'ore_name', label: 'Ore' },
+		{ key: 'share_pct', label: 'Share', unit: '%', numeric: true, digits: 1 },
+		{ key: 'quantity_t_d', label: 'Wet', unit: 't/d', numeric: true, digits: 0 },
+		{ key: 'price_rs_t', label: 'Price', unit: 'Rs/t', numeric: true, digits: 0 }
+	];
+	const oreColumns = $derived(engine ? engineOreColumns : lpOreColumns);
 	const fluxColumns: Column<{ id: string; t_d: number }>[] = [
 		{ key: 'id', label: 'Flux', sortable: false },
 		{ key: 't_d', label: 'Added', unit: 't/d', numeric: true, digits: 1, sortable: false }
@@ -106,7 +131,9 @@ shown when the plan comes with its run's targets (a run); a saved snapshot shows
 						<EmptyState
 							compact
 							title="No ores in the plan"
-							message="The LP found no blend; see the run's notes."
+							message={engine
+								? 'The run found no blend within the limits; see its notes.'
+								: 'The LP found no blend; see the run’s notes.'}
 						/>
 					{/if}
 					<div class="tables">
@@ -120,7 +147,7 @@ shown when the plan comes with its run's targets (a run); a saved snapshot shows
 						/>
 						{#if fluxes.length}
 							<DataTable
-								caption="Flux the LP added"
+								caption={engine ? 'Flux added' : 'Flux the LP added'}
 								rows={fluxes}
 								columns={fluxColumns}
 								rowKey={(r) => r.id}
@@ -129,44 +156,54 @@ shown when the plan comes with its run's targets (a run); a saved snapshot shows
 						{/if}
 					</div>
 				</div>
-				<p class="fine">
-					Fe(T) of the dry burden <span class="vo-num">{formatQuantity(plan.fe_t_pct, 2, '%')}</span>, Fe
-					<span class="vo-num">{formatQuantity(plan.fe_production_t_d, 0, 't/d')}</span>. Total cost = ore +
-					fuel at the run’s prices + flux the LP added.
-				</p>
+				{#if engine}
+					<p class="fine">
+						Fe of the ferrous burden, wet <span class="vo-num">{formatQuantity(plan.fe_t_pct, 2, '%')}</span>.
+						Total cost = ore + fuel + flux{#if slagCredit}
+							− slag sold (<span class="vo-num">{formatQuantity(slagCredit, 0, 'Rs/tHM')}</span>){/if}.
+					</p>
+				{:else}
+					<p class="fine">
+						Fe(T) of the dry burden <span class="vo-num">{formatQuantity(plan.fe_t_pct, 2, '%')}</span>, Fe
+						<span class="vo-num">{formatQuantity(plan.fe_production_t_d, 0, 't/d')}</span>. Total cost = ore +
+						fuel at the run’s prices + flux the LP added.
+					</p>
+				{/if}
 			</div>
 		{:else if id === 'fuel'}
 			<div class="tab">
-				<OutcomeTable caption="Fuel rates of the plan" rows={fuelRows(plan)} limits={false} />
-				<dl class="facts">
-					<div>
-						<dt>Coke level</dt>
-						<dd>
-							{cokeModelLabel(anchor?.basis ?? cokeModel)}{#if anchor?.rate_kg_thm != null},
-								<span class="vo-num">{formatQuantity(anchor.rate_kg_thm, 1, 'kg/tHM')}</span>{/if}
-						</dd>
-					</div>
-					{#if fuelRates}
+				<OutcomeTable caption="Fuel rates of the plan" rows={fuel} limits={false} />
+				{#if !engine}
+					<dl class="facts">
 						<div>
-							<dt>Rates read for the run</dt>
-							<dd class="vo-num">
-								coke {formatQuantity(fuelRates.coke_rate_kg_thm, 1, 'kg/tHM')}, nut coke {formatQuantity(
-									fuelRates.nut_coke_rate_kg_thm,
-									1,
-									'kg/tHM'
-								)}, PCI {formatQuantity(fuelRates.pci_rate_kg_thm, 1, 'kg/tHM')}
+							<dt>Coke level</dt>
+							<dd>
+								{cokeModelLabel(anchor?.basis ?? cokeModel)}{#if anchor?.rate_kg_thm != null},
+									<span class="vo-num">{formatQuantity(anchor.rate_kg_thm, 1, 'kg/tHM')}</span>{/if}
 							</dd>
 						</div>
-						<div>
-							<dt>Sources</dt>
-							<dd class="source">
-								{[fuelRates.coke_source, fuelRates.nut_coke_source, fuelRates.pci_source]
-									.filter(Boolean)
-									.join('; ') || '—'}
-							</dd>
-						</div>
-					{/if}
-				</dl>
+						{#if fuelRates}
+							<div>
+								<dt>Rates read for the run</dt>
+								<dd class="vo-num">
+									coke {formatQuantity(fuelRates.coke_rate_kg_thm, 1, 'kg/tHM')}, nut coke {formatQuantity(
+										fuelRates.nut_coke_rate_kg_thm,
+										1,
+										'kg/tHM'
+									)}, PCI {formatQuantity(fuelRates.pci_rate_kg_thm, 1, 'kg/tHM')}
+								</dd>
+							</div>
+							<div>
+								<dt>Sources</dt>
+								<dd class="source">
+									{[fuelRates.coke_source, fuelRates.nut_coke_source, fuelRates.pci_source]
+										.filter(Boolean)
+										.join('; ') || '—'}
+								</dd>
+							</div>
+						{/if}
+					</dl>
+				{/if}
 			</div>
 		{:else if id === 'slag'}
 			<div class="tab">
