@@ -143,7 +143,7 @@ export const COKE_MODELS: { id: RunForm['cokeModel']; label: string }[] = [
 
 export function cokeModelLabel(model: string | null | undefined): string {
 	if (model === 'data_driven') return 'Data-Driven (charged-coke forecast)';
-	if (model === 'energy_balance') return 'Physics-Driven (energy-balance anchor)';
+	if (model === 'energy_balance') return 'Physics-Driven';
 	return '—';
 }
 
@@ -230,6 +230,10 @@ export function bandStatus(
 }
 
 // ------------------------------------------------------------------------------------------------ tab rows
+/** The limits a plan is read against: page 9's targets of a run, or the subset a burden-engine plan was solved under
+ * (`plan.ts`, SV-7.4); a field left out is not shown as a limit. */
+export type TabTargets = Partial<BmoTargets>;
+
 /** One row of the Fuel, Slag or Charging tab. */
 export interface OutcomeRow {
 	id: string;
@@ -274,19 +278,23 @@ function bandOf(
  * Slag tab: the quantity and rate (model basis) against the cap, the three basicity ratios against the run's window
  * and the plant band, and the Al₂O₃, MgO and MgO/Al₂O₃ limits. Decimals as page 9.
  */
-export function slagRows(plan: BmoPlan, targets?: BmoTargets | null, bands?: BmoSlagBand[]): OutcomeRow[] {
+export function slagRows(plan: BmoPlan, targets?: TabTargets | null, bands?: BmoSlagBand[]): OutcomeRow[] {
 	const t = targets ?? null;
 	const lim = (l: Limit): Limit | undefined => (t ? l : undefined);
 	const factor = t?.model_to_plant_slag_factor;
+	// Page 9 caps the slag on the plant basis (plant = model × factor), so the t/d row carries the LP's cap and the
+	// rate row the note; a plan without the factor (the burden engine, SV-7.4) is capped on the rate itself.
+	const pageNine = isNumber(factor);
 	return [
 		row('slag_t_d', 'Slag', plan.slag_t_d, 't/d', 1, {
-			note: 'Model basis',
-			limit: lim({ max: t?.slag_cap_t_d })
+			...(pageNine ? { note: 'Model basis', limit: lim({ max: t?.slag_cap_t_d }) } : {})
 		}),
 		row('slag_rate', 'Slag rate', plan.slag_rate_kg_thm, KG, 0, {
-			note: t
-				? `Model basis; cap ${formatQuantity(t.slag_rate_cap_kg_thm, 0, KG)} on the plant basis (plant = model × ${formatNumber(factor, 3)})`
-				: 'Model basis'
+			...(pageNine
+				? {
+						note: `Model basis; cap ${formatQuantity(t?.slag_rate_cap_kg_thm, 0, KG)} on the plant basis (plant = model × ${formatNumber(factor, 3)})`
+					}
+				: { limit: lim({ max: t?.slag_rate_cap_kg_thm }) })
 		}),
 		row('b2', 'B2, CaO/SiO₂', plan.slag_basicity, '', 3, {
 			limit: lim({ min: t?.basicity_min, max: t?.basicity_max }),
@@ -309,8 +317,26 @@ export function slagRows(plan: BmoPlan, targets?: BmoTargets | null, bands?: Bmo
 	];
 }
 
-/** Fuel tab: the rates of the plan (coke corrected for the blend, before the correction, nut coke, PCI). */
-export function fuelRows(plan: BmoPlan): OutcomeRow[] {
+/**
+ * Fuel tab: the rates of the plan. Page 9's LP: coke corrected for the blend, before the correction, nut coke, PCI.
+ * A burden-engine plan (`engine`, SV-7.4): the coke rate dry and as charged, nut coke and PCI held at today's rates.
+ */
+export function fuelRows(
+	plan: BmoPlan,
+	options: { engine?: boolean; cokeDry?: number | null; certainty?: string | null } = {}
+): OutcomeRow[] {
+	if (options.engine) {
+		return [
+			row('fuel', 'Fuel rate', plan.fuel_rate_kg_thm, KG, 1, { note: 'Coke + nut coke + PCI' }),
+			row('coke_dry', 'Coke rate, dry', options.cokeDry, KG, 1, {
+				note: options.certainty ? `Certainty ${options.certainty}` : undefined
+			}),
+			row('coke', 'Coke rate, as charged', plan.coke_rate_kg_thm, KG, 1),
+			row('nut_coke', 'Nut coke rate', plan.nut_coke_rate_kg_thm, KG, 1, { note: 'Held at today’s rate' }),
+			row('pci', 'PCI rate', plan.pci_rate_kg_thm, KG, 1, { note: 'Held at today’s rate' }),
+			row('fuel_cost', 'Fuel cost', plan.fuel_cost_rs_thm, RS, 1, { note: 'At the prices in force' })
+		];
+	}
 	return [
 		row('fuel', 'Fuel rate', plan.fuel_rate_kg_thm, KG, 1, { note: 'Coke + nut coke + PCI' }),
 		row('coke', 'Coke rate, corrected', plan.coke_rate_kg_thm, KG, 1, { note: 'With the blend correction' }),
@@ -328,17 +354,19 @@ export function fuelRows(plan: BmoPlan): OutcomeRow[] {
 }
 
 /** Charging tab: production, what is charged per day and how often, against the charging limits. */
-export function chargingRows(plan: BmoPlan, targets?: BmoTargets | null): OutcomeRow[] {
+export function chargingRows(plan: BmoPlan, targets?: TabTargets | null): OutcomeRow[] {
 	const c = plan.charging;
 	const t = targets ?? null;
 	return [
 		row('production', 'Production', c?.production_t_d, 't/d', 1, { note: 'Hot-metal target of the plan' }),
 		row('charges', 'Required charges', c?.required_charges_per_hour, 'charges/h', 2, {
-			note: t ? `${formatQuantity(t.charge_mass_t, 1, 't')} burden per charge` : undefined,
+			note: isNumber(t?.charge_mass_t)
+				? `${formatQuantity(t.charge_mass_t, 1, 't')} burden per charge`
+				: undefined,
 			...(t ? { limit: { max: t.max_charges_per_hour } } : {})
 		}),
 		row('burden', 'Ore burden, wet', plan.total_qty_t_d, 't/d', 0, {
-			...(t ? { limit: { max: t.max_burden_t_d } } : {})
+			...(t && 'max_burden_t_d' in t ? { limit: { max: t.max_burden_t_d } } : {})
 		}),
 		row('hm_per_charge', 'Hot metal per charge', c?.chemical_hm_per_charge_t, 't', 2, {
 			note: 'Full material balance'
@@ -485,7 +513,7 @@ export function legacyLinks(): LegacyLink[] {
 		{
 			id: 'de-search',
 			title: 'Intensive Optimizer (DE search)',
-			note: 'Differential-evolution search over the blend, its alternatives and search space.',
+			note: 'A wider search over the blend, its alternatives and search space.',
 			href: legacyHref('Blend Mix Optimiser', 'de-search')
 		},
 		{
