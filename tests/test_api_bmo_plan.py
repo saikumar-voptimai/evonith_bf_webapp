@@ -127,7 +127,7 @@ def test_a_step1_run_without_production_implies_nothing(twin) -> None:
 
 
 def test_the_board_is_served_with_the_decision_that_applies(api, twin) -> None:
-    run = add_run(twin, at=T0)
+    run = add_run(twin, at=datetime.now(UTC) - timedelta(hours=1))  # the route reads the clock: within the last day
     twin.optimiser.decide(run.id, "rejected", Actor(name="sup", role="supervisor", client_ip=None))
     twin.optimiser.decide(run.id, "accepted", Actor(name="sup", role="supervisor", client_ip=None))
     r = call(api, "GET", "op", "/api/bmo/plan")
