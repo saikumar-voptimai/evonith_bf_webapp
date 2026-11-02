@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { strataMock } from './strata-mock.mjs';
 import { traceFixture } from './trace-fixture.mjs';
 import * as twinPayloads from '../src/lib/twin/fixtures/payloads.ts';
+import { sampleLiveInputs } from '../src/lib/inputs/sample.ts';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -52,6 +53,11 @@ const PLANT_ADMIN = JSON.parse(readFileSync(join(ROOT, 'scripts', 'fixtures', 'p
 // GET /api/admin/learn: a shadow run with an evaluated gate, the last 60 evidence days of the trajectories and proposal
 // items in every state (SV-4.5, #308).
 const LEARN = JSON.parse(readFileSync(join(ROOT, 'scripts', 'fixtures', 'learn-console.json'), 'utf8'));
+// The Blend Mix Optimiser's plan (SV-7.4, #327): the recorded Step 2 run of page 11's case report
+// (`src/lib/optimiser/fixtures/result.json`, checked by tests/test_api_optimiser.py), moved to the present.
+const OPTIMISER = JSON.parse(
+	readFileSync(join(ROOT, 'src', 'lib', 'optimiser', 'fixtures', 'result.json'), 'utf8')
+);
 const PORT = 4179;
 let base = arg('base', null);
 
@@ -80,8 +86,8 @@ const ROUTES = [
 	{ name: 'status', path: '/status', mocked: false },
 	{ name: 'reports', path: '/reports', mocked: false },
 	{ name: 'furnacemind', path: '/furnacemind', mocked: false },
+	{ name: 'bmo', path: '/bmo' },
 	{ name: 'optimiser', path: '/optimiser', mocked: false },
-	{ name: 'bmo', path: '/bmo', mocked: false },
 	{ name: 'admin-facts', path: '/admin/facts', mocked: false },
 	{ name: 'admin-what-if', path: '/admin/what-if', mocked: false },
 	{ name: 'admin-burnt-vs-charged', path: '/admin/burnt-vs-charged', mocked: false },
@@ -277,6 +283,103 @@ try {
 			body: `retry: 3000\n\nevent: heartbeat\ndata: ${beat}\n\n`
 		});
 	});
+	// Blend Mix Optimiser (SV-7.4, #327): the case report's Step 2 run as the shift's run (scheduled, with a certainty
+	// tier) and as a page run made 1 h later (held shaft efficiency, accepted), the live-inputs sample, no page-9 run,
+	// forecast or snapshot.
+	const bmoShift = Date.now() - 2 * HOUR_MS - Date.parse(OPTIMISER.step2.finished_at);
+	const stepRun = shifted(OPTIMISER.step2, bmoShift);
+	const PAGE_RUN_ID = '7d2e4f60-1c3b-4a5d-9e8f-0a1b2c3d4e5f';
+	const shiftResult = {
+		...stepRun,
+		omega_mode: 'strata',
+		certainty: 'High',
+		plan: {
+			...stepRun.plan,
+			shaft_efficiency: { ...stepRun.plan.shaft_efficiency, mode: 'blend', certainty: 'High' }
+		}
+	};
+	const pageResult = {
+		...stepRun,
+		run_id: PAGE_RUN_ID,
+		started_at: shifted(stepRun.started_at, HOUR_MS),
+		finished_at: shifted(stepRun.finished_at, HOUR_MS)
+	};
+	const runRef = (res, extra) => ({
+		id: res.run_id,
+		job_id: null,
+		requested_by: 'scheduler',
+		status: res.status,
+		started_at: res.started_at,
+		finished_at: res.finished_at,
+		production_t_d: res.plan.production_t_d,
+		cost_rs_thm: res.plan.cost.total_rs_thm,
+		saving_rs_thm: res.saving_rs_thm,
+		coke_kg_thm: res.plan.fuel.coke_dry_kg_thm,
+		fuel_rate_kg_thm: res.plan.fuel.fuel_rate_kg_thm,
+		decision: null,
+		...extra
+	});
+	const bmoShiftRun = runRef(shiftResult, { trigger: 'schedule', omega_mode: 'strata', certainty: 'High' });
+	const bmoPageRun = runRef(pageResult, {
+		trigger: 'user',
+		requested_by: 'auditor',
+		omega_mode: 'fixed',
+		certainty: null,
+		decision: {
+			decision: 'accepted',
+			decided_by: 'auditor',
+			decided_at: shifted(pageResult.finished_at, 10 * 60_000),
+			shift_key: null,
+			comment: 'Apply from the next cast'
+		}
+	});
+	const bmoBoard = {
+		read_at: new Date().toISOString(),
+		implied: {
+			production_t_d: OPTIMISER.step1.plan.production_t_d,
+			run_id: OPTIMISER.step1.run_id,
+			omega_mode: 'strata',
+			trigger: 'schedule',
+			finished_at: shifted(stepRun.finished_at, 15 * 60_000)
+		},
+		shift_run: bmoShiftRun,
+		latest_run: bmoPageRun,
+		recent: [bmoPageRun, bmoShiftRun],
+		slag_bands: OPTIMISER.reference.slag_bands.map(({ quantity, low, high }) => ({ quantity, low, high }))
+	};
+	const json = (route, body) =>
+		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+	await context.route('**/api/bmo/plan', (route) => json(route, bmoBoard));
+	await context.route(/\/api\/optimiser\/runs\/[^/]+\/result$/, (route) => {
+		const id = new URL(route.request().url()).pathname.split('/').at(-2);
+		return json(route, id === PAGE_RUN_ID ? pageResult : shiftResult);
+	});
+	await context.route(/\/api\/inputs\/live(\?.*)?$/, (route) => json(route, sampleLiveInputs(new Date())));
+	await context.route(/\/api\/bmo\/runs(\?.*)?$/, (route) => json(route, { runs: [] }));
+	await context.route('**/api/bmo/forecasts/si', (route) =>
+		json(route, {
+			mode: 'forecast',
+			current: false,
+			note: 'No forecast issued in the audit.',
+			issuer: 'worker',
+			worker_active: false,
+			forecast: null
+		})
+	);
+	await context.route('**/api/bmo/forecasts/charged-coke', (route) =>
+		json(route, {
+			current: false,
+			note: null,
+			issuer: 'worker',
+			worker_active: false,
+			last_issued_row: null,
+			reasons: ['No forecast issued in the audit.'],
+			forecast: null
+		})
+	);
+	await context.route(/\/api\/bmo\/snapshots(\?.*)?$/, (route) =>
+		json(route, { snapshots: [], unreadable: [] })
+	);
 	// STRATA page (SV-1.12, #292): its three reads answered with generated values.
 	await context.route(/\/api\/strata\/(omega|summary|live-point)(\?.*)?$/, (route) =>
 		route.fulfill({
