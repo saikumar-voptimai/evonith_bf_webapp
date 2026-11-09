@@ -287,6 +287,27 @@ _TILES = [
         "AI co-pilot: natural-language queries, trend plots, and live shift reports.",
         "#7c2d12",
     ),
+    (
+        "custom_pages/9_Blend_Optimizer.py",
+        "🧪",
+        "Blend Mix Optimiser",
+        "Balanced and intensive total-cost optimization for ore blend planning.",
+        "#0f766e",
+    ),
+    (
+        "custom_pages/10_Coke_Energy.py",
+        "🔥",
+        "Coke Energy Model",
+        "Two-zone energy balance per shift: burnt, charged and modelled coke rate.",
+        "#c2410c",
+    ),
+    (
+        "custom_pages/11_Burden_Fuel_Optimiser.py",
+        "🎛️",
+        "Burden & Fuel Optimiser",
+        "Ore, flux and fuel blend and production level on the energy model.",
+        "#4d7c0f",
+    ),
 ]
 
 
@@ -330,16 +351,8 @@ for i in range(0, len(_TILES), 3):
         _tile(col, *tile)
     st.html("<div style='height:0.6rem'></div>")
 
-# Blend Optimizer + Feedback — centred
-_, _bmo_col, _fc, _ = st.columns([0.5, 1, 1, 0.5])
-_tile(
-    _bmo_col,
-    "custom_pages/9_Blend_Optimizer.py",
-    "🧪",
-    "Blend Mix Optimiser",
-    "Balanced and intensive total-cost optimization for ore blend planning.",
-    "#0f766e",
-)
+# Feedback — centred
+_, _fc, _ = st.columns([1, 1, 1])
 _tile(
     _fc,
     "custom_pages/8_Feedback.py",

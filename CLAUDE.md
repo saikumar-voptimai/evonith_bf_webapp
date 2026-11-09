@@ -802,8 +802,9 @@ format: ResponseFormat          # json (default) or csv
 Optimises the ferrous blend and flux for **ore + flux + fuel** cost per tHM and the **production level** under the
 day's limits. Coke for every candidate blend comes from the two-zone (Rist) balance in `utils/coke_energy`
 (page 10's model, unchanged), calibrated on the last 14 days of stable shifts. PCI and nut coke are fixed inputs per
-run; their page defaults are the regime window's medians (`scenarios.fuel_defaults`; ASM-08 values 190 / 70 only as
-fallback).
+run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI the live tag's 1-h mean
+(`services.optimiser.live_pci_kg_thm`, `BF_LIVE_PCI=0` in tests; else the regime median, then the calibration), nut coke
+70 kg/tHM; page 11 has an *Override PCI* toggle, the SPA field overrides when filled.
 
 - **Modes:** Step 1 cheapest production level (`Engine.min_total_cost` + frontier), Step 2 fixed production
   (`min_cost(fuel=True)` next to `fuel=False`, the page-9 objective), maximum production (`max_production`).

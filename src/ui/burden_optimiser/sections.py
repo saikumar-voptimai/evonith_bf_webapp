@@ -86,7 +86,7 @@ def render_model_check(T: pd.DataFrame | None, cfg: Mapping[str, Any], reg: Fact
 
     th = mc.Thresholds.from_config(cfg)
     scored = mc.scored_shifts(T)
-    st.subheader("Model check · does the energy model match the furnace?")
+    st.subheader("Model check")
     if scored.empty:
         basis = reg["DATA-06"].basis if "DATA-06" in reg else ""
         st.info("The model check needs the shift results of the Coke Energy Model page (InfluxDB and Neon), which are "
@@ -109,28 +109,22 @@ def render_model_check(T: pd.DataFrame | None, cfg: Mapping[str, Any], reg: Fact
 
 def _render_model_vs_burnt(scored: pd.DataFrame, row: pd.Series, cfg: Mapping[str, Any],
                            th: mc.Thresholds) -> dict[str, Any]:
-    st.caption(
-        f"Latest shift with a prediction: **{_shift_name(row.name)}**. Burnt coke is what the blast actually burnt; the "
-        "two balances predict it for that shift's HMT, Si, blast and burden, calibrated only on the 14 days before "
-        "(out of sample). The energy balance is the model the optimiser uses.")
+    st.caption(f"Shift: **{_shift_name(row.name)}**")
     burnt = row.get("K_burnt")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Burnt coke, kg/tHM", _num(burnt, ".1f"),
+    c1.metric("Actual coke rate (burnt), kg/tHM", _num(burnt, ".1f"),
               help="Realised: coke the metered blast gasified in the shift (oxygen balance at the metered blast with "
                    "the analyser's ηCO), less the 14-day charged − burnt offset. Dry, per tonne of hot metal.")
-    c1.caption(f"what the furnace used · charged {_num(row.get('K_charged'), '.1f')}")
-    c2.metric("Energy balance, kg/tHM", _num(row.get("K_energy"), ".1f"),
-              help="Two-zone (Rist) balance with shaft efficiency and heat losses held at the 14-day medians: the "
-                   "optimiser's model.")
+    c1.caption(f"charged {_num(row.get('K_charged'), '.1f')}")
+    c2.metric("Modelled coke rate, kg/tHM", _num(row.get("K_energy"), ".1f"),
+              help="Two-zone (Rist) energy balance with shaft efficiency and heat losses held at the 14-day medians, "
+                   "calibrated only on the 14 days before the shift: the optimiser's model.")
     c2.caption(_against(row.get("K_energy"), burnt))
-    c3.metric("Oxygen balance, kg/tHM", _num(row.get("K_obal"), ".1f"),
-              help="Oxygen and heat balance at the analyser's ηCO with the 14-day heat-loss allowance.")
-    c3.caption(_against(row.get("K_obal"), burnt))
-    c4.metric("Hot metal temperature", f"{_num(row.get('HMT'), ',.0f')} °C",
-              help="The shift's mean HMT: the thermal state both predictions are made for.")
-    c4.caption(f"{_num(row.get('prod_th'), '.1f')} t/h")
-    c5.metric("Hot metal Si", f"{_num(row.get('hm_si'), '.2f')} %", help="The shift's mean silicon.")
-    c5.caption(f"PCI {_num(row.get('pci_kgthm_dry'), '.0f')} · nut {_num(row.get('nut_kgthm_dry'), '.0f')} kg/tHM dry")
+    c3.metric("Hot metal temperature", f"{_num(row.get('HMT'), ',.0f')} °C",
+              help="The shift's mean HMT: the thermal state the model is solved for.")
+    c3.caption(f"Si {_num(row.get('hm_si'), '.2f')} % · {_num(row.get('prod_th'), '.1f')} t/h")
+    c4.metric("PCI used, kg/tHM", _num(row.get("pci_kgthm_dry"), ".0f"), help="The shift's PCI rate, dry.")
+    c5.metric("Nut coke used, kg/tHM", _num(row.get("nut_kgthm_dry"), ".0f"), help="The shift's nut-coke rate, dry.")
 
     days_opts = {"7 days": 7, "14 days": 14, "30 days": 30}
     default = next((k for k, v in days_opts.items() if v == int(cfg.get("default_days", 14))), "14 days")
@@ -329,6 +323,22 @@ def render_yard_editor(yard: Mapping[str, Any], key: str) -> tuple[list[dict], l
     return edited, fluxes, fuel
 
 
+def _pci_input(col: Any, thermal: Mapping[str, Any], key: str) -> float:
+    """PCI, kg/tHM as injected: the default (live tag, else the regime median) unless the override is on."""
+    default = float(thermal.get("pci_kg_thm", 190.0))
+    source = str(thermal.get("pci_kg_thm_source", "config"))
+    slot = col.container()               # the input above its toggle, in line with the other inputs
+    on = col.toggle("Override PCI", key=f"{key}_pci_on",
+                    help=f"Off: the default PCI ({source}), {default:.0f} kg/tHM. On: the entered rate.")
+    k = f"{key}_pci"
+    if not on or k not in st.session_state:
+        st.session_state[k] = default
+    return slot.number_input("PCI, kg/tHM", min_value=0.0, max_value=260.0, step=1.0, format="%.0f", key=k,
+                            disabled=not on,
+                            help=f"Fixed input, as injected. Default: {source}. PCI acts on coke through the balance "
+                                 "(carbon, energy, H2).")
+
+
 def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_default: Mapping[str, Any] | float,
                    key: str) -> dict:
     hmt_lo, hmt_hi = reg.band("BAND-02")
@@ -346,15 +356,11 @@ def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_defau
                             help="Thermal target the coke rate is solved for (BAND-02)."),
         hm_Si=c2.number_input("Hot metal Si, %", min_value=si_lo, max_value=si_hi, value=float(thermal.get("hm_Si", 0.38)),
                               step=0.01, format="%.2f", key=f"{key}_si", help="BAND-03"),
-        pci_plant=c3.number_input("PCI, kg/tHM", min_value=0.0, max_value=260.0, value=float(thermal.get("pci_kg_thm", 190.0)),
-                                  step=1.0, format="%.0f", key=f"{key}_pci",
-                                  help="Fixed input, as injected. Default: " + str(thermal.get("pci_kg_thm_source", "config"))
-                                       + " (14-day window). PCI acts on coke through the balance (carbon, energy, H2)."),
+        pci_plant=_pci_input(c3, thermal, key),
         nut_plant=c4.number_input("Nut coke, kg/tHM", min_value=0.0, max_value=120.0,
                                   value=float(thermal.get("nut_kg_thm", 70.0)), step=1.0, format="%.0f", key=f"{key}_nut",
-                                  help="Fixed input, as charged. Default: " + str(thermal.get("nut_kg_thm_source", "config"))
-                                       + " (14-day window). Acts through the balance and, in STRATA-omega, through the "
-                                         "nut-coke term (GAS-23)."),
+                                  help="Fixed input, as charged. Default 70 kg/tHM. Acts through the balance and, in "
+                                       "STRATA-omega, through the nut-coke term (GAS-23)."),
         humidity_g=c5.number_input("Blast moisture, g/Nm³", min_value=0.0, max_value=40.0, value=round(float(hd["value"]), 1),
                                    step=0.1, format="%.1f", key=f"{key}_hum", help=hum_help),
     )

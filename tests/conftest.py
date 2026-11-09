@@ -15,6 +15,7 @@ os.environ.setdefault("BF_TWIN_DB_URL", "off")             # no job archive into
 # reports, STRATA live point, shift records) and catches up nothing at start; the schedule tests enable both explicitly.
 os.environ.setdefault("BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.,strata.,shift.")
 os.environ.setdefault("BF_WORKER_CATCH_UP", "0")
+os.environ.setdefault("BF_LIVE_PCI", "0")                  # no InfluxDB PCI read for the optimiser's default
 os.environ.setdefault("BF_WORKER_LIVE_STATUS", "0")       # no InfluxDB snapshot query from a test worker's heartbeat
 # STRATA-Flow network solves one after the other; the parallel tests start their solver processes themselves.
 os.environ.setdefault("BF_STRATA_SOLVERS", "0")

@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -69,6 +70,19 @@ def read_coke_energy_config(mtime_ns: int) -> dict:
 
 page_config = memo(max_entries=2)(read_page_config)
 coke_energy_config = memo(max_entries=2)(read_coke_energy_config)
+
+
+@memo(ttl_seconds=600)
+def live_pci_kg_thm() -> float | None:
+    """PCI as injected, kg/tHM: the 1-h mean of the live tag ``coal_rate_actual_value`` (the Blend Mix Optimiser's
+    reading, ``services.bmo_case``), the default PCI of a plan for today. None when InfluxDB has no reading or
+    ``BF_LIVE_PCI=0`` (tests); the regime median is then the default."""
+    if os.environ.get("BF_LIVE_PCI", "1") == "0":
+        return None
+    from services.bmo_case import read_recent_fuel_rates_live
+
+    v = read_recent_fuel_rates_live().get("pci_rate_kg_thm")
+    return float(v) if v else None
 
 
 def reference_yard(cfg: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -479,9 +493,10 @@ def default_case(
     calibration_info: tuple[CalibrationInfo, dict[str, Any]] | None = None,
 ) -> Case:
     """The run page 11 would start for ``mode`` with its defaults: live yard (else the reference yard) and
-    calibration (else the shipped one), today's controls, PCI and nut coke (regime medians), today's Open-Meteo
-    blast moisture, the register's limits with the saved slag limits and the plant charging; Step 2 at today's
-    production (``production_t_d`` overrides it; ``production_source`` says where it came from) with the controls held
+    calibration (else the shipped one), today's controls, PCI (the live tag's 1-h mean, else the regime median) and
+    nut coke (config), today's Open-Meteo blast moisture, the register's limits with the saved slag limits and the
+    plant charging; Step 2 at today's production (``production_t_d`` overrides it; ``production_source`` says where it
+    came from) with the controls held
     as page 11 starts them, against today's charged blend; Step 1 and maximum production searching oxygen.
     ``omega_mode`` strata (default, certainty filter and risk aversion as given) or fixed. ``calibration_basis`` live
     (page 11's), day (the calibration of 02:30) or reference (the shipped one, ``case_calibration``); ``yard_basis``
@@ -525,7 +540,9 @@ def default_case(
             source = "median of the regime window (page 11's default)"
     humidity_g, _, _ = plan_blast_moisture(plan_day)
     thermal_cfg = cfg.get("thermal", {})
-    th = {**thermal_cfg, **fuel_defaults(regime, thermal_cfg, info.cal)}
+    # PCI: the live tag for a plan of today on the live yard (page 11's default), else the regime median
+    live_pci = live_pci_kg_thm() if plan_day is None and calibration_info is None and yard_basis == "live" else None
+    th = {**thermal_cfg, **fuel_defaults(regime, thermal_cfg, info.cal, live_pci=live_pci)}
     thermal = dict(
         HMT=float(th.get("HMT", 1470.0)),
         hm_Si=float(th.get("hm_Si", 0.38)),

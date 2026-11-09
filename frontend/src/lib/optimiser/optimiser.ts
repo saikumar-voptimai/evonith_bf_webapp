@@ -72,13 +72,24 @@ export interface FieldSpec {
 	step: number;
 	min: number;
 	max: number;
+	/** Hint of an empty field before a run is shown (else the generic page-11 default). */
+	emptyHint?: string;
 }
 
 /** Thermal target and fixed fuels (`OptimiserSettings`; bounds as the API's, checked in the tests). */
 export const THERMAL_FIELDS: FieldSpec[] = [
 	{ key: 'hmt_c', label: 'Hot-metal temperature', unit: '°C', digits: 0, step: 5, min: 1400, max: 1600 },
 	{ key: 'hm_si_pct', label: 'Hot-metal Si', unit: '%', digits: 2, step: 0.01, min: 0.1, max: 1.5 },
-	{ key: 'pci_kg_thm', label: 'PCI, as injected', unit: 'kg/tHM', digits: 0, step: 1, min: 0, max: 260 },
+	{
+		key: 'pci_kg_thm',
+		label: 'PCI, as injected',
+		unit: 'kg/tHM',
+		digits: 0,
+		step: 1,
+		min: 0,
+		max: 260,
+		emptyHint: 'Empty: the live PCI tag (1-h mean); enter a value to override'
+	},
 	{
 		key: 'nut_coke_kg_thm',
 		label: 'Nut coke, as charged',
@@ -86,7 +97,8 @@ export const THERMAL_FIELDS: FieldSpec[] = [
 		digits: 0,
 		step: 1,
 		min: 0,
-		max: 150
+		max: 150,
+		emptyHint: 'Empty: 70 kg/tHM'
 	},
 	{
 		key: 'blast_moisture_g_nm3',
@@ -352,7 +364,7 @@ export function fieldHint(
 	if (isNumber(used))
 		parts.push(`${set ? 'Set' : 'Default'} in the shown run: ${quantity(used, spec.digits, spec.unit)}`);
 	if (isNumber(today)) parts.push(`today ${quantity(today, spec.digits, spec.unit)}`);
-	return parts.length ? parts.join('; ') : 'Empty: page 11’s default at run time';
+	return parts.length ? parts.join('; ') : (spec.emptyHint ?? 'Empty: page 11’s default at run time');
 }
 
 /** The run's value of a form field (settings, then limits). */

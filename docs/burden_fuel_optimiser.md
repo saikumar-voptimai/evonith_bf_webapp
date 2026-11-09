@@ -211,7 +211,8 @@ baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM
   energy, H₂), (2) the network's other-operation channel (nut coke −0.0002 ω per kg as coke-layer mass, PCI about 0)
   and, for nut coke, (3) a data term +0.0010 ± 0.0003 ω per kg (GAS-23: nut coke mixed in the ore layer raises the
   shaft efficiency; out-of-sample coke skill 0.120 with it, 0.105 without). A PCI data term lowers the
-  skill (0.098) and is not used. The page defaults PCI and nut coke to the regime window's medians (ASM-08).
+  skill (0.098) and is not used. The page defaults PCI to the live tag's 1-h mean (else the regime window's median) and nut coke to 70 kg/tHM
+  (user decision 7 Nov 2026); an override replaces either.
 * **Uncertainty and certainty** (`omega_model.OmegaModel`): σ(omega) from the posterior of the blend scales, the
   other-operation scale and the nut-coke coefficient, converted with the loop-inclusive dK/dω.
   Tiers (GAS-18): **High** σ ≤ 2 kg/tHM and inside the 1st–99th percentile of what BF-02 ran; **Medium** σ ≤ 5 and
