@@ -12328,7 +12328,7 @@
                 "type": "null"
               }
             ],
-            "description": "Critical threshold, in unit (ETA CO: below, fuel rate: above)",
+            "description": "Critical threshold, in unit (ETA CO: below, fuel rate: above; HM Si: critical high edge)",
             "title": "Crit"
           },
           "flag": {
@@ -12352,7 +12352,7 @@
                 "type": "null"
               }
             ],
-            "description": "Upper edge of the normal band, in unit (RAFT, permeability)",
+            "description": "Upper edge of the normal band, in unit (RAFT, permeability, HM Si, HM temperature, basicity)",
             "title": "Hi"
           },
           "key": {
@@ -12360,7 +12360,10 @@
               "etaco",
               "fuel_rate",
               "raft",
-              "permeability"
+              "permeability",
+              "hm_si",
+              "hm_temp",
+              "slag_basicity"
             ],
             "title": "Key",
             "type": "string"
@@ -12389,16 +12392,16 @@
                 "type": "null"
               }
             ],
-            "description": "Lower edge of the normal band, in unit (RAFT, permeability)",
+            "description": "Lower edge of the normal band, in unit (RAFT, permeability, HM Si, HM temperature, basicity)",
             "title": "Lo"
           },
           "rule": {
-            "description": "The thresholds as text, e.g. 'warning below 42 %, critical below 40 %'",
+            "description": "The thresholds as text, e.g. 'warning below 41 %, critical below 40 %'",
             "title": "Rule",
             "type": "string"
           },
           "unit": {
-            "description": "Unit of value and thresholds ('' for the dimensionless permeability index)",
+            "description": "Unit of value and thresholds ('' for the dimensionless permeability index and basicity)",
             "title": "Unit",
             "type": "string"
           },
@@ -12423,7 +12426,7 @@
                 "type": "null"
               }
             ],
-            "description": "Warning threshold, in unit (ETA CO: below, fuel rate: above)",
+            "description": "Warning threshold, in unit (ETA CO: below, fuel rate: above; HM Si: critical low edge)",
             "title": "Warn"
           }
         },
@@ -18827,6 +18830,16 @@
             "title": "Attention From",
             "type": "integer"
           },
+          "basicity_hi": {
+            "description": "Slag basicity CaO/SiO\u2082 normal band, upper edge, dimensionless",
+            "title": "Basicity Hi",
+            "type": "number"
+          },
+          "basicity_lo": {
+            "description": "Slag basicity CaO/SiO\u2082 normal band, lower edge, dimensionless",
+            "title": "Basicity Lo",
+            "type": "number"
+          },
           "etaco_crit_pct": {
             "description": "ETA CO below this: critical, %",
             "title": "Etaco Crit Pct",
@@ -18845,6 +18858,36 @@
           "fuel_rate_warn_kg_thm": {
             "description": "Fuel rate above this: warning, kg/tHM",
             "title": "Fuel Rate Warn Kg Thm",
+            "type": "number"
+          },
+          "hm_si_crit_hi_pct": {
+            "description": "Hot-metal Si above this: critical, %",
+            "title": "Hm Si Crit Hi Pct",
+            "type": "number"
+          },
+          "hm_si_crit_lo_pct": {
+            "description": "Hot-metal Si below this: critical, %",
+            "title": "Hm Si Crit Lo Pct",
+            "type": "number"
+          },
+          "hm_si_hi_pct": {
+            "description": "Hot-metal Si normal band, upper edge, %",
+            "title": "Hm Si Hi Pct",
+            "type": "number"
+          },
+          "hm_si_lo_pct": {
+            "description": "Hot-metal Si normal band, lower edge, %",
+            "title": "Hm Si Lo Pct",
+            "type": "number"
+          },
+          "hm_temp_hi_c": {
+            "description": "Hot-metal temperature normal band, upper edge, \u00b0C",
+            "title": "Hm Temp Hi C",
+            "type": "number"
+          },
+          "hm_temp_lo_c": {
+            "description": "Hot-metal temperature normal band, lower edge, \u00b0C",
+            "title": "Hm Temp Lo C",
             "type": "number"
           },
           "permeability_hi": {
@@ -18882,6 +18925,14 @@
           "raft_hi_c",
           "permeability_lo",
           "permeability_hi",
+          "hm_si_lo_pct",
+          "hm_si_hi_pct",
+          "hm_si_crit_lo_pct",
+          "hm_si_crit_hi_pct",
+          "hm_temp_lo_c",
+          "hm_temp_hi_c",
+          "basicity_lo",
+          "basicity_hi",
           "attention_from",
           "unstable_from"
         ],
@@ -21288,7 +21339,7 @@
             "type": "string"
           },
           "kpis": {
-            "description": "ETA CO, fuel rate, RAFT and permeability against the current thresholds",
+            "description": "ETA CO, fuel rate, RAFT, permeability, hot-metal Si, hot-metal temperature and slag basicity against the current thresholds",
             "items": {
               "$ref": "#/components/schemas/KpiStatusView"
             },

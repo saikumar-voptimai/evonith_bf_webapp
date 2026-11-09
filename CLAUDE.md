@@ -1086,7 +1086,12 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   supervisor, or `report.live`, user; the page calls `jobFinished()` when the tracker reads done), builders in
   `#lib/reports/reports.ts` with the tab's decimals (parity with the document of `#lib/reports/fixtures/report.json`,
   written by `scripts/export_chart_fixtures.py`). KPI levels: `reports/furnace_report/status.py`, one rule for
-  `builder._status` and `services.reports.kpi_checks`; thresholds read from `shift_report.yml` per request. Print
+  `builder._status` and `services.reports.kpi_checks`; thresholds read from `shift_report.yml` per request. Seven
+  checks since 3 Nov 2026: ETA CO, fuel rate (warning / critical), RAFT, permeability, hot-metal temperature (BAND-02),
+  slag basicity (ASM-12) as normal bands, hot-metal Si with a normal and a critical band (BAND-03); the values were set
+  from the Jun-Nov 2026 shift record (409 running shifts; a warning is about the worst 5-10 %, a critical level the
+  worst 1-2 %), with the share of shifts each edge flags in the YAML comments. Change a threshold there, then
+  `make fixtures` (the report fixture) and the tests of `tests/test_services_report_status.py`. Print
   theme: `--vo-print-*` tokens (paper #FFFBE6), `theme/print.css` (`@page` A4, `data-print="hide"`), print rules in
   Panel (`breakable`), DataTable, AppShell, PageHeader; `#lib/reports/print.ts` plans the pages (limit 3).
 - Blend Mix Optimiser page (SV-3.6, `routes/bmo/+page.svelte`): `#lib/bmo/runs.svelte.ts` opens on the newest

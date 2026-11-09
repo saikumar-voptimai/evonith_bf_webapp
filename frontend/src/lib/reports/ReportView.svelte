@@ -156,8 +156,8 @@ column on A4 (print theme; `print.ts` plans the pages).
 	];
 	const flagNote = $derived(
 		flags.length
-			? `${flags.length} of ${detail.kpis?.length || 4} checks outside their thresholds when the report was written`
-			: 'ETA CO, fuel rate, RAFT and permeability within their thresholds'
+			? `${flags.length} of ${detail.kpis?.length || 7} checks outside their thresholds when the report was written`
+			: 'All seven KPI checks within their thresholds'
 	);
 	const twinNote = $derived(
 		reports.twinQuery?.resolution === 'hour'

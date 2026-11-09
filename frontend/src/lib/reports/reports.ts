@@ -174,6 +174,9 @@ export function thresholdLines(t: ReportThresholds): string[] {
 		`Fuel rate: warning above ${g(t.fuel_rate_warn_kg_thm)} kg/tHM, critical above ${g(t.fuel_rate_crit_kg_thm)} kg/tHM`,
 		`RAFT: normal ${g(t.raft_lo_c)}${RANGE_DASH}${g(t.raft_hi_c)} °C`,
 		`Permeability: normal ${g(t.permeability_lo)}${RANGE_DASH}${g(t.permeability_hi)}`,
+		`Hot-metal Si: normal ${g(t.hm_si_lo_pct)}${RANGE_DASH}${g(t.hm_si_hi_pct)} %, critical below ${g(t.hm_si_crit_lo_pct)} % or above ${g(t.hm_si_crit_hi_pct)} %`,
+		`Hot-metal temperature: normal ${g(t.hm_temp_lo_c)}${RANGE_DASH}${g(t.hm_temp_hi_c)} °C`,
+		`Slag basicity: normal ${g(t.basicity_lo)}${RANGE_DASH}${g(t.basicity_hi)}`,
 		`Status: ${t.attention_from}${RANGE_DASH}${t.unstable_from - 1} breaches attention required, ${t.unstable_from} or more unstable`
 	];
 }
@@ -190,7 +193,7 @@ export interface ReportTile {
 	note?: string;
 }
 
-/** Headline readouts; the four thresholded KPIs carry the API's level and rule. */
+/** Headline readouts; the seven thresholded KPIs carry the API's level and rule. */
 export function reportTiles(detail: Pick<ReportDetail, 'data' | 'kpis'>): ReportTile[] {
 	const d = detail.data;
 	const kpi = new Map((detail.kpis ?? []).map((k) => [k.key, k]));
@@ -214,8 +217,15 @@ export function reportTiles(detail: Pick<ReportDetail, 'data' | 'kpis'>): Report
 			{ key: 'permeability', label: 'Permeability', value: n(d.permeability.mean), unit: '', digits: 0 },
 			'permeability'
 		),
-		{ key: 'hm_si', label: 'Hot-metal Si', value: n(d.hm_si), unit: '%', digits: 2 },
-		{ key: 'hm_temp', label: 'Hot-metal temperature', value: n(d.hm_temp), unit: '°C', digits: 0 }
+		withStatus({ key: 'hm_si', label: 'Hot-metal Si', value: n(d.hm_si), unit: '%', digits: 2 }, 'hm_si'),
+		withStatus(
+			{ key: 'hm_temp', label: 'Hot-metal temperature', value: n(d.hm_temp), unit: '°C', digits: 0 },
+			'hm_temp'
+		),
+		withStatus(
+			{ key: 'slag_basicity', label: 'Slag basicity', value: n(d.slag_basicity), unit: '', digits: 2 },
+			'slag_basicity'
+		)
 	];
 }
 

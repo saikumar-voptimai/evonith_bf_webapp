@@ -8,6 +8,9 @@ Cross-platform (Windows, Linux, Jetson). Run from anywhere:
 Ports: SPA 5173 (open http://localhost:5173), API 8100, Streamlit 8501 under /legacy. The SPA dev server proxies
 /api and /legacy, so the browser sees one origin, as it does behind Caddy in production. Ctrl+C stops everything.
 
+Every process gets the repository's ``.env`` (a variable set in the shell wins), as systemd's EnvironmentFile does in
+production.
+
 Live events and jobs need Redis (``BF_REDIS_URL``, default redis://127.0.0.1:6379/0). When it is not reachable, the
 worker is left out of the default set and the API keeps events in-process (job routes answer 503).
 """
@@ -25,6 +28,8 @@ import threading
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
+
+from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 DEV_KEY_FILE = ROOT / "src" / "storage" / "twin_api" / "jwt_secret.dev"
@@ -115,7 +120,7 @@ def main(argv: list[str]) -> int:
     unknown = [n for n in names if n not in PROCESSES]
     if unknown:
         sys.exit(f"unknown process(es): {', '.join(unknown)}; choose from {', '.join(PROCESSES)}")
-    env = dict(os.environ)
+    env = {k: v for k, v in dotenv_values(ROOT / ".env").items() if v is not None} | dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), str(ROOT / "furnace_data"), env.get("PYTHONPATH", "")])
     env.setdefault("PYTHONUNBUFFERED", "1")
     redis_url = env.get("BF_REDIS_URL") or DEFAULT_REDIS_URL

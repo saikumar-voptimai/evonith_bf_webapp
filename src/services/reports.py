@@ -372,6 +372,14 @@ def thresholds_data(thresholds: Thresholds | None = None) -> dict[str, Any]:
         "raft_hi_c": t.raft_hi,
         "permeability_lo": t.perm_lo,
         "permeability_hi": t.perm_hi,
+        "hm_si_lo_pct": t.si_lo,
+        "hm_si_hi_pct": t.si_hi,
+        "hm_si_crit_lo_pct": t.si_crit_lo,
+        "hm_si_crit_hi_pct": t.si_crit_hi,
+        "hm_temp_lo_c": t.hm_temp_lo,
+        "hm_temp_hi_c": t.hm_temp_hi,
+        "basicity_lo": t.basicity_lo,
+        "basicity_hi": t.basicity_hi,
         "attention_from": ATTENTION_FROM,
         "unstable_from": UNSTABLE_FROM,
     }
@@ -383,14 +391,18 @@ def _mean_of(data: Mapping[str, Any], key: str) -> Any:
 
 
 def kpi_checks(data: Mapping[str, Any], thresholds: Thresholds | None = None) -> list[dict[str, Any]]:
-    """A stored report's ETA CO, fuel rate, RAFT and permeability (``report_data`` values) against the thresholds
-    (default: read from the configuration now): value, level, rule and the Reports tab's flag."""
+    """A stored report's ETA CO, fuel rate, RAFT, permeability, hot-metal Si and temperature and slag basicity
+    (``report_data`` values) against the thresholds (default: read from the configuration now): value, level, rule and
+    the Reports tab's flag."""
     checks = evaluate(
         etaco=_mean_of(data, "etaco"),
         fuel_rate=data.get("fuel_rate"),
         raft=_mean_of(data, "raft"),
         perm=_mean_of(data, "permeability"),
         thresholds=thresholds or load_thresholds(),
+        hm_si=data.get("hm_si"),
+        hm_temp=data.get("hm_temp"),
+        basicity=data.get("slag_basicity"),
     )
     return [asdict(c) for c in checks]
 

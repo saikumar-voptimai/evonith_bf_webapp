@@ -1,10 +1,11 @@
 """Rule-based status of a shift report against ``config/shift_report.yml -> status_thresholds`` (SV-2.4, #296).
 
-One check per KPI that has thresholds (ETA CO, fuel rate, RAFT, permeability): ``evaluate`` gives each its level (ok,
-warning, critical; no_data without a value) and, when it breaches, the Reports tab's flag text; ``overall`` counts the
-flags (none STABLE, one or two ATTENTION REQUIRED, three or more UNSTABLE). The report builder (``builder._status``)
-and the twin-api's KPI view (``services.reports.kpi_checks``) both evaluate through this module, so the stored status
-and the levels on the Shift Reports page follow one rule.
+One check per KPI that has thresholds (ETA CO, fuel rate, RAFT, permeability, hot-metal Si, hot-metal temperature,
+slag basicity): ``evaluate`` gives each its level (ok, warning, critical; no_data without a value) and, when it
+breaches, the Reports tab's flag text; ``overall`` counts the flags (none STABLE, one or two ATTENTION REQUIRED, three
+or more UNSTABLE). The report builder (``builder._status``) and the twin-api's KPI view
+(``services.reports.kpi_checks``) both evaluate through this module, so the stored status and the levels on the Shift
+Reports page follow one rule. The thresholds were set from the plant's Jun-Nov 2026 shift record (the YAML says how).
 """
 
 from __future__ import annotations
@@ -25,7 +26,8 @@ CONFIG_FILE = "shift_report.yml"
 
 @dataclass(frozen=True)
 class Thresholds:
-    """The thresholds of ``status_thresholds``: ETA CO in %, fuel rate in kg/tHM, RAFT in °C, permeability index."""
+    """The thresholds of ``status_thresholds``: ETA CO in %, fuel rate in kg/tHM, RAFT in °C, permeability index,
+    hot-metal Si in % (normal band and critical band), hot-metal temperature in °C, slag basicity CaO/SiO₂."""
 
     etaco_warn: float
     etaco_crit: float
@@ -35,6 +37,14 @@ class Thresholds:
     raft_hi: float
     perm_lo: float
     perm_hi: float
+    si_lo: float
+    si_hi: float
+    si_crit_lo: float
+    si_crit_hi: float
+    hm_temp_lo: float
+    hm_temp_hi: float
+    basicity_lo: float
+    basicity_hi: float
 
     @classmethod
     def from_config(cls, block: Mapping[str, Any]) -> Thresholds:
@@ -48,6 +58,14 @@ class Thresholds:
                 raft_hi=float(block["raft_hi"]),
                 perm_lo=float(block["perm_lo"]),
                 perm_hi=float(block["perm_hi"]),
+                si_lo=float(block["hm_si"]["lo"]),
+                si_hi=float(block["hm_si"]["hi"]),
+                si_crit_lo=float(block["hm_si"]["crit_lo"]),
+                si_crit_hi=float(block["hm_si"]["crit_hi"]),
+                hm_temp_lo=float(block["hm_temp_lo"]),
+                hm_temp_hi=float(block["hm_temp_hi"]),
+                basicity_lo=float(block["basicity_lo"]),
+                basicity_hi=float(block["basicity_hi"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"{CONFIG_FILE} -> status_thresholds is incomplete or not numeric: {exc!r}") from exc
@@ -66,7 +84,7 @@ def load_thresholds(config: Mapping[str, Any] | None = None) -> Thresholds:
 class KpiCheck:
     """One KPI against its thresholds; ``flag`` is the Reports tab's text when the KPI breaches."""
 
-    key: Literal["etaco", "fuel_rate", "raft", "permeability"]
+    key: Literal["etaco", "fuel_rate", "raft", "permeability", "hm_si", "hm_temp", "slag_basicity"]
     label: str
     unit: str
     value: float | None
@@ -121,7 +139,12 @@ def _fuel_rate(value: float | None, t: Thresholds) -> KpiCheck:
 
 
 def _band(
-    key: Literal["raft", "permeability"], label: str, unit: str, value: float | None, lo: float, hi: float
+    key: Literal["raft", "permeability", "hm_temp", "slag_basicity"],
+    label: str,
+    unit: str,
+    value: float | None,
+    lo: float,
+    hi: float,
 ) -> KpiCheck:
     """Outside [lo, hi]: warning, with the tab's flag (``RAFT 2050.00°C (normal 2100–2350)``)."""
     rule = f"normal {_g(lo)}–{_g(hi)}{f' {unit}' if unit else ''}"
@@ -133,17 +156,49 @@ def _band(
     return KpiCheck(key, label, unit, value, "warning", rule, flag, lo=lo, hi=hi)
 
 
+def _hm_si(value: float | None, t: Thresholds) -> KpiCheck:
+    """Hot-metal Si, the thermal-state proxy: outside the normal band a warning, outside the critical band (a chilled
+    hearth below, a hot and coke-hungry furnace above) critical. ``lo`` / ``hi`` carry the normal band, ``warn`` /
+    ``crit`` the critical band's low and high edge."""
+    rule = f"normal {_g(t.si_lo)}–{_g(t.si_hi)} %, critical below {_g(t.si_crit_lo)} % or above {_g(t.si_crit_hi)} %"
+    level: Level = "no_data"
+    flag = None
+    if value is not None:
+        level = "ok"
+        if value < t.si_crit_lo:
+            level, flag = "critical", f"HM Si {value:.2f}% (critical < {_g(t.si_crit_lo)}%)"
+        elif value > t.si_crit_hi:
+            level, flag = "critical", f"HM Si {value:.2f}% (critical > {_g(t.si_crit_hi)}%)"
+        elif not t.si_lo <= value <= t.si_hi:
+            level, flag = "warning", f"HM Si {value:.2f}% (normal {_g(t.si_lo)}–{_g(t.si_hi)})"
+    return KpiCheck(
+        "hm_si", "HM Si", "%", value, level, rule, flag, warn=t.si_crit_lo, crit=t.si_crit_hi, lo=t.si_lo, hi=t.si_hi
+    )
+
+
 def evaluate(
-    *, etaco: float | None, fuel_rate: float | None, raft: float | None, perm: float | None, thresholds: Thresholds
+    *,
+    etaco: float | None,
+    fuel_rate: float | None,
+    raft: float | None,
+    perm: float | None,
+    thresholds: Thresholds,
+    hm_si: float | None = None,
+    hm_temp: float | None = None,
+    basicity: float | None = None,
 ) -> tuple[KpiCheck, ...]:
-    """ETA CO and fuel rate (warning, critical), RAFT and permeability (outside the normal band: warning); a missing or
-    non-finite value is no_data."""
+    """ETA CO and fuel rate (warning, critical), RAFT, permeability, hot-metal temperature and slag basicity (outside
+    the normal band: warning), hot-metal Si (normal band: warning; critical band: critical); a missing or non-finite
+    value is no_data."""
     t = thresholds
     return (
         _etaco(_finite(etaco), t),
         _fuel_rate(_finite(fuel_rate), t),
         _band("raft", "RAFT", "°C", _finite(raft), t.raft_lo, t.raft_hi),
         _band("permeability", "Permeability", "", _finite(perm), t.perm_lo, t.perm_hi),
+        _hm_si(_finite(hm_si), t),
+        _band("hm_temp", "HM temperature", "°C", _finite(hm_temp), t.hm_temp_lo, t.hm_temp_hi),
+        _band("slag_basicity", "Slag basicity", "", _finite(basicity), t.basicity_lo, t.basicity_hi),
     )
 
 

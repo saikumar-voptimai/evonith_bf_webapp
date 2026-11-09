@@ -8008,7 +8008,7 @@ export interface components {
         KpiStatusView: {
             /**
              * Crit
-             * @description Critical threshold, in unit (ETA CO: below, fuel rate: above)
+             * @description Critical threshold, in unit (ETA CO: below, fuel rate: above; HM Si: critical high edge)
              */
             crit?: number | null;
             /**
@@ -8018,14 +8018,14 @@ export interface components {
             flag?: string | null;
             /**
              * Hi
-             * @description Upper edge of the normal band, in unit (RAFT, permeability)
+             * @description Upper edge of the normal band, in unit (RAFT, permeability, HM Si, HM temperature, basicity)
              */
             hi?: number | null;
             /**
              * Key
              * @enum {string}
              */
-            key: "etaco" | "fuel_rate" | "raft" | "permeability";
+            key: "etaco" | "fuel_rate" | "raft" | "permeability" | "hm_si" | "hm_temp" | "slag_basicity";
             /** Label */
             label: string;
             /**
@@ -8036,17 +8036,17 @@ export interface components {
             level: "ok" | "warning" | "critical" | "no_data";
             /**
              * Lo
-             * @description Lower edge of the normal band, in unit (RAFT, permeability)
+             * @description Lower edge of the normal band, in unit (RAFT, permeability, HM Si, HM temperature, basicity)
              */
             lo?: number | null;
             /**
              * Rule
-             * @description The thresholds as text, e.g. 'warning below 42 %, critical below 40 %'
+             * @description The thresholds as text, e.g. 'warning below 41 %, critical below 40 %'
              */
             rule: string;
             /**
              * Unit
-             * @description Unit of value and thresholds ('' for the dimensionless permeability index)
+             * @description Unit of value and thresholds ('' for the dimensionless permeability index and basicity)
              */
             unit: string;
             /**
@@ -8056,7 +8056,7 @@ export interface components {
             value?: number | null;
             /**
              * Warn
-             * @description Warning threshold, in unit (ETA CO: below, fuel rate: above)
+             * @description Warning threshold, in unit (ETA CO: below, fuel rate: above; HM Si: critical low edge)
              */
             warn?: number | null;
         };
@@ -11033,6 +11033,16 @@ export interface components {
              */
             attention_from: number;
             /**
+             * Basicity Hi
+             * @description Slag basicity CaO/SiO₂ normal band, upper edge, dimensionless
+             */
+            basicity_hi: number;
+            /**
+             * Basicity Lo
+             * @description Slag basicity CaO/SiO₂ normal band, lower edge, dimensionless
+             */
+            basicity_lo: number;
+            /**
              * Etaco Crit Pct
              * @description ETA CO below this: critical, %
              */
@@ -11052,6 +11062,36 @@ export interface components {
              * @description Fuel rate above this: warning, kg/tHM
              */
             fuel_rate_warn_kg_thm: number;
+            /**
+             * Hm Si Crit Hi Pct
+             * @description Hot-metal Si above this: critical, %
+             */
+            hm_si_crit_hi_pct: number;
+            /**
+             * Hm Si Crit Lo Pct
+             * @description Hot-metal Si below this: critical, %
+             */
+            hm_si_crit_lo_pct: number;
+            /**
+             * Hm Si Hi Pct
+             * @description Hot-metal Si normal band, upper edge, %
+             */
+            hm_si_hi_pct: number;
+            /**
+             * Hm Si Lo Pct
+             * @description Hot-metal Si normal band, lower edge, %
+             */
+            hm_si_lo_pct: number;
+            /**
+             * Hm Temp Hi C
+             * @description Hot-metal temperature normal band, upper edge, °C
+             */
+            hm_temp_hi_c: number;
+            /**
+             * Hm Temp Lo C
+             * @description Hot-metal temperature normal band, lower edge, °C
+             */
+            hm_temp_lo_c: number;
             /**
              * Permeability Hi
              * @description Permeability index normal band, upper edge, dimensionless
@@ -12328,7 +12368,7 @@ export interface components {
             kind: "closed" | "live";
             /**
              * Kpis
-             * @description ETA CO, fuel rate, RAFT and permeability against the current thresholds
+             * @description ETA CO, fuel rate, RAFT, permeability, hot-metal Si, hot-metal temperature and slag basicity against the current thresholds
              */
             kpis?: components["schemas"]["KpiStatusView"][];
             /**

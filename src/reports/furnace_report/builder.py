@@ -439,10 +439,20 @@ def _status(
     fuel_rate: Optional[float],
     raft: Optional[float],
     perm: Optional[float],
+    hm_si: Optional[float] = None,
+    hm_temp: Optional[float] = None,
+    basicity: Optional[float] = None,
 ) -> tuple[Literal["STABLE", "ATTENTION REQUIRED", "UNSTABLE"], list[str]]:
     # One rule with the twin-api's KPI levels (SV-2.4): reports.furnace_report.status.
     checks = evaluate_status(
-        etaco=etaco, fuel_rate=fuel_rate, raft=raft, perm=perm, thresholds=_THRESH
+        etaco=etaco,
+        fuel_rate=fuel_rate,
+        raft=raft,
+        perm=perm,
+        thresholds=_THRESH,
+        hm_si=hm_si,
+        hm_temp=hm_temp,
+        basicity=basicity,
     )
     return overall_status(checks)
 
@@ -508,7 +518,10 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             end_time=raw.shift_end_ist,
         )
 
-        status, flags = _status(etaco_val, fuel_rate_val, raft_val, perm_val)
+        hm_si_val = _hm_mean(hm, "si")
+        status, flags = _status(
+            etaco_val, fuel_rate_val, raft_val, perm_val, hm_si_val, hm_temp, slag_basicity
+        )
 
         return ShiftReportData(
             shift_date=raw.shift_date,
@@ -530,7 +543,7 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             coke_rate=coke_rate_val,
             nut_coke_rate=nut_coke_rate_val,
             pci_rate=pci_rate_val,
-            hm_si=_hm_mean(hm, "si"),
+            hm_si=hm_si_val,
             hm_s=_hm_mean(hm, "s"),
             hm_temp=hm_temp,
             slag_basicity=slag_basicity,

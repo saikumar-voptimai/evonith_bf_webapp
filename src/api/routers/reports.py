@@ -182,7 +182,9 @@ class ShiftReportDetail(ShiftReportSummary):
     data: ShiftReportDataView
     document: ReportDocumentView
     kpis: list[KpiStatusView] = Field(
-        default_factory=list, description="ETA CO, fuel rate, RAFT and permeability against the current thresholds"
+        default_factory=list,
+        description="ETA CO, fuel rate, RAFT, permeability, hot-metal Si, hot-metal temperature and slag basicity "
+        "against the current thresholds",
     )
     record: ShiftRecordLink | None = Field(
         None, description="The handover record of the report's shift; null until shift.close has frozen it"
@@ -192,19 +194,29 @@ class ShiftReportDetail(ShiftReportSummary):
 class KpiStatusView(BaseModel):
     """One KPI of the report against the current thresholds of config/shift_report.yml."""
 
-    key: Literal["etaco", "fuel_rate", "raft", "permeability"]
+    key: Literal["etaco", "fuel_rate", "raft", "permeability", "hm_si", "hm_temp", "slag_basicity"]
     label: str
-    unit: str = Field(..., description="Unit of value and thresholds ('' for the dimensionless permeability index)")
+    unit: str = Field(
+        ..., description="Unit of value and thresholds ('' for the dimensionless permeability index and basicity)"
+    )
     value: float | None = Field(None, description="Mean over the report window, in unit")
     level: Literal["ok", "warning", "critical", "no_data"] = Field(
         ..., description="ok, warning or critical against the thresholds; no_data without a value"
     )
-    rule: str = Field(..., description="The thresholds as text, e.g. 'warning below 42 %, critical below 40 %'")
+    rule: str = Field(..., description="The thresholds as text, e.g. 'warning below 41 %, critical below 40 %'")
     flag: str | None = Field(None, description="The Reports tab's flag text when the KPI breaches")
-    warn: float | None = Field(None, description="Warning threshold, in unit (ETA CO: below, fuel rate: above)")
-    crit: float | None = Field(None, description="Critical threshold, in unit (ETA CO: below, fuel rate: above)")
-    lo: float | None = Field(None, description="Lower edge of the normal band, in unit (RAFT, permeability)")
-    hi: float | None = Field(None, description="Upper edge of the normal band, in unit (RAFT, permeability)")
+    warn: float | None = Field(
+        None, description="Warning threshold, in unit (ETA CO: below, fuel rate: above; HM Si: critical low edge)"
+    )
+    crit: float | None = Field(
+        None, description="Critical threshold, in unit (ETA CO: below, fuel rate: above; HM Si: critical high edge)"
+    )
+    lo: float | None = Field(
+        None, description="Lower edge of the normal band, in unit (RAFT, permeability, HM Si, HM temperature, basicity)"
+    )
+    hi: float | None = Field(
+        None, description="Upper edge of the normal band, in unit (RAFT, permeability, HM Si, HM temperature, basicity)"
+    )
 
 
 class ReportThresholds(BaseModel):
@@ -218,6 +230,14 @@ class ReportThresholds(BaseModel):
     raft_hi_c: float = Field(..., description="RAFT normal band, upper edge, °C")
     permeability_lo: float = Field(..., description="Permeability index normal band, lower edge, dimensionless")
     permeability_hi: float = Field(..., description="Permeability index normal band, upper edge, dimensionless")
+    hm_si_lo_pct: float = Field(..., description="Hot-metal Si normal band, lower edge, %")
+    hm_si_hi_pct: float = Field(..., description="Hot-metal Si normal band, upper edge, %")
+    hm_si_crit_lo_pct: float = Field(..., description="Hot-metal Si below this: critical, %")
+    hm_si_crit_hi_pct: float = Field(..., description="Hot-metal Si above this: critical, %")
+    hm_temp_lo_c: float = Field(..., description="Hot-metal temperature normal band, lower edge, °C")
+    hm_temp_hi_c: float = Field(..., description="Hot-metal temperature normal band, upper edge, °C")
+    basicity_lo: float = Field(..., description="Slag basicity CaO/SiO₂ normal band, lower edge, dimensionless")
+    basicity_hi: float = Field(..., description="Slag basicity CaO/SiO₂ normal band, upper edge, dimensionless")
     attention_from: int = Field(..., description="Flags from which the status is ATTENTION REQUIRED, count")
     unstable_from: int = Field(..., description="Flags from which the status is UNSTABLE, count")
 
