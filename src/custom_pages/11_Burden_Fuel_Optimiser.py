@@ -39,7 +39,7 @@ from ui.burden_optimiser.sections import (plan_sentence, render_controls, render
                                           render_thermal, render_yard_editor)
 from ui.burden_optimiser.commentary import render_furnace_commentary
 from ui.burden_optimiser.omega_panel import render_auto, render_omega_result, render_omega_settings
-from utils.burden_engine import BandError, Engine, Infeasible, load_register, strata_network
+from utils.burden_engine import BandError, Engine, Infeasible, load_register
 from utils.burden_engine.commentary import build_context, load_assumptions, load_notes
 from utils.burden_engine.scenarios import fuel_defaults, limit_labels, limits_from, settings_from_regime
 from utils.coke_energy.weather import plan_blast_moisture
@@ -83,7 +83,8 @@ st.divider()
 st.subheader("Optimise")
 mode = st.radio("What to optimise", list(MODES), format_func=MODES.get, horizontal=True, key="bfo_mode")
 process = mode in ("cheapest", "max")
-om_set = render_omega_settings("bfo_om")
+with st.expander("Advanced settings", expanded=False):
+    om_set = render_omega_settings("bfo_om")
 prod_cfg = dict(cfg.get("production", {}))
 if mode == "fixed":
     today_t_day = (regime or {}).get("prod_th")
@@ -104,7 +105,8 @@ _hum_g, _hum_src, _hum_day = plan_blast_moisture()
 humidity_default = dict(value=_hum_g, source=_hum_src, day=_hum_day.date(),
                         window=((info.cal or {}).get("case") or {}).get("humidity_g"))
 with st.expander("Thermal target and fixed fuels", expanded=False):
-    thermal_defaults = {**cfg.get("thermal", {}), **fuel_defaults(regime, cfg.get("thermal", {}), info.cal)}
+    thermal_defaults = {**cfg.get("thermal", {}),
+                        **fuel_defaults(regime, cfg.get("thermal", {}), info.cal, live_pci=loaders.live_pci())}
     thermal = render_thermal(thermal_defaults, reg, humidity_default, "bfo_th")
 
 charging = dict(cfg.get("charging", {}))
@@ -147,7 +149,9 @@ today_blend = loaders.charged_blend(loaders.as_json(yard["materials"]), nonce) i
 today_shares = dict(today_blend.get("shares") or {})
 
 # ── Run ───────────────────────────────────────────────────────────────
-run = st.button("Optimise", type="primary", key="bfo_run")
+_b, _t = st.columns([1, 5], vertical_alignment="center")
+run = _b.button("Optimise", type="primary", key="bfo_run")
+_t.caption(loaders.expected_text(mode, om_set["omega_mode"]))
 args = (mode, loaders.as_json(inputs), loaders.as_json(info.cal), s0_d, L.__dict__ | {"process": process}, float(target),
         bool(search_o2), int(prod_cfg.get("o2_levels", 9)), float(prod_cfg.get("frontier_lo_t_h", 84.0)),
         float(prod_cfg.get("frontier_step_t_h", 1.0)), loaders.as_json(today_shares if mode == "fixed" else {}),
@@ -155,26 +159,13 @@ args = (mode, loaders.as_json(inputs), loaders.as_json(info.cal), s0_d, L.__dict
 if run:
     st.session_state["bfo_args"] = args
 if st.session_state.get("bfo_args") is None:
-    st.info("Set the inputs and press Optimise. Step 1 and maximum production search output and oxygen and take "
-            "about a minute; Step 2 takes a second.")
     st.stop()
 if st.session_state["bfo_args"] != args:
     st.caption("Inputs changed since the last run: press Optimise to update the results below.")
 
 args = st.session_state["bfo_args"]
 try:
-    # network solves of the reference case of 16 Oct 2026 (SV-1.8 benchmark); independent ones run in parallel
-    _solves = {"fixed": "about 75", "max": "about 350", "cheapest": "about 1,300"}.get(args[0], "")
-    _n = strata_network.solver_count()
-    _where = f"shared by {_n} solver processes" if _n >= 2 else "one after the other"
-    _strata_msg = ("Optimising: two-zone balance inside a sequential LP, with the STRATA-Flow network solved at every "
-                   "iteration and for every reported plan (" + (f"{_solves} network solves for this mode, " if _solves
-                                                                else "")
-                   + f"about 1 s each, {_where}; the first run of a new calibration also computes the network Jacobian, "
-                   "17 solves)…")
-    with st.spinner("Optimising (two-zone balance inside a sequential LP)…" if args[3].get("omega_mode") != "blend"
-                    else _strata_msg):
-        res = loaders.run_mode(*args)
+    res = loaders.run_with_progress(*args)
 except BandError as exc:
     st.error(f"{exc}. The engine does not report outside the plausibility bands.")
     st.stop()

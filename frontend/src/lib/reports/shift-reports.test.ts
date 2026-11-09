@@ -160,7 +160,7 @@ describe('ShiftReports', () => {
 		expect(page.list).toEqual([summary]);
 		expect(page.listFor).toBe('2026-10-26|B');
 		expect(page.detail?.shift_key).toBe('2026-10-26_B');
-		expect(page.thresholds?.fuel_rate_warn_kg_thm).toBe(530);
+		expect(page.thresholds?.fuel_rate_warn_kg_thm).toBe(570);
 		const q = f.twinQueries[0]!;
 		expect(q.resolution).toBe('shift');
 		expect([Date.parse(q.start), Date.parse(q.end)]).toEqual([

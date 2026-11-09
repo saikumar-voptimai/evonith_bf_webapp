@@ -90,7 +90,7 @@ Online format: `"<Measurement Label> - <Field Label>"` | Offline format: `"Offli
 | 1–2 KPIs outside range, or minor spread | ATTENTION REQUIRED |
 | 3+ KPIs abnormal, or large temperature asymmetry | UNSTABLE |
 
-Thresholds: ETA CO ≥42% normal / <40% critical | RAFT 2100–2350°C | Permeability 1000–1600 | Temp spread (Q_max−Q_min) >15°C attention / >30°C critical | Fuel Rate <530 normal / >570 critical kg/tHM
+Thresholds (config/shift_report.yml, set from the Jun–Nov 2026 shift record): ETA CO ≥41% normal / <40% critical | Fuel Rate ≤570 normal / >590 critical kg/tHM | RAFT 2100–2350°C | Permeability 1250–1500 | HM Si 0.25–0.60% normal, <0.20% or >0.80% critical | HM Temperature 1440–1520°C | Slag Basicity 1.05–1.15 | Uptake temp spread (Q_max−Q_min) is reported, not a status KPI: the plant runs 20–90°C.
 
 Derived: **O2 Flow** = mean(HB Volume) × mean(O2 enr%) / 100 | **Slag Basicity** = mean(slag_cao) / mean(slag_sio2) | **HM Temp** = mean(Runner Temp) or mean(hm_temp)
 

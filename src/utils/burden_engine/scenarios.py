@@ -24,32 +24,39 @@ from utils.burden_engine.engine import Engine, Limits, Settings, value_in_use
 from utils.burden_engine.facts import FactRegister
 
 MODES = ("cheapest", "fixed", "max")
+#: Largest PCI a plan takes, kg/tHM as injected (the page's and the API's input bound).
+PCI_MAX_KG_THM = 260.0
 
 
 # ---------------------------------------------------------------------------------------------- starting point
-def fuel_defaults(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], cal: Mapping[str, Any]) -> dict[str, Any]:
-    """PCI and nut coke defaults, kg/tHM as injected / as charged (STRATA 1.3): the regime window's medians (they
-    vary shift to shift; the calibration and STRATA-omega's nut-coke term are referred to the same window), else the
-    calibration's, else the page config. Returns pci_kg_thm, nut_kg_thm and the source of each."""
+def fuel_defaults(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], cal: Mapping[str, Any],
+                  live_pci: float | None = None) -> dict[str, Any]:
+    """PCI and nut coke defaults, kg/tHM as injected / as charged (user decision 7 Nov 2026). PCI: the live tag's
+    1-h mean (``live_pci``, the Blend Mix Optimiser's reading; ignored above ``PCI_MAX_KG_THM``: the tag spikes when
+    production stops and stuck at about 430 on 16-21 Oct 2026), else the regime window's median, else the
+    calibration's, else the page config. Nut coke: the page config (70 kg/tHM). Returns pci_kg_thm, nut_kg_thm and the
+    source of each."""
     case = cal.get("case", {}) if isinstance(cal, Mapping) else {}
     reg = dict(regime or {})
     out: dict[str, Any] = {}
-    for key, reg_key, case_key, fuel in (("pci_kg_thm", "pci_kgthm_dry", "pci_kg", "pci"), ("nut_kg_thm", "nut_kgthm_dry", "nut_kg", "nut")):
-        moist = float((case.get(fuel) or {}).get("moist_pct", 0.0)) / 100.0
-        v = reg.get(reg_key)
-        if v is not None and np.isfinite(v) and v > 0:
-            out[key], out[key + "_source"] = float(v) / (1 - moist), "regime median"
-        elif case.get(case_key):
-            out[key], out[key + "_source"] = float(case[case_key]) / (1 - moist), "calibration"
-        else:
-            out[key], out[key + "_source"] = float(thermal.get(key, getattr(Settings, "pci_plant" if fuel == "pci" else "nut_plant"))), "config"
+    moist = float((case.get("pci") or {}).get("moist_pct", 0.0)) / 100.0
+    v = reg.get("pci_kgthm_dry")
+    if live_pci is not None and np.isfinite(live_pci) and 0 < live_pci <= PCI_MAX_KG_THM:
+        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(live_pci), "live tag, 1-h mean"
+    elif v is not None and np.isfinite(v) and v > 0:
+        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(v) / (1 - moist), "regime median"
+    elif case.get("pci_kg"):
+        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(case["pci_kg"]) / (1 - moist), "calibration"
+    else:
+        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(thermal.get("pci_kg_thm", Settings.pci_plant)), "config"
+    out["nut_kg_thm"], out["nut_kg_thm_source"] = float(thermal.get("nut_kg_thm", Settings.nut_plant)), "config"
     return out
 
 
 def settings_from_regime(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], cal: Mapping[str, Any],
                          **overrides: Any) -> Settings:
     """Today's controls: the regime's medians where known, else the calibration's; thermal targets from the page config
-    (client basis, ASM-08); PCI and nut coke from ``fuel_defaults`` (regime medians)."""
+    (client basis, ASM-08); PCI and nut coke from ``fuel_defaults`` (regime median PCI, nut coke from the config)."""
     case = cal.get("case", {})
     reg = dict(regime or {})
     pick = lambda key, fallback: float(reg[key]) if reg.get(key) is not None and np.isfinite(reg[key]) else float(fallback)

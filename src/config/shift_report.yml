@@ -19,13 +19,37 @@ material_fines_table:
   schema: offline_feed
   table: material_fines_analysis
 
+# Status rule of the shift report (reports/furnace_report/status.py; the Shift Reports page reads it per request).
+# Set on 3 Nov 2026 from the plant's own record: 409 running shifts of 1 Jun - 2 Nov 2026 (shift means of InfluxDB
+# process_params; HM and slag per tap from offline_feed.hot_metal_slag_analysis). A warning marks roughly the worst
+# 5-10 % of those shifts, a critical level the worst 1-2 %; bands the fact register also holds are named. The share
+# of the record each edge would have flagged is given, so a change can be judged against the same yardstick.
 status_thresholds:
-  etaco: {warn: 42.0, crit: 40.0}
-  fuel_rate: {warn: 530.0, crit: 570.0}
+  # ETA CO, %: mean 42.2, SD 1.1 (p10 41.2, p01 39.4). Below 41 flagged 7 % of shifts, below 40 2.4 %. The plant median
+  # is 42.2, so a warning at 42 would mark 37 % of all shifts.
+  etaco: {warn: 41.0, crit: 40.0}
+  # Fuel rate (coke + nut coke + PCI), kg/tHM: mean 555, SD 8 (p95 566, p99 577). Above 570 flagged 1.7 % of shifts,
+  # above 590 0.2 %; 600 is the upper edge of the plausibility band BAND-01. The old 530 flagged 99.8 %.
+  fuel_rate: {warn: 570.0, crit: 590.0}
+  # RAFT, °C: the observed envelope of ASM-11 (also the Furnace status limits); p05 2198, p95 2318, 2.2 % outside.
   raft_lo: 2100.0
   raft_hi: 2350.0
-  perm_lo: 1000.0
-  perm_hi: 1600.0
+  # Permeability index: mean 1360, SD 59 (p01 1263, p95 1463, p99 1570). Below 1250 flagged 0.5 % of shifts (none since
+  # September); above 1500 2.2 % - a sudden rise goes with channelling or a slip, so the upper edge stays.
+  perm_lo: 1250.0
+  perm_hi: 1500.0
+  # Hot-metal Si, %: the thermal-state proxy. Median 0.43, SD 0.17 (p05 0.26, p90 0.63, p97 0.80). Normal 0.25-0.60
+  # (15 % of shifts above, 4 % below); critical outside the plausibility band BAND-03 0.20-0.80 (3.3 % above, 0.8 %
+  # below: a chilled hearth). A warning at the median 0.45 would mark 42 % of all shifts.
+  hm_si: {lo: 0.25, hi: 0.60, crit_lo: 0.20, crit_hi: 0.80}
+  # Hot-metal temperature, °C: BAND-02 (plant data, Jun-Oct p1-p99 1,444-1,514); per shift p05 1460, p99 1512; 2.3 % of
+  # shifts below 1440, none above 1520.
+  hm_temp_lo: 1440.0
+  hm_temp_hi: 1520.0
+  # Slag basicity CaO/SiO2: the slag limits of ASM-12 (B2 1.05-1.15); per shift p10 1.048, p95 1.145; 11 % of shifts
+  # below (7 % since September), 4 % above.
+  basicity_lo: 1.05
+  basicity_hi: 1.15
 
 charge_columns:
   coke: [coke_1_mt, coke_2_mt]

@@ -413,12 +413,18 @@ def test_nut_coke_term(eng):
 
 
 def test_fuel_defaults_from_regime(eng):
-    """PCI and nut coke default to the regime window's medians (as injected / charged), else the calibration."""
+    """PCI defaults to the live tag, else the regime window's median (as injected), else the calibration; nut coke to
+    the config (70 kg/tHM)."""
     from utils.burden_engine.scenarios import fuel_defaults, settings_from_regime
     cal = eng.cal
     d = fuel_defaults({"pci_kgthm_dry": 170.0, "nut_kgthm_dry": 60.0}, {}, cal)
     assert d["pci_kg_thm"] == pytest.approx(170.0 / (1 - cal["case"]["pci"]["moist_pct"] / 100))
-    assert d["nut_kg_thm_source"] == "regime median"
+    assert d["pci_kg_thm_source"] == "regime median"
+    assert d["nut_kg_thm"] == 70.0 and d["nut_kg_thm_source"] == "config"
+    live = fuel_defaults({"pci_kgthm_dry": 170.0}, {}, cal, live_pci=182.0)
+    assert live["pci_kg_thm"] == 182.0 and live["pci_kg_thm_source"] == "live tag, 1-h mean"
+    assert fuel_defaults({"pci_kgthm_dry": 170.0}, {}, cal, live_pci=0.0)["pci_kg_thm_source"] == "regime median"
+    assert fuel_defaults({"pci_kgthm_dry": 170.0}, {}, cal, live_pci=430.0)["pci_kg_thm_source"] == "regime median"
     d0 = fuel_defaults(None, {}, cal)
     assert d0["pci_kg_thm_source"] == "calibration"
     assert d0["pci_kg_thm"] == pytest.approx(cal["case"]["pci_kg"] / (1 - cal["case"]["pci"]["moist_pct"] / 100))

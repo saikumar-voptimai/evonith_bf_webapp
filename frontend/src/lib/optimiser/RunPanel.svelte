@@ -104,42 +104,50 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 		</fieldset>
 		<p class="muted">{modeNote}</p>
 
-		<fieldset class="choice">
-			<legend>Shaft efficiency</legend>
-			<label class={['option', strata && 'on']}>
-				<input type="radio" name="omega" value="strata" bind:group={page.form.omega_mode} />
-				<span>STRATA-ω (blend-dependent, ASM-18)</span>
-			</label>
-			<label class={['option', !strata && 'on']}>
-				<input type="radio" name="omega" value="fixed" bind:group={page.form.omega_mode} />
-				<span>Fixed-ω (calibration, ASM-01)</span>
-			</label>
-		</fieldset>
+		<details>
+			<summary>
+				Advanced settings
+				<span class="count">{strata ? 'STRATA-ω' : 'Fixed-ω'}</span>
+			</summary>
+			<fieldset class="choice">
+				<legend>Shaft efficiency</legend>
+				<label class={['option', strata && 'on']}>
+					<input type="radio" name="omega" value="strata" bind:group={page.form.omega_mode} />
+					<span>STRATA-ω (blend-dependent, ASM-18)</span>
+				</label>
+				<label class={['option', !strata && 'on']}>
+					<input type="radio" name="omega" value="fixed" bind:group={page.form.omega_mode} />
+					<span>Fixed-ω (calibration, ASM-01)</span>
+				</label>
+			</fieldset>
+			{#if strata}
+				<div class="grid">
+					<label class="select">
+						<span>Certainty filter</span>
+						<select bind:value={page.form.certainty}>
+							<option value="low">All but Investigate</option>
+							<option value="medium">Medium and High</option>
+							<option value="high">High only</option>
+							<option value="any">Any, Investigate included</option>
+						</select>
+					</label>
+					<NumberInput
+						label="Risk aversion k"
+						bind:value={page.form.risk_k}
+						min={0}
+						max={3}
+						step={0.1}
+						digits={1}
+						required
+						width="100%"
+						hint="Objective = cost + k × σ(cost)"
+						bind:valid={riskValid}
+					/>
+				</div>
+			{/if}
+		</details>
 
 		<div class="grid">
-			{#if strata}
-				<label class="select">
-					<span>Certainty filter</span>
-					<select bind:value={page.form.certainty}>
-						<option value="low">All but Investigate</option>
-						<option value="medium">Medium and High</option>
-						<option value="high">High only</option>
-						<option value="any">Any, Investigate included</option>
-					</select>
-				</label>
-				<NumberInput
-					label="Risk aversion k"
-					bind:value={page.form.risk_k}
-					min={0}
-					max={3}
-					step={0.1}
-					digits={1}
-					required
-					width="100%"
-					hint="Objective = cost + k × σ(cost)"
-					bind:valid={riskValid}
-				/>
-			{/if}
 			<label class="select">
 				<span>Calibration</span>
 				<select bind:value={page.form.calibration}>

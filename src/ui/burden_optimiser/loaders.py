@@ -9,6 +9,8 @@ both pages use one pipeline run.
 from __future__ import annotations
 
 import json
+import threading
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -71,6 +73,11 @@ def engine(inputs: Mapping[str, Any], cal: Mapping[str, Any]) -> Engine:
     return store[key]
 
 
+def live_pci() -> float | None:
+    """PCI as injected, kg/tHM: the live tag's 1-h mean (``services.optimiser.live_pci_kg_thm``, memoised 10 min)."""
+    return svc.live_pci_kg_thm()
+
+
 @st.cache_data(show_spinner="Reading today's charged blend…", ttl=900)
 def charged_blend(materials_json: str, nonce: int) -> dict[str, Any]:
     """Ferrous blend charged over the last 24 h (Neon charge_data); empty with the reason when unavailable."""
@@ -98,9 +105,70 @@ def run_mode(
     )
 
 
+#: Expected run time, s, of (mode, ω mode) before a run of it has been timed in this process (the SPA's
+#: ``expectedSeconds``).
+EXPECTED_S = {("fixed", "fixed"): 10.0, ("max", "fixed"): 120.0, ("cheapest", "fixed"): 180.0,
+              ("fixed", "blend"): 75.0, ("max", "blend"): 300.0, ("cheapest", "blend"): 1200.0}
+_TIMED: dict[tuple[str, str], float] = {}
+
+
+def _duration(seconds: float) -> str:
+    m, s = divmod(int(round(seconds)), 60)
+    return f"{m} min {s:02d} s" if m else f"{s} s"
+
+
+def expected_seconds(mode: str, omega_mode: str) -> float:
+    """Expected run time, s: the last run of the mode in this process, else ``EXPECTED_S``."""
+    key = (mode, "blend" if omega_mode == "blend" else "fixed")
+    return _TIMED.get(key, EXPECTED_S.get(key, 60.0))
+
+
+def expected_text(mode: str, omega_mode: str) -> str:
+    return f"Expected run time: about {_duration(expected_seconds(mode, omega_mode))}"
+
+
+def run_with_progress(*args: Any) -> dict[str, Any]:
+    """``run_mode`` in a thread under a progress bar timed against the expected run time: the last run of the same
+    mode in this process, else ``EXPECTED_S``. The run's exceptions are raised here."""
+    from streamlit.runtime.scriptrunner import add_script_run_ctx
+
+    key = (str(args[0]), "blend" if dict(args[3]).get("omega_mode") == "blend" else "fixed")
+    expected = expected_seconds(*key)
+    out: dict[str, Any] = {}
+
+    def work() -> None:
+        try:
+            out["result"] = run_mode(*args)
+        except BaseException as exc:  # noqa: BLE001 - raised again in the script thread
+            out["error"] = exc
+
+    thread = threading.Thread(target=work, daemon=True)
+    add_script_run_ctx(thread)
+    t0 = time.monotonic()
+    thread.start()
+    bar = st.progress(0.0, text=f"Optimising · about {_duration(expected)}")
+    while True:
+        thread.join(0.5)
+        if not thread.is_alive():
+            break
+        elapsed = time.monotonic() - t0
+        left = expected - elapsed
+        text = (f"Optimising · {_duration(elapsed)} elapsed, about {_duration(left)} left" if left > 0 else
+                f"Optimising · {_duration(elapsed)} elapsed, longer than the usual {_duration(expected)}")
+        bar.progress(min(elapsed / expected, 0.99), text=text)
+    bar.empty()
+    if "error" in out:
+        raise out["error"]
+    elapsed = time.monotonic() - t0
+    if elapsed > 2.0:  # a cached result is not a timing
+        _TIMED[key] = elapsed
+    return out["result"]
+
+
 def clear() -> None:
     cached_yard.clear()
     charged_blend.clear()
     run_mode.clear()
+    svc.live_pci_kg_thm.clear()
     for k in ("bfo_cal_memo", "bfo_engine"):
         st.session_state.pop(k, None)

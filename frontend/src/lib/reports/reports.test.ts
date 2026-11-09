@@ -180,15 +180,23 @@ describe('parity with the Reports tab (fixture of scripts/export_chart_fixtures.
 
 	it('the KPI tiles carry the levels and rules of the API', () => {
 		const tiles = Object.fromEntries(reportTiles(detail).map((t) => [t.key, t]));
-		expect(tiles['fuel_rate']).toMatchObject({ value: 541.72, status: 'warning', statusLabel: 'Warning' });
-		expect(tiles['fuel_rate']!.note).toBe('warning above 530 kg/tHM, critical above 570 kg/tHM');
+		expect(tiles['fuel_rate']).toMatchObject({ value: 541.72, status: 'ok', statusLabel: 'Normal' });
+		expect(tiles['fuel_rate']!.note).toBe('warning above 570 kg/tHM, critical above 590 kg/tHM');
 		expect(tiles['etaco']).toMatchObject({ status: 'ok', statusLabel: 'Normal' });
+		expect(tiles['hm_si']).toMatchObject({ value: 0.51, status: 'ok', statusLabel: 'Normal' });
+		expect(tiles['hm_si']!.note).toBe('normal 0.25–0.6 %, critical below 0.2 % or above 0.8 %');
+		expect(tiles['hm_temp']).toMatchObject({ status: 'ok', unit: '°C' });
+		expect(tiles['slag_basicity']).toMatchObject({ value: 1.06, status: 'ok', unit: '' });
 		expect(tiles['production_rate']!.status).toBeUndefined(); // no threshold
-		expect(detail.furnace_status).toBe('ATTENTION REQUIRED');
+		expect(Object.keys(tiles)).toHaveLength(10);
+		expect(detail.furnace_status).toBe('STABLE');
 		expect(thresholdLines(thresholds)[1]).toBe(
-			'Fuel rate: warning above 530 kg/tHM, critical above 570 kg/tHM'
+			'Fuel rate: warning above 570 kg/tHM, critical above 590 kg/tHM'
 		);
 		expect(thresholdLines(thresholds)[4]).toBe(
+			'Hot-metal Si: normal 0.25–⁠0.6 %, critical below 0.2 % or above 0.8 %'
+		);
+		expect(thresholdLines(thresholds)[7]).toBe(
 			'Status: 1–⁠2 breaches attention required, 3 or more unstable'
 		);
 	});

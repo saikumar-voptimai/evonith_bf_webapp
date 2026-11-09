@@ -36,12 +36,12 @@ def test_settings_from_regime_prefers_regime(eng):
     assert s.HBT == 1201.0 and s.Pb == 2.8
     assert s.O2_per_air == pytest.approx(eng.cal["case"]["O2_per_air"])
     assert s.HMT == 1470.0
-    # PCI / nut coke: the regime's medians when given, else the calibration's (as injected / as charged), not 190 / 70
+    # PCI: the regime's median when given, else the calibration's (as injected), not 190; nut coke: the config
     case = eng.cal["case"]
     assert s.pci_plant == pytest.approx(case["pci_kg"] / (1 - case["pci"]["moist_pct"] / 100))
     s2 = settings_from_regime(dict(pci_kgthm_dry=175.0, nut_kgthm_dry=65.0), THERMAL, eng.cal)
     assert s2.pci_plant == pytest.approx(175.0 / (1 - case["pci"]["moist_pct"] / 100))
-    assert s2.nut_plant == pytest.approx(65.0 / (1 - case["nut"]["moist_pct"] / 100))
+    assert s2.nut_plant == pytest.approx(THERMAL.get("nut_kg_thm", 70.0))
 
 
 def test_limits_from_register_and_saved():

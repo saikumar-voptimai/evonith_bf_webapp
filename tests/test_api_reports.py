@@ -227,14 +227,22 @@ def test_the_thresholds_are_served_from_the_configuration(client, monkeypatch) -
 
     body = call(client, "GET", "op", "/api/reports/thresholds").json()
     assert body == {
-        "etaco_warn_pct": 42.0,
+        "etaco_warn_pct": 41.0,
         "etaco_crit_pct": 40.0,
-        "fuel_rate_warn_kg_thm": 530.0,
-        "fuel_rate_crit_kg_thm": 570.0,
+        "fuel_rate_warn_kg_thm": 570.0,
+        "fuel_rate_crit_kg_thm": 590.0,
         "raft_lo_c": 2100.0,
         "raft_hi_c": 2350.0,
-        "permeability_lo": 1000.0,
-        "permeability_hi": 1600.0,
+        "permeability_lo": 1250.0,
+        "permeability_hi": 1500.0,
+        "hm_si_lo_pct": 0.25,
+        "hm_si_hi_pct": 0.6,
+        "hm_si_crit_lo_pct": 0.2,
+        "hm_si_crit_hi_pct": 0.8,
+        "hm_temp_lo_c": 1440.0,
+        "hm_temp_hi_c": 1520.0,
+        "basicity_lo": 1.05,
+        "basicity_hi": 1.15,
         "attention_from": 1,
         "unstable_from": 3,
     }
@@ -253,18 +261,23 @@ def test_the_thresholds_are_served_from_the_configuration(client, monkeypatch) -
 
 def test_a_report_carries_its_kpis_against_the_thresholds(twin, client) -> None:
     row = report_row("2026-10-27_A", "2026-10-27 14:21")
-    row["data"] = {**row["data"], "fuel_rate": 548.7, "etaco": {"mean": 46.3, "std": 0.8}}
+    row["data"] = {**row["data"], "fuel_rate": 575.3, "etaco": {"mean": 46.3, "std": 0.8}}
     row["data"]["raft"] = {"mean": 2380.5, "std": 20.0}
     row["data"]["permeability"] = {"mean": 1320.0, "std": 60.0}
+    row["data"].update({"hm_si": 0.66, "hm_temp": 1481.0, "slag_basicity": 1.09})
     added = twin.reports.add(row)
     body = call(client, "GET", "op", f"/api/reports/{added.id}").json()
     kpis = {k["key"]: k for k in body["kpis"]}
-    assert [k["key"] for k in body["kpis"]] == ["etaco", "fuel_rate", "raft", "permeability"]
+    assert [k["key"] for k in body["kpis"]] == [
+        "etaco", "fuel_rate", "raft", "permeability", "hm_si", "hm_temp", "slag_basicity"
+    ]  # fmt: skip
     assert kpis["fuel_rate"]["level"] == "warning" and kpis["fuel_rate"]["unit"] == "kg/tHM"
-    assert kpis["fuel_rate"]["flag"] == "Fuel Rate 548.70 kg/tHM (> 530 attention)"
+    assert kpis["fuel_rate"]["flag"] == "Fuel Rate 575.30 kg/tHM (> 570 attention)"
     assert kpis["etaco"]["level"] == "ok" and kpis["etaco"]["value"] == 46.3 and kpis["etaco"]["crit"] == 40.0
     assert kpis["raft"]["level"] == "warning" and (kpis["raft"]["lo"], kpis["raft"]["hi"]) == (2100.0, 2350.0)
     assert kpis["permeability"]["level"] == "ok" and kpis["permeability"]["unit"] == ""
+    assert kpis["hm_si"]["level"] == "warning" and kpis["hm_si"]["flag"] == "HM Si 0.66% (normal 0.25–0.6)"
+    assert kpis["hm_temp"]["level"] == "ok" and kpis["slag_basicity"]["level"] == "ok"
     schemas = client.get("/api/openapi.json").json()["components"]["schemas"]
     for name in ("KpiStatusView", "ReportThresholds"):
         for field, spec in schemas[name]["properties"].items():
