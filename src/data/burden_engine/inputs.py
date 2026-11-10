@@ -286,7 +286,7 @@ def load_yard(cfg: Mapping[str, Any], *, prefs: Mapping[str, Any] | None = None,
             from services.operator_inputs import load_current as reader
         current = reader()
         prefs, provenance = current.inputs, current.provenance()
-    mode = str(yard_cfg.get("chemistry_mode", "avg"))
+    mode = str(yard_cfg.get("chemistry_mode", "latest"))
     days = int(yard_cfg.get("chemistry_window_days", 30))
     ores, diag = provider.build_ore_inputs(mode=mode, window_days=days)
     bmo_cfg = (yaml.safe_load(repo_path(bmo_settings_path).read_text(encoding="utf-8")) or {}).get("bmo", {})

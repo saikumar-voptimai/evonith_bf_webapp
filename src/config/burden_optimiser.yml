@@ -6,8 +6,9 @@
 
 burden_optimiser:
   yard:
-    # Raw-material chemistry: average of the lab samples over this many days (same provider as the Blend Mix Optimiser).
-    chemistry_mode: avg
+    # Raw-material chemistry: use the latest valid lab sample, never a window average.
+    chemistry_mode: latest
+    # Provider lookup setting only; latest mode selects one lab row and does not average this window.
     chemistry_window_days: 30
     # Stock caps each material's t/day: stock / horizon. 1 day = the Blend Mix Optimiser's rule (t/day <= stock).
     stock_horizon_days: 1.0

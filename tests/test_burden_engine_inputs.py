@@ -136,6 +136,7 @@ def test_flux_catalogue_is_page_9s():
 def test_load_yard_takes_fluxes_from_the_catalogue():
     class Provider:  # ores only: load_yard must not ask the provider for fluxes
         def build_ore_inputs(self, mode, window_days):
+            assert mode == "latest"
             return [_ore(m) for m in REF["materials"]], {"warnings": []}
 
     y = load_yard({"yard": {}}, provider=Provider())
