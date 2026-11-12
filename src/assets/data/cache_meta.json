@@ -4,11 +4,11 @@
   "data_start": "2025-04-01",
   "confirmed_end": "2026-11-12",
   "raw_end": "2026-11-12",
-  "last_updated": "2026-11-12T13:12:40",
+  "last_updated": "2026-11-12T16:12:18",
   "offline_lag_days": 0,
-  "rows": 8411,
+  "rows": 8414,
   "columns": 241,
-  "csv_file": "furnace_dataset_20261112_131234_935692.csv",
+  "csv_file": "furnace_dataset_20261112_161217_142892.csv",
   "source_url": "http://125.23.100.62:8081/furnace_dataset.csv",
-  "source_last_modified": "Thu, 12 Nov 2026 07:37:09 GMT"
+  "source_last_modified": "Thu, 12 Nov 2026 10:37:47 GMT"
 }

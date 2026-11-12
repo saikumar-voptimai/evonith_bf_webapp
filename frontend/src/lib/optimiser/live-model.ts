@@ -130,7 +130,7 @@ export function hmtSeries(view: LiveModelView | null | undefined): TimeSeries[] 
 
 /** BAND-02 of the fact register, shaded across the HMT chart. */
 export function hmtPlantBand(view: LiveModelView | null | undefined): PlantBand | undefined {
-	const b = view?.hmt.plant_band;
+	const b = view?.hmt?.plant_band;
 	return b
 		? { lo: b.lo, hi: b.hi, label: `${b.fact} ${formatNumber(b.lo, 0)}–${formatNumber(b.hi, 0)} °C` }
 		: undefined;
@@ -211,7 +211,7 @@ export function clockItems(
 	now: Date,
 	live?: string | null
 ): ClockItem[] {
-	return (view?.clock.sources ?? []).map((s) => {
+	return (view?.clock?.sources ?? []).map((s) => {
 		const newest = date(s.key === 'process' && live ? live : s.newest);
 		const received = date(s.received);
 		const ageMin = newest ? Math.max(0, (now.getTime() - newest.getTime()) / 60_000) : null;
@@ -232,7 +232,7 @@ export function clockItems(
 /** One line for the plan panel: `Live inputs as of: process tags 13:22 · charge record to 12:56 (received 12:59) ·
  * taps to 12:39 (received 13:08), IST.` */
 export function asOfLine(view: LiveModelView | null | undefined): string {
-	const parts = (view?.clock.sources ?? []).map((s) => {
+	const parts = (view?.clock?.sources ?? []).map((s) => {
 		const newest = date(s.newest);
 		if (!newest) return `${s.label.toLowerCase()}: no record`;
 		const received = date(s.received);
@@ -280,7 +280,7 @@ const AGAINST_WINDOW = 'against the 8-h mean';
 export function processTiles(view: LiveModelView | null | undefined, tags?: LiveTags | null): LiveTile[] {
 	const v = withLiveTags(view?.process, tags);
 	const get = (key: string): number | null => v.get(key) ?? null;
-	const setpoint = view?.process.readings?.find((r) => r.key === 'pci_rate')?.setpoint;
+	const setpoint = view?.process?.readings?.find((r) => r.key === 'pci_rate')?.setpoint;
 	const enrichment = get('o2_injection');
 	const w = view?.latest;
 	const against = (now: number | null, mean: number | null | undefined): LiveTile['delta'] =>

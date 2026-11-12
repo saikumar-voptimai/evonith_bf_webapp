@@ -64,6 +64,18 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 	let pciValid = $state(true);
 	let dustValid = $state<Record<string, boolean>>({});
 
+	const DUST_FIELDS = [
+		{ key: 'cao', label: 'CaO of the dry dust' },
+		{ key: 'mgo', label: 'MgO of the dry dust' },
+		{ key: 'sio2', label: 'SiO₂ of the dry dust' },
+		{ key: 'al2o3', label: 'Al₂O₃ of the dry dust' },
+		{ key: 'fe', label: 'Fe of the dry dust' },
+		{ key: 'moisture', label: 'Moisture' }
+	] as const;
+	const DUST_VALID_KEYS = ['kgPerCharge', ...DUST_FIELDS.map((f) => f.key)];
+
+	// Every `bind:valid` target exists before its NumberInput mounts: a bind to an undefined entry of a record is a
+	// Svelte error (props_invalid_value) because `valid` has a fallback, and the drawer would not open.
 	$effect.pre(() => {
 		if (!open || !edit) return;
 		if (edit.kind === 'fuel') {
@@ -72,11 +84,11 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 			pci = edit.prices['pci'] ?? null;
 		} else if (edit.kind === 'dust') {
 			dust = { ...edit.row };
-			dustValid = {};
+			dustValid = Object.fromEntries(DUST_VALID_KEYS.map((k) => [k, true]));
 		} else {
 			row = { ...edit.row };
 			chem = Object.fromEntries(chemFields.map((f) => [f.key, edit.row.chem?.[f.key] ?? null]));
-			chemValid = {};
+			chemValid = Object.fromEntries(chemFields.map((f) => [f.key, true]));
 		}
 		note = '';
 		error = null;
@@ -110,15 +122,6 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 					? `Top-gas dust: ${edit.row.name}`
 					: `${edit.kind === 'ore' ? 'Ferrous material' : 'Flux'}: ${edit.row.name}`
 	);
-
-	const DUST_FIELDS = [
-		{ key: 'cao', label: 'CaO of the dry dust' },
-		{ key: 'mgo', label: 'MgO of the dry dust' },
-		{ key: 'sio2', label: 'SiO₂ of the dry dust' },
-		{ key: 'al2o3', label: 'Al₂O₃ of the dry dust' },
-		{ key: 'fe', label: 'Fe of the dry dust' },
-		{ key: 'moisture', label: 'Moisture' }
-	] as const;
 
 	async function save(): Promise<void> {
 		if (!edit) return;
@@ -221,6 +224,23 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 					step={10}
 					bind:valid={stockValid}
 				/>
+				<NumberInput
+					label="Charged, min"
+					unit="t/d"
+					bind:value={row.min}
+					min={0}
+					step={1}
+					bind:valid={minValid}
+				/>
+				<NumberInput
+					label="Charged, max"
+					unit="t/d"
+					bind:value={row.max}
+					min={0}
+					step={1}
+					hint="Empty: the stock"
+					bind:valid={maxValid}
+				/>
 			{/if}
 			{#if edit.kind === 'ore' && admin && chemFields.length}
 				<h3 class="vo-eyebrow">Composition, dry basis (administrators)</h3>
@@ -240,23 +260,6 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 						/>
 					{/each}
 				</div>
-				<NumberInput
-					label="Charged, min"
-					unit="t/d"
-					bind:value={row.min}
-					min={0}
-					step={1}
-					bind:valid={minValid}
-				/>
-				<NumberInput
-					label="Charged, max"
-					unit="t/d"
-					bind:value={row.max}
-					min={0}
-					step={1}
-					hint="Empty: the stock"
-					bind:valid={maxValid}
-				/>
 			{/if}
 		</div>
 	{:else if edit}
