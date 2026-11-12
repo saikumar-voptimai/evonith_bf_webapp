@@ -3,7 +3,10 @@
 A plan as page 11 lays it out (`render_plan_summary`): the plan panel with its feasibility and certainty, the line an
 operator can act on and the overview strip, then the material through the process in four panels: cost, fuel, slag
 (with the plant's own p5–p95 bands of the basicity ratios) and charging. In Step 2 the panels show the change from
-today's charged blend modelled at the same output.
+today's charged blend modelled at the same output. With the page's live model the plan panel also states how the
+energy model has done on the furnace (the shift record's bias and typical error), the plan's coke next to the coke
+charged now and the coke burnt and modelled over the last 8 h, the time of each live input, and, for an accepted
+plan, when its first charge reaches the cohesive zone and the raceways (user decision 12 Nov 2026).
 -->
 <script lang="ts">
 	import Coins from '@lucide/svelte/icons/coins';
@@ -16,6 +19,8 @@ today's charged blend modelled at the same output.
 	import { formatNumber } from '../format/number.ts';
 	import { inlineParts } from '../reports/reports.ts';
 	import CellTiles from './CellTiles.svelte';
+	import type { LiveModel } from './live-model.svelte.ts';
+	import { arrivalLine, asOfLine, modelStatusLine, planAgainstNow, verdictChip } from './live-model.ts';
 	import {
 		certaintyStatus,
 		chargingCells,
@@ -41,9 +46,13 @@ today's charged blend modelled at the same output.
 		updatedAt: Date | null;
 		/** Plan switch (Step 1: cheapest or highest output), shown in the plan panel's header. */
 		actions?: Snippet;
+		/** The page's live model: the model's record and the furnace now beside the plan. */
+		live?: LiveModel;
+		/** When the plan was accepted; its arrival times are counted from then. */
+		acceptedAt?: Date | null;
 	}
 
-	let { result, plan, reference, updatedAt, actions }: Props = $props();
+	let { result, plan, reference, updatedAt, actions, live, acceptedAt = null }: Props = $props();
 
 	const main = $derived(plan === result.plan);
 	const today = $derived(main ? (result.today_plan ?? null) : null);
@@ -58,6 +67,10 @@ today's charged blend modelled at the same output.
 	);
 	const lead = $derived(main && result.lead ? result.lead : null);
 	const sources = $derived(sourceLines(result));
+	const now = $derived(live?.view.data ?? null);
+	const record = $derived(verdictChip(now?.shifts));
+	const against = $derived(planAgainstNow(plan.fuel.coke_dry_kg_thm, now));
+	const arrival = $derived(arrivalLine(now, acceptedAt));
 	const warnAfter = 8 * 60;
 	const staleAfter = 16 * 60;
 	const uid = $props.id();
@@ -110,8 +123,31 @@ today's charged blend modelled at the same output.
 			/>
 		{/each}
 	</KpiStrip>
+	{#if now}
+		<section class="now" aria-labelledby="{uid}-now">
+			<div class="now-head">
+				<h3 id="{uid}-now" class="vo-eyebrow">The model and the furnace now · coke, kg/tHM dry</h3>
+				<StatusChip kind={record.kind} label={`Model: ${record.label}`} title={now.shifts?.reason} />
+				<span class="muted">{modelStatusLine(now)}</span>
+			</div>
+			<KpiStrip min="10rem">
+				{#each against as t (t.key)}
+					<KpiTile
+						label={t.label}
+						value={t.value}
+						unit={t.unit}
+						digits={t.digits}
+						note={t.note}
+						series={t.series}
+					/>
+				{/each}
+			</KpiStrip>
+		</section>
+	{/if}
 	<ul class="sources">
 		{#each sources as line (line)}<li>{line}</li>{/each}
+		{#if now}<li>{asOfLine(now)}</li>{/if}
+		{#if arrival}<li>{arrival}</li>{/if}
 	</ul>
 </Panel>
 
@@ -163,6 +199,20 @@ today's charged blend modelled at the same output.
 		gap: var(--vo-space-2);
 		margin: 0 0 var(--vo-space-2);
 		font-size: var(--vo-fs-body);
+	}
+	.now {
+		display: grid;
+		gap: var(--vo-space-2);
+		margin-top: var(--vo-space-4);
+	}
+	.now-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--vo-space-2) var(--vo-space-3);
+	}
+	.now-head h3 {
+		margin: 0;
 	}
 	.sources {
 		margin: var(--vo-space-3) 0 0;

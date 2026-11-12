@@ -47,6 +47,8 @@ export interface TimeSeries {
 	dashed?: boolean;
 	/** Mark every point (sparse series such as taps or shifts); lines carry no symbols by default. */
 	symbols?: boolean;
+	/** Points without a connecting line: measurements at irregular instants (taps) beside a line that models them. */
+	marksOnly?: boolean;
 	band?: TimeBand;
 }
 
@@ -213,6 +215,7 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 		if (s.band) {
 			// Stacked pair: an invisible base at the lower edge, then the span to the upper edge, filled.
 			// stackStrategy 'all': the default 'samesign' does not stack a positive span on a negative base.
+			// z 2: above the plant band and the future shading (mark areas, z 1), below the lines (z 3).
 			const base = s.band.points.map(([t, lo, hi]) => [toAxis(t), lo !== null && hi !== null ? lo : null]);
 			const span = s.band.points.map(([t, lo, hi]) => [
 				toAxis(t),
@@ -230,7 +233,7 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 					lineStyle: { opacity: 0 },
 					silent: true,
 					tooltip: { show: false },
-					z: 1
+					z: 2
 				},
 				{
 					id: `${s.id}${BAND_SPAN}`,
@@ -243,7 +246,7 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 					areaStyle: { color: theme.token(s.band.fill), opacity: 1 },
 					silent: true,
 					tooltip: { show: false },
-					z: 1
+					z: 2
 				}
 			);
 		}
@@ -252,13 +255,13 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 			name: s.label,
 			type: 'line',
 			data: s.points.map(([t, v]) => [toAxis(t), v]),
-			showSymbol: s.symbols ?? false,
+			showSymbol: s.symbols ?? s.marksOnly ?? false,
 			symbol: 'circle',
-			symbolSize: s.symbols ? 6 : 8,
+			symbolSize: s.marksOnly ? 7 : s.symbols ? 6 : 8,
 			connectNulls: false,
 			lineStyle: {
 				color: colourOf(s),
-				width: 2,
+				width: s.marksOnly ? 0 : 2,
 				type: s.dashed ? [6, 4] : 'solid',
 				cap: 'round',
 				join: 'round'

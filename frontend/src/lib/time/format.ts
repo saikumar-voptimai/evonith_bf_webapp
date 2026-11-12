@@ -61,6 +61,12 @@ export function istDateTime(t: Date): string {
 	return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
 
+/** `18:42` (IST) */
+export function istTime(t: Date): string {
+	const d = ist(t);
+	return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
 /** Shift `day` (yyyy-mm-dd) by `n` days. */
 export function addDays(day: string, n: number): string {
 	const [y, m, d] = day.split('-').map(Number) as [number, number, number];

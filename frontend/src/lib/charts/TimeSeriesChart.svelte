@@ -109,7 +109,7 @@ series tokens (`series-trace`, `cat-2`, ...). With `onpick`, a click in the plot
 					...series.flatMap((s) => {
 						const colour = theme!.token(s.colour);
 						const items: LegendItem[] = [
-							{ id: s.id, label: s.label, colour, mark: s.dashed ? 'dashed' : 'line' }
+							{ id: s.id, label: s.label, colour, mark: s.marksOnly ? 'dot' : s.dashed ? 'dashed' : 'line' }
 						];
 						if (s.band)
 							items.push({

@@ -7,6 +7,7 @@ import {
 	formatDuration,
 	istDate,
 	istDateTime,
+	istTime,
 	istDay,
 	istDayMonth
 } from './format.ts';
@@ -49,6 +50,7 @@ describe('IST calendar', () => {
 		expect(istDay(at('2026-10-26T20:00:00Z'))).toBe('2026-10-27'); // 01:30 IST
 		expect(istDate(at('2026-10-26T20:00:00Z'))).toBe('27 Oct 2026');
 		expect(istDateTime(at('2026-10-26T13:12:00Z'))).toBe('26 Oct 18:42');
+		expect(istTime(at('2026-10-26T20:00:00Z'))).toBe('01:30');
 		expect(istDayMonth(at('2026-10-26T20:00:00Z'))).toBe('27 Oct');
 	});
 

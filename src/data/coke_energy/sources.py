@@ -212,8 +212,17 @@ def fetch_10min(
 
 
 # --------------------------------------------------------------------------------------------- Neon
-def fetch_hm_slag(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
-    """Tap-wise hot metal and slag analyses with ``t`` = IST record time (the web CSV's 'time (IST)')."""
+def _received(raw: pd.DataFrame) -> pd.DatetimeIndex:
+    """Publication time of each row (``created_at``) as IST, tz-naive; NaT without the column."""
+    if "created_at" not in raw.columns:
+        return pd.DatetimeIndex([pd.NaT] * len(raw))
+    created = pd.DatetimeIndex(pd.to_datetime(raw["created_at"], utc=True, errors="coerce"))
+    return created.tz_convert(PLANT_TZ).tz_localize(None)
+
+
+def fetch_hm_slag(start: pd.Timestamp, end: pd.Timestamp, *, received: bool = False) -> pd.DataFrame:
+    """Tap-wise hot metal and slag analyses with ``t`` = IST record time (the web CSV's 'time (IST)'). With
+    ``received`` also the column ``received``: when the record was published (IST), for the live model's data clock."""
 
     from furnace_data.offline import fetch_offline_data
 
@@ -227,7 +236,24 @@ def fetch_hm_slag(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     cols = [c for c in raw.columns if c.startswith(("chem_pct", "slag_")) or c == "hmt_gt_1480c"]
     out = raw[cols].apply(pd.to_numeric, errors="coerce").reset_index(drop=True)
     out.insert(0, "t", _to_ist_naive(raw.index))
+    if received:
+        out["received"] = _received(raw)
     return out.sort_values("t").reset_index(drop=True)
+
+
+def fetch_charges(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    """The per-charge record (Neon ``offline_feed.charge_data``) between two IST instants as
+    ``utils.coke_energy.charge_record.charge_table``: tonnes of coke, nut coke, ferrous burden and flux per charge,
+    indexed by charge time (IST), with ``received`` = publication time (IST)."""
+
+    from furnace_data.offline import fetch_offline_data
+
+    from utils.coke_energy.charge_record import charge_table
+
+    raw = fetch_offline_data("charge_data", time_range=(_ist_to_utc(start), _ist_to_utc(end)), query_type="raw")
+    if raw is None or raw.empty:
+        return charge_table(pd.DataFrame(), pd.DatetimeIndex([]))
+    return charge_table(raw, _to_ist_naive(raw.index), _received(raw))
 
 
 def fetch_dpr_daily(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:

@@ -1,44 +1,45 @@
 <!--
 @component
-Live model tab of the Blend & Fuel Optimiser (user decision 12 Nov 2026): the optimiser's energy model against the
-furnace, continuously. Reads `GET /api/optimiser/live-model` and again on every hourly `twin.snapshot` event. Top:
-the latest window's tiles (burnt and modelled coke, HMT now and one descent time ahead, ηCO, top gas) with the
-forecast's live score and page 11's verdict. Then the coke rate burnt against the energy balance over the last
-hours (STRATA-ω on request, charged dotted), the HMT per tap with every stored forecast at its horizon and the future
-shaded from now, a folded chart of ηCO and top-gas temperature actual against modelled, and page 11's model check per
-shift over 7, 14 or 30 days with its table.
+Live model tab of the Blend & Fuel Optimiser (user decisions 12 Nov 2026): the optimiser's energy model against the
+furnace. Reads `GET /api/optimiser/live-model` through the page's `LiveModel` (again on every hourly `twin.snapshot`
+event; the process tiles follow `live.status`). Top: the data clock, how old the process tags, the charge record and
+the taps are, with the notice that every per-tonne figure follows the charge record. Then fuel and blast now; the coke
+balance (charged coke of the last charges, burnt and modelled coke of the newest 8-hour window, model − burnt against
+its limit) with the hourly windows; the hot-metal temperature from the tap filter (last tap, estimate now, next tap
+with the chance of a cold tap, 6 h ahead; taps, estimate and the forecast with its ±1σ band, score and check); a
+folded chart of ηCO and top-gas temperature actual against modelled; and page 11's model check per shift over 7, 14
+or 30 days with its table.
 -->
 <script lang="ts">
 	import Activity from '@lucide/svelte/icons/activity';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-	import { untrack } from 'svelte';
-	import { api } from '../api/client.ts';
 	import TimeSeriesChart from '../charts/TimeSeriesChart.svelte';
 	import Button from '../components/Button.svelte';
 	import DataTable from '../components/DataTable.svelte';
 	import EmptyState from '../components/EmptyState.svelte';
 	import ErrorState from '../components/ErrorState.svelte';
+	import KpiStrip from '../components/KpiStrip.svelte';
+	import KpiTile from '../components/KpiTile.svelte';
 	import Panel from '../components/Panel.svelte';
 	import Skeleton from '../components/Skeleton.svelte';
 	import StatusChip from '../components/StatusChip.svelte';
 	import type { Column } from '../components/table.ts';
-	import { formatNumber, formatQuantity, formatSigned } from '../format/number.ts';
-	import { live } from '../live/stream.svelte.ts';
-	import { Resource } from '../strata/resource.svelte.ts';
-	import { istDateTime } from '../time/format.ts';
-	import CellTiles from './CellTiles.svelte';
+	import { formatNumber, formatSigned } from '../format/number.ts';
+	import { clock } from '../time/clock.svelte.ts';
+	import type { LiveModel } from './live-model.svelte.ts';
 	import {
 		annotations,
+		checkChip,
+		clockItems,
 		cokeSeries,
-		DEFAULT_DAYS,
-		DEFAULT_HOURS,
+		cokeTiles,
 		etaSeries,
-		futureFrom,
-		gateWord,
+		hmtPlantBand,
 		hmtSeries,
+		hmtTiles,
 		HOURS_CHOICES,
-		latestCells,
 		PERIOD_CHOICES,
+		processTiles,
 		scoreChip,
 		shiftSeries,
 		shiftTableRows,
@@ -46,47 +47,39 @@ shift over 7, 14 or 30 days with its table.
 		topGasSeries,
 		updatedAt,
 		verdictChip,
-		type LiveModelView,
+		type LiveTile,
 		type ShiftTableRow
 	} from './live-model.ts';
 
-	let hours = $state<number>(DEFAULT_HOURS);
-	let days = $state<number>(DEFAULT_DAYS);
-	let strata = $state(false);
-	const view = new Resource<LiveModelView>();
-
-	function load(): Promise<void> {
-		const query = { hours, days };
-		return view.load(async () => (await api.GET('/api/optimiser/live-model', { params: { query } })).data);
+	interface Props {
+		/** The page's live model (one read shared with the plan panel). */
+		model: LiveModel;
 	}
-	// A change of the hours or the period reloads; the hourly snapshot event reloads as well.
-	$effect(() => {
-		void hours;
-		void days;
-		untrack(() => void load());
-	});
-	$effect(() =>
-		untrack(() => {
-			const stops = [live.start(), live.on('twin.snapshot', () => void load())];
-			return () => stops.forEach((stop) => stop());
-		})
-	);
 
+	let { model }: Props = $props();
+
+	let strata = $state(false);
+	const view = $derived(model.view);
 	const data = $derived(view.data);
-	const cells = $derived(latestCells(data));
+	const hours = $derived(model.hours);
+	const streams = $derived(clockItems(data, clock.now, model.tagsAt));
+	const process = $derived(processTiles(data, model.tags));
+	const balance = $derived(cokeTiles(data));
 	const coke = $derived(cokeSeries(data, { strata }));
+	const hmtCells = $derived(hmtTiles(data));
 	const hmt = $derived(hmtSeries(data));
+	const hmtBand = $derived(hmtPlantBand(data));
+	const score = $derived(scoreChip(data?.hmt.scores));
+	const tapCheck = $derived(checkChip(data?.hmt.check));
+	const scoreText = $derived((data?.hmt.scores ?? []).map((x) => x.text).join(' '));
 	const eta = $derived(etaSeries(data));
 	const top = $derived(topGasSeries(data));
 	const marks = $derived(annotations(data));
-	const future = $derived(futureFrom(data));
 	const check = $derived(data?.shifts ?? null);
 	const shiftLines = $derived(shiftSeries(check));
 	const shiftRows = $derived(shiftTableRows(check));
-	const score = $derived(scoreChip(data?.forecast.score));
 	const verdict = $derived(verdictChip(check));
 	const at = $derived(updatedAt(data));
-	const latestTap = $derived(data?.taps?.at(-1) ?? null);
 
 	const shiftColumns: Column<ShiftTableRow>[] = [
 		{ key: 'shift', label: 'Shift' },
@@ -112,11 +105,30 @@ shift over 7, 14 or 30 days with its table.
 	];
 </script>
 
+{#snippet tiles(cells: LiveTile[], min: string)}
+	<KpiStrip {min}>
+		{#each cells as c (c.key)}
+			<KpiTile
+				label={c.label}
+				value={c.value}
+				unit={c.unit}
+				digits={c.digits}
+				spread={c.spread}
+				delta={c.delta}
+				note={c.note}
+				status={c.status}
+				statusLabel={c.statusLabel}
+				series={c.series}
+			/>
+		{/each}
+	</KpiStrip>
+{/snippet}
+
 <Panel
 	title="Live model"
 	eyebrow="The model against the furnace"
 	icon={Activity}
-	note="Coke the blast burnt (oxygen balance) next to the coke the optimiser’s energy balance predicts for the same window, every hour; the hot-metal temperature one descent time ahead; ηCO and top gas measured and modelled. Updated with every twin window."
+	note="Fuel and blast from the process tags, live. Coke per tonne of hot metal from the charge record and the 8-hour twin windows: charged, burnt (oxygen balance) and modelled (the optimiser’s energy balance). Hot-metal temperature from the taps: estimate, forecast and its ±1σ band."
 	updatedAt={at}
 	warnAfterMin={90}
 	staleAfterMin={180}
@@ -125,14 +137,14 @@ shift over 7, 14 or 30 days with its table.
 	{#snippet actions()}
 		<div class="seg" role="group" aria-label="Hours shown">
 			{#each HOURS_CHOICES as h (h)}
-				<button type="button" aria-pressed={hours === h} onclick={() => (hours = h)}>{h} h</button>
+				<button type="button" aria-pressed={hours === h} onclick={() => (model.hours = h)}>{h} h</button>
 			{/each}
 		</div>
 		<Button
 			variant="ghost"
 			size="sm"
 			icon={RefreshCw}
-			onclick={() => void load()}
+			onclick={() => void model.load()}
 			aria-label="Refresh the live model">Refresh</Button
 		>
 	{/snippet}
@@ -141,29 +153,47 @@ shift over 7, 14 or 30 days with its table.
 		<ErrorState
 			title="Live model not loaded"
 			error={view.error}
-			onretry={() => void load()}
+			onretry={() => void model.load()}
 			retrying={view.loading}
 		/>
 	{:else if !data}
 		<Skeleton variant="block" height="22rem" label="Loading the live model" />
 	{:else}
-		<div class="chips">
-			<StatusChip kind={verdict.kind} label={verdict.label} title={check?.reason ?? 'No shift record yet'} />
-			<StatusChip kind={score.kind} label={score.label} title={data.forecast.score.text} />
-			{#if data.latest}
-				<span class="fine">Latest window ended {istDateTime(new Date(Date.parse(data.latest.end)))} IST</span>
-			{/if}
-		</div>
+		<section class="clock" aria-label="Data clock">
+			{#each streams as s (s.key)}
+				<div class="stream">
+					<span class="vo-eyebrow">{s.label} · {s.cadence}</span>
+					<span class="stream-text">{s.text}</span>
+					<StatusChip kind={s.kind} label={s.age || 'No record'} size="sm" />
+				</div>
+			{/each}
+		</section>
+		<p class="notice">{data.clock.notice}</p>
 		{#if data.notes?.length}
 			<ul class="notes">
 				{#each data.notes ?? [] as n (n)}<li>{n}</li>{/each}
 			</ul>
 		{/if}
-		<CellTiles {cells} min="10rem" />
 
+		<div class="head">
+			<h3>Fuel and blast now</h3>
+			<span class="fine">Process tags, every 10 s</span>
+		</div>
+		{@render tiles(process, '15rem')}
+
+		<div class="head">
+			<h3>Coke balance, kg/tHM dry</h3>
+			<StatusChip kind={verdict.kind} label={`Shift record: ${verdict.label}`} title={check?.reason} />
+		</div>
+		{@render tiles(balance, '15rem')}
+		<p class="caption">
+			{data.coke.text} Charged now: the coke-to-ferrous ratio of the last charges, on the hot-metal basis of the
+			8-hour windows; it follows the charging within the hour the record is published. Burnt and model: the 8-hour
+			window, updated every hour.
+		</p>
 		{#if coke.length}
 			<div class="head">
-				<h3>Coke rate, burnt against modelled, last {hours} h</h3>
+				<h3>Burnt against modelled, last {hours} h</h3>
 				<label class="toggle"><input type="checkbox" bind:checked={strata} /> STRATA-ω line</label>
 			</div>
 			<TimeSeriesChart
@@ -179,7 +209,6 @@ shift over 7, 14 or 30 days with its table.
 				Each point is the 8-hour window ending at that hour. Burnt: the oxygen balance at the metered blast
 				with the analyser’s ηCO, less the 14-day charged − burnt offset. Modelled: the two-zone energy balance
 				with shaft efficiency and heat losses held at the 14 days before the window, the optimiser’s model.
-				Charged coke reaches the raceways one descent time later.
 			</p>
 		{:else}
 			<EmptyState
@@ -190,29 +219,32 @@ shift over 7, 14 or 30 days with its table.
 		{/if}
 
 		<div class="head">
-			<h3>Hot-metal temperature: taps and the forecast one descent time ahead</h3>
-			<span class="fine">Forecast {gateWord(data.forecast.gate)}</span>
+			<h3>Hot-metal temperature</h3>
+			<span class="chips-inline">
+				<StatusChip kind={tapCheck.kind} label={tapCheck.label} title={data.hmt.check.text} />
+				<StatusChip kind={score.kind} label={score.label} />
+			</span>
 		</div>
+		{@render tiles(hmtCells, '15rem')}
 		{#if hmt.length}
 			<TimeSeriesChart
-				title="HMT per tap and forecast at its horizon, last {hours} h"
+				title="HMT per tap, estimate and forecast with its band, last {hours} h and the next {formatNumber(
+					data.hmt.horizon_h,
+					0
+				)} h"
 				series={hmt}
 				unit="°C"
 				digits={0}
-				height={240}
+				height={260}
 				annotations={marks}
-				futureFrom={future}
-				endLabels
+				band={hmtBand}
 			/>
 			<p class="caption">
-				{data.forecast.score.text}
-				{#if latestTap}
-					Latest tap {formatQuantity(latestTap.value, 0, '°C')} at {istDateTime(
-						new Date(Date.parse(latestTap.at))
-					)} IST.
-				{/if}
-				The forecast: the coke of the charges dumped in the last hour against what the balance needs at the present
-				temperature, over the balance’s coke-temperature slope; the shaded part lies ahead.
+				{data.hmt.check.text}
+				{scoreText}
+				The estimate separates the slow thermal level of the hearth from the deviation of the last hours and the
+				scatter of a single tap; the band widens with the lead to the spread of the taps about their level. A tap
+				is scored against the forecast made with the taps published by then.
 			</p>
 		{:else}
 			<EmptyState
@@ -274,7 +306,9 @@ shift over 7, 14 or 30 days with its table.
 	{#snippet actions()}
 		<div class="seg" role="group" aria-label="Period">
 			{#each PERIOD_CHOICES as d (d)}
-				<button type="button" aria-pressed={days === d} onclick={() => (days = d)}>{d} days</button>
+				<button type="button" aria-pressed={model.days === d} onclick={() => (model.days = d)}
+					>{d} days</button
+				>
 			{/each}
 		</div>
 	{/snippet}
@@ -351,12 +385,40 @@ shift over 7, 14 or 30 days with its table.
 </Panel>
 
 <style>
-	.chips {
+	.chips,
+	.chips-inline {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--vo-space-2) var(--vo-space-3);
+	}
+	.chips {
 		margin-bottom: var(--vo-space-3);
+	}
+	.clock {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+		gap: var(--vo-space-3) var(--vo-space-4);
+		padding: var(--vo-space-3);
+		border: 1px solid var(--vo-border);
+		border-radius: var(--vo-radius-control);
+		background: var(--vo-surface-raised);
+	}
+	.stream {
+		display: grid;
+		gap: var(--vo-space-1);
+		justify-items: start;
+		min-width: 0;
+	}
+	.stream-text {
+		font-size: var(--vo-fs-body);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+	.notice {
+		margin: var(--vo-space-2) 0 var(--vo-space-3);
+		font-size: var(--vo-fs-label);
+		color: var(--vo-text-muted);
 	}
 	.fine,
 	.caption {

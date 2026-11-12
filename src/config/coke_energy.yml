@@ -191,6 +191,41 @@ coke_energy:
         status: pending              # pending | passed | failed (set from the gate runs, register COKE-18 / COKE-19)
         rmse_ratio_max: 0.90         # model RMSE at most 90 % of persistence at the tau_RW horizon
         bias_max_c: 5.0
+    # Live model tab of the Blend & Fuel Optimiser (services.live_model, user decisions 12 Nov 2026).
+    live_model:
+      # A window whose PCI lies outside this range (PCI tag stuck, injection off) shows no coke rates.
+      pci_valid_kg_thm: [80, 320]
+      # HMT from the taps (utils.coke_energy.hmt_filter): level (random walk) + deviation (time constant tau_h) +
+      # scatter of a single tap. Parameters: maximum likelihood on the taps of Jan-Jun 2026; test Jul-19 Oct 2026
+      # with the taps as published, 2 h ahead RMSE 14.6 against 18.7 degC for the last tap held (6 h: 15.6 / 22.3);
+      # 20 Oct-12 Nov 2026 11.9 / 18.1 (6 h: 12.2 / 18.8). Re-fit when the tapping practice changes.
+      hmt:
+        filter:
+          tau_h: 4.06                # time constant of the deviation, h
+          s_d_c: 14.65               # stationary SD of the deviation, degC
+          q_l_c2_per_h: 0.0116       # variance rate of the level, degC^2/h (0.53 degC per sqrt(day))
+          r_c: 6.53                  # scatter of a single tap, degC
+          min_taps: 8                # taps before an estimate is given
+        horizon_h: 6                 # the forecast band reaches this far
+        band_step_min: 30
+        cold_tap_c: 1460             # a tap below it is cold: p05 of the shift means (shift_report.yml); 8 % of the taps
+        score_horizons_h: [2, 6]     # leads scored against the last tap held, over the last 14 days
+        score_min_taps: 10
+        burn_in_days: 10             # taps read before the scored days
+        default_tap_delay_h: 1.0     # a tap without publication time counts as published this much later
+        z_single: 2.0                # watch: the newest tap beyond 2 sigma of its expectation ...
+        z_pair: 1.0                  # ... or the last two taps beyond 1 sigma on the same side
+        stale_after_h: 12            # no tap for this long: the estimate is the level alone
+      # Charged coke of the last charges (utils.coke_energy.charge_record): coke / ferrous of the charges times the
+      # factor K_charged / (coke / ferrous) of the stored 8-hour windows (median of the newest max_windows).
+      charged_now:
+        charges: 6                   # about one hour of charging
+        offset_h: 1                  # the pipeline counts the charges of [end - 9 h, end - 1 h) in a window
+        min_window_charges: 40
+        max_windows: 72
+        min_windows: 12              # fewer stored windows: default_factor
+        default_factor: 1.70         # 16 Oct-12 Nov 2026: median 1.697, weekly 1.689-1.716
+        read_days: 4                 # per-charge record read per request (memoised 5 min)
     # Data age on the Live Twin (SV-1.9, services.twin_views.source_freshness): the evaluation records the newest
     # time of each source (snapshot flags.sources); a source is stale from this age, h. InfluxDB on the page follows
     # live.status (10 s) when the worker publishes it.

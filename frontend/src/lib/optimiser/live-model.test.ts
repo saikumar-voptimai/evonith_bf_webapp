@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest';
+import { FakeSource } from '../live/fake-source.ts';
+import { LiveStream, type StreamEvent } from '../live/stream.svelte.ts';
+import { LiveModel } from './live-model.svelte.ts';
 import {
 	annotations,
+	arrivalLine,
+	asOfLine,
+	checkChip,
+	clockItems,
+	cokeChip,
 	cokeSeries,
+	cokeTiles,
 	etaSeries,
-	futureFrom,
-	gateWord,
+	hmtPlantBand,
 	hmtSeries,
-	latestCells,
+	hmtTiles,
+	modelStatusLine,
+	planAgainstNow,
+	processTiles,
 	scoreChip,
 	shiftSeries,
 	shiftTableRows,
@@ -14,10 +25,11 @@ import {
 	topGasSeries,
 	updatedAt,
 	verdictChip,
+	withLiveTags,
 	type LiveModelView
 } from './live-model.ts';
 
-const NOW = '2026-11-12T09:00:00Z';
+const NOW = '2026-11-12T09:00:00Z'; // 14:30 IST
 const H = 3_600_000;
 const at = (h: number) => new Date(Date.parse(NOW) - h * H).toISOString();
 
@@ -28,58 +40,157 @@ function window(
 	return {
 		end: at(h),
 		status: 'complete',
+		valid: true,
 		k_burnt: 300 + h,
 		k_forge: 303 + h,
 		k_strata: 301 + h,
 		k_charged: 320,
 		hmt_c: 1480,
-		hmt_now_c: 1478,
-		hmt_forecast_c: 1485,
-		hmt_forecast_horizon_h: 6,
+		tau_cz_h: 2,
 		tau_raceway_h: 6,
-		k_arr_kg_thm: 310,
 		eta_co_pct: 46,
 		eta_co_forge_pct: 46.5,
 		top_gas_c: 150,
 		top_gas_forge_c: 156,
 		hm_si_pct: 0.5,
 		production_t_h: 95,
+		pci_kg_thm: 195,
+		hot_blast_c: 1190,
+		oxygen_nm3_thm: 60,
 		...over
 	};
 }
 
+const reading = (key: string, value: number | null, unit: string, setpoint: number | null = null) => ({
+	key,
+	label: key,
+	value,
+	unit,
+	digits: 0,
+	at: at(0.01),
+	setpoint
+});
+
+const score = (horizon_h: number, verdict: 'better' | 'worse' | 'insufficient' = 'better') => ({
+	horizon_h,
+	days: 14,
+	n: 155,
+	rmse_model_c: 12.0,
+	rmse_persistence_c: 16.6,
+	bias_model_c: -0.4,
+	ratio: 0.72,
+	within_1sd: 0.81,
+	within_2sd: 1,
+	verdict,
+	text: `${horizon_h} h ahead: ±12.0 °C against ±16.6 °C for the last tap held.`
+});
+
 const VIEW: LiveModelView = {
 	now: NOW,
 	hours: 48,
+	clock: {
+		notice: 'Coke per tonne and the model check follow the charge record.',
+		sources: [
+			{ key: 'process', label: 'Process tags', cadence: 'every 10 s', newest: at(0.01), age_min: 0.6 },
+			{
+				key: 'charges',
+				label: 'Charge record',
+				cadence: 'published once an hour',
+				newest: at(0.4),
+				received: at(0.35),
+				age_min: 24,
+				delay_min: 31
+			},
+			{
+				key: 'taps',
+				label: 'Hot-metal taps',
+				cadence: 'published after each cast',
+				newest: at(1.5),
+				received: at(1),
+				age_min: 90,
+				delay_min: 41
+			}
+		]
+	},
+	process: {
+		at: at(0.01),
+		telemetry: 'live',
+		readings: [
+			reading('pci_rate', 200, 'kg/tHM', 204),
+			reading('production_rate', 90, 't/h'),
+			reading('hbt', 1193, '°C'),
+			reading('hot_blast_volume', 109800, 'Nm³/h'),
+			reading('oxygen_flow', 5690, 'Nm³/h'),
+			reading('o2_injection', null, '%'),
+			reading('raft', 2217, '°C'),
+			reading('co_utilization', 42.3, '%'),
+			reading('uptake_avg', 212, '°C'),
+			reading('pci_t_h', 18, 't/h')
+		]
+	},
+	coke: {
+		charged_now: 295.6,
+		charged_charges: 6,
+		charged_first: at(1.3),
+		charged_last: at(0.4),
+		charged_received: at(0.35),
+		charged_basis: 'windows',
+		charged_factor: 1.69,
+		window_end: at(1),
+		charged_window: 302.1,
+		burnt: 307.2,
+		model: 304.3,
+		gap: -2.9,
+		limit: 8,
+		state: 'ok',
+		text: 'Model − burnt −2.9 kg/tHM over the last 8 h, within ±8 kg/tHM.'
+	},
+	hmt: {
+		available: true,
+		taps_used: 204,
+		last_tap: { at: at(1.5), value: 1481, received: at(1) },
+		now: { at: NOW, value: 1483, sd: 9.2 },
+		next_tap: { at: at(-0.5), value: 1482.8, sd: 13.8 },
+		cold_tap_c: 1460,
+		p_cold_next: 0.049,
+		ahead: { at: at(-6), value: 1482.3, sd: 16 },
+		horizon_h: 6,
+		tap_interval_h: 2,
+		tap_age_h: 1.5,
+		stale: false,
+		estimate: [
+			{ at: at(7), value: 1479, sd: 6 },
+			{ at: at(4), value: 1480, sd: 6 },
+			{ at: at(1.5), value: 1483, sd: 6 }
+		],
+		band: [
+			{ at: at(1.5), value: 1483, lo: 1474, hi: 1492 },
+			{ at: NOW, value: 1483, lo: 1471, hi: 1495 },
+			{ at: at(-6), value: 1482, lo: 1466, hi: 1498 }
+		],
+		scores: [score(2), score(6)],
+		check: {
+			state: 'ok',
+			rule: null,
+			z: -0.7,
+			expected: 1491,
+			sd: 14,
+			value: 1481,
+			text: 'The newest tap, 1,481 °C, lies within ±2σ of the expected 1,491 ± 14 °C.'
+		},
+		plant_band: { lo: 1440, hi: 1520, fact: 'BAND-02' }
+	},
 	latest: window(1),
 	hourly: [window(5), window(4), window(3), window(1)],
 	taps: [
-		{ at: at(7), value: 1476 },
-		{ at: at(4), value: 1479 },
-		{ at: at(1.5), value: 1478 }
+		{ at: at(7), value: 1476, received: at(6) },
+		{ at: at(4), value: 1479, received: at(3.4) },
+		{ at: at(1.5), value: 1481, received: at(1) }
 	],
-	forecast: {
-		gate: 'pending',
-		latest: { origin: at(1), at: at(-5), value: 1485, measured: null },
-		points: [
-			{ origin: at(5), at: at(-1), value: 1483, measured: null },
-			{ origin: at(1), at: at(-5), value: 1485, measured: null }
-		],
-		score: {
-			days: 14,
-			n: 40,
-			rmse_model_c: 7.5,
-			rmse_persistence_c: 10.2,
-			bias_model_c: -1.2,
-			ratio: 0.74,
-			verdict: 'better',
-			text: 'Over 40 forecasts …'
-		}
-	},
 	shifts: {
 		days: 14,
 		state: 'ok',
-		reason: 'bias +1.0 kg/tHM, typical error ±5.0 kg/tHM over 20 stable shifts',
+		reason: 'bias +1.0 kg/tHM, typical error ±5.0\u00a0kg/tHM over 20 stable shifts',
 		energy: { n: 20, bias: 1.0, sd: 5.0, mae: 4.1 },
 		oxygen: { n: 20, bias: -2.0, sd: 6.0, mae: 5.0 },
 		thresholds: { bias_kgthm: 8, sd_kgthm: 12, min_shifts: 6 },
@@ -121,21 +232,124 @@ describe('coke lines', () => {
 	});
 });
 
+describe('data clock', () => {
+	it('lists the three streams with the time of the newest record, its receipt and its age', () => {
+		const items = clockItems(VIEW, new Date(NOW));
+		expect(items.map((i) => [i.key, i.text, i.age, i.kind])).toEqual([
+			['process', '14:29 IST', 'live', 'ok'],
+			['charges', 'newest 14:06 IST, received 14:09', '24 min old', 'ok'],
+			['taps', 'newest 13:00 IST, received 13:30', '1 h 30 min old', 'ok']
+		]);
+		// two hours on without a new record: the charge record is late (over 90 min); a live.status time supersedes
+		const later = clockItems(VIEW, new Date(Date.parse(NOW) + 2 * H), at(-1.99));
+		expect(later.map((i) => i.kind)).toEqual(['ok', 'warning', 'ok']);
+		expect(later[0]!.text).toBe('16:29 IST');
+		expect(clockItems(null, new Date(NOW))).toEqual([]);
+		const none = {
+			...VIEW,
+			clock: { ...VIEW.clock, sources: [{ ...VIEW.clock.sources[1]!, newest: null }] }
+		};
+		expect(clockItems(none, new Date(NOW))[0]).toMatchObject({ text: 'no record', kind: 'stale', age: '' });
+	});
+	it('states the time of each live input in one line', () => {
+		expect(asOfLine(VIEW)).toBe(
+			'Live inputs as of: process tags 14:29 · charge record to 14:06 (received 14:09) · taps to 13:00 (received 13:30), IST.'
+		);
+		expect(asOfLine(null)).toBe('');
+	});
+});
+
+describe('fuel and blast now', () => {
+	it('shows PCI, hot blast, oxygen and ηCO with their companions', () => {
+		const tiles = processTiles(VIEW);
+		expect(tiles.map((x) => [x.key, x.value, x.unit, x.note])).toEqual([
+			['pci', 18, 't/h', '200\u00a0kg/tHM, set 204; 8-h mean 195\u00a0kg/tHM dry'],
+			['blast', 1193, '°C', '109,800\u00a0Nm³/h'],
+			['oxygen', 5690, 'Nm³/h', 'RAFT 2,217\u00a0°C'],
+			['eta', 42.3, '%', 'top gas 212\u00a0°C']
+		]);
+		// against the newest 8-hour window: hot blast 1,190 °C, oxygen 60 Nm³/tHM x 95 t/h, ηCO 46 %
+		expect(tiles.map((x) => x.delta?.value ?? null)).toEqual([null, 3, -10, 42.3 - 46]);
+		expect(tiles[1]!.delta?.label).toBe('against the 8-h mean');
+		expect(processTiles({ ...VIEW, latest: null }).every((x) => x.delta === undefined)).toBe(true);
+		expect(processTiles(null).every((x) => x.value === null)).toBe(true);
+	});
+	it('lays the tags of a live.status event over the view and derives PCI in t/h again', () => {
+		const tags = {
+			pci_rate: { value: 210, unit: 'kg/THM' },
+			hbt: { value: 1201, unit: '°C' },
+			raft: { value: null }
+		};
+		const v = withLiveTags(VIEW.process, tags);
+		expect([v.get('pci_rate'), v.get('hbt'), v.get('raft'), v.get('pci_t_h')]).toEqual([
+			210, 1201, 2217, 18.9
+		]);
+		expect(processTiles(VIEW, tags)[0]!.value).toBeCloseTo(18.9);
+	});
+});
+
+describe('coke balance', () => {
+	it('shows charged now, burnt, model and the gap with its limit and status', () => {
+		const tiles = cokeTiles(VIEW);
+		expect(tiles.map((x) => [x.key, x.value])).toEqual([
+			['charged', 295.6],
+			['burnt', 307.2],
+			['model', 304.3],
+			['gap', -2.9]
+		]);
+		expect(tiles[0]!.note).toBe('last 6 charges, 13:12–14:06 IST');
+		expect(tiles[1]!.note).toBe('oxygen balance, 8 h to 13:30 IST');
+		expect(tiles[3]).toMatchObject({ note: 'limit ±8\u00a0kg/tHM', status: 'ok', statusLabel: 'On track' });
+		const watch = {
+			...VIEW,
+			coke: { ...VIEW.coke, state: 'watch' as const, charged_basis: 'default' as const }
+		};
+		expect(cokeTiles(watch)[3]).toMatchObject({ status: 'warning', statusLabel: 'Watch' });
+		expect(cokeTiles(watch)[0]!.note).toContain('default factor');
+		expect(cokeChip(null)).toEqual({ kind: 'info', label: 'No coke balance' });
+		expect(cokeTiles(null).map((x) => x.note)).toEqual([
+			'no charge record',
+			'oxygen balance, no window',
+			'energy balance, no window',
+			'limit ±8\u00a0kg/tHM'
+		]);
+	});
+});
+
 describe('HMT, ηCO and top gas', () => {
-	it('marks the taps as points and draws the latest forecast as one dashed segment from the last tap', () => {
-		const [taps, forecast] = hmtSeries(VIEW);
-		expect(taps!.symbols).toBe(true);
+	it('shows the last tap, the estimate now, the next tap with the chance of a cold tap and 6 h ahead', () => {
+		const tiles = hmtTiles(VIEW);
+		expect(tiles.map((x) => [x.key, x.label, x.value, x.spread ?? null])).toEqual([
+			['tap', 'Last tap', 1481, null],
+			['now', 'Estimate now', 1483, 9.2],
+			['next', 'Next tap', 1482.8, 13.8],
+			['ahead', 'In 6 h', 1482.3, 16]
+		]);
+		expect(tiles[0]!.note).toBe('13:00 IST, received 13:30');
+		expect(tiles[2]!.note).toBe('about 15:00 IST · below 1,460\u00a0°C: 5\u00a0%');
+		const stale = { ...VIEW, hmt: { ...VIEW.hmt, stale: true } };
+		expect(hmtTiles(stale)[1]!.note).toBe('no recent tap: the long-run level');
+		expect(hmtTiles(null).every((x) => x.value === null)).toBe(true);
+	});
+	it('draws the taps as points, the estimate as a line and the dashed forecast with its band', () => {
+		const [taps, estimate, forecast] = hmtSeries(VIEW);
+		expect(taps!.marksOnly).toBe(true);
 		expect(taps!.points).toHaveLength(3);
+		expect(estimate!.points.at(-1)).toEqual([Date.parse(at(1.5)), 1483]);
 		expect(forecast!.dashed).toBe(true);
 		expect(forecast!.points).toEqual([
-			[Date.parse(at(1.5)), 1478],
-			[Date.parse(NOW) + 5 * H, 1485]
+			[Date.parse(at(1.5)), 1483],
+			[Date.parse(NOW), 1483],
+			[Date.parse(NOW) + 6 * H, 1482]
 		]);
-		// no forecast, or no tap to start from: the taps alone
-		expect(hmtSeries({ ...VIEW, forecast: { ...VIEW.forecast, latest: null } }).map((s) => s.id)).toEqual([
-			'hmt'
-		]);
-		expect(hmtSeries({ ...VIEW, taps: [] })).toEqual([]);
+		expect(forecast!.band).toMatchObject({ fill: 'series-hmt-band', label: '±1σ of a tap' });
+		expect(forecast!.band!.points.at(-1)).toEqual([Date.parse(NOW) + 6 * H, 1466, 1498]);
+		// without the filter: the taps alone; without taps: nothing
+		const bare = { ...VIEW, hmt: { ...VIEW.hmt, estimate: [], band: [] } };
+		expect(hmtSeries(bare).map((s) => s.id)).toEqual(['hmt']);
+		expect(hmtSeries({ ...bare, taps: [] })).toEqual([]);
+		expect(hmtPlantBand(VIEW)).toEqual({ lo: 1440, hi: 1520, label: 'BAND-02 1,440–1,520 °C' });
+		expect(hmtPlantBand({ ...VIEW, hmt: { ...VIEW.hmt, plant_band: null } })).toBeUndefined();
 	});
 	it('pairs the measured and the modelled ηCO and top-gas temperature', () => {
 		expect(etaSeries(VIEW).map((s) => [s.id, s.points.at(-1)![1]])).toEqual([
@@ -147,39 +361,53 @@ describe('HMT, ηCO and top gas', () => {
 			['top_forge', 156]
 		]);
 	});
-	it('annotates now and shades the future from now', () => {
+	it('annotates now', () => {
 		expect(annotations(VIEW)).toEqual([{ t: Date.parse(NOW), label: 'Now' }]);
-		expect(futureFrom(VIEW)).toBe(Date.parse(NOW));
-		expect(futureFrom(null)).toBeUndefined();
+		expect(annotations(null)).toEqual([]);
 	});
 });
 
-describe('tiles and chips', () => {
-	it('shows the latest window with the model against burnt and the forecast with its gate word', () => {
-		const cells = latestCells(VIEW);
-		expect(cells.map((c) => c.key)).toEqual(['burnt', 'forge', 'hmt', 'hmt_forecast', 'eta', 'top']);
-		expect(cells[0]!.value).toBe(301);
-		expect(cells[0]!.note).toBe('charged 320.0 kg/tHM');
-		expect(cells[1]!.delta).toEqual({ value: 3, label: 'against burnt', better: 'down' });
-		expect(cells[2]!.value).toBe(1478);
-		expect(cells[3]!.label).toBe('HMT forecast, +6.0 h');
-		expect(cells[3]!.value).toBe(1485);
-		expect(cells[3]!.delta?.value).toBe(7);
-		expect(cells[3]!.note).toBe('not yet validated (gate pending)');
-		expect(cells[4]!.note).toBe('modelled 46.5 %');
-		expect(latestCells(null).every((c) => c.value === null)).toBe(true);
-	});
-	it('words the gate, the score and the verdict', () => {
-		expect(gateWord('passed')).toBe('validated (gate passed)');
-		expect(gateWord('failed')).toBe('failed its validation gate');
-		expect(scoreChip(VIEW.forecast.score)).toEqual({ kind: 'ok', label: 'Forecast beats persistence' });
-		expect(scoreChip({ ...VIEW.forecast.score, verdict: 'worse' }).kind).toBe('warning');
-		expect(scoreChip({ ...VIEW.forecast.score, verdict: 'insufficient' }).kind).toBe('info');
+describe('chips', () => {
+	it('words the score, the tap check and the verdict', () => {
+		expect(scoreChip(VIEW.hmt.scores)).toEqual({ kind: 'ok', label: 'Forecast beats the last tap held' });
+		expect(scoreChip([score(2, 'insufficient'), score(6, 'worse')]).kind).toBe('warning');
+		expect(scoreChip([score(2, 'insufficient')])).toEqual({ kind: 'info', label: 'Forecast not yet scored' });
+		expect(checkChip(VIEW.hmt.check)).toEqual({ kind: 'ok', label: 'Newest tap inside the band' });
+		expect(checkChip({ ...VIEW.hmt.check, state: 'watch', rule: 'single' }).label).toBe(
+			'Newest tap outside ±2σ'
+		);
+		expect(checkChip({ ...VIEW.hmt.check, state: 'watch', rule: 'pair' }).label).toBe(
+			'Two taps on one side of the band'
+		);
+		expect(checkChip(null).kind).toBe('info');
 		expect(verdictChip(VIEW.shifts)).toEqual({ kind: 'ok', label: 'On track' });
 		expect(verdictChip({ ...VIEW.shifts!, state: 'watch' }).kind).toBe('warning');
 		expect(verdictChip(null)).toEqual({ kind: 'info', label: 'Too few shifts' });
-		expect(statsLine(VIEW.shifts!.energy)).toBe('bias +1.0, typical error ±5.0 kg/tHM over 20 stable shifts');
+		expect(statsLine(VIEW.shifts!.energy)).toBe(
+			'bias +1.0, typical error ±5.0\u00a0kg/tHM over 20 stable shifts'
+		);
 		expect(statsLine({ n: 0, bias: null, sd: null, mae: null })).toBe('no stable shift scored');
+	});
+});
+
+describe('plan panel', () => {
+	it('states the model record, the plan coke against the furnace now and the arrival of an accepted plan', () => {
+		expect(modelStatusLine(VIEW)).toBe(
+			'Energy model over the last 14 days: bias +1.0, typical error ±5.0\u00a0kg/tHM over 20 stable shifts.'
+		);
+		expect(modelStatusLine({ ...VIEW, shifts: null })).toBe('No shift record yet.');
+		expect(planAgainstNow(302.2, VIEW).map((x) => [x.key, x.value])).toEqual([
+			['plan', 302.2],
+			['charged', 295.6],
+			['burnt', 307.2],
+			['model', 304.3]
+		]);
+		// accepted 14:00 IST: cohesive zone 2 h later, raceways 6 h later
+		expect(arrivalLine(VIEW, new Date(Date.parse(NOW) - 0.5 * H))).toBe(
+			'Charged from 12 Nov 14:00 IST, the plan’s first charge reaches the cohesive zone about 16:00 (2.0\u00a0h) and the raceways about 20:00 IST (6.0\u00a0h).'
+		);
+		expect(arrivalLine(VIEW, null)).toBeNull();
+		expect(arrivalLine({ ...VIEW, latest: window(1, { tau_cz_h: null }) }, new Date(NOW))).toBeNull();
 	});
 });
 
@@ -200,5 +428,41 @@ describe('shift record', () => {
 	it('dates the view by the latest window', () => {
 		expect(updatedAt(VIEW)?.toISOString()).toBe(at(1));
 		expect(updatedAt({ ...VIEW, latest: null })).toBeNull();
+	});
+});
+
+describe('LiveModel', () => {
+	it('reads once per hours and period, again on twin.snapshot, and keeps the tags of live.status', async () => {
+		FakeSource.all = [];
+		const stream = new LiveStream({
+			create: (url) => new FakeSource(url),
+			checkSession: async () => 'valid'
+		});
+		const calls: [number, number][] = [];
+		const model = new LiveModel(async (hours, days) => {
+			calls.push([hours, days]);
+			return VIEW;
+		}, stream);
+		const stop = model.start();
+		await model.sync(); // the same hours and period: no second read
+		expect(calls).toEqual([[48, 14]]);
+		await Promise.resolve();
+		expect(model.view.data).toBe(VIEW);
+		model.hours = 24;
+		await model.sync();
+		expect(calls.at(-1)).toEqual([24, 14]);
+		const source = FakeSource.last();
+		source.open();
+		const beat = (data: object): StreamEvent =>
+			({ type: 'live.status', id: '1-0', at: NOW, data }) as unknown as StreamEvent;
+		source.emit(beat({ worker: {}, tags: {} })); // a beat without a plant snapshot keeps the tags
+		expect(model.tags).toBeNull();
+		source.emit(beat({ worker: {}, tags: { hbt: { value: 1201, unit: '°C' } }, data_at: at(0) }));
+		expect(model.tags).toEqual({ hbt: { value: 1201, unit: '°C' } });
+		expect(model.tagsAt).toBe(at(0));
+		source.emit({ type: 'twin.snapshot', id: '2-0', at: NOW, data: {} } as unknown as StreamEvent);
+		expect(calls).toHaveLength(3);
+		stop();
+		expect(source.closed).toBe(true);
 	});
 });

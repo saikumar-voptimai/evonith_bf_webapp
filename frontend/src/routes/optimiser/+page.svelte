@@ -34,6 +34,7 @@
 	import DetailsPanel from '#lib/optimiser/DetailsPanel.svelte';
 	import FrontierPanel from '#lib/optimiser/FrontierPanel.svelte';
 	import LiveModelPanel from '#lib/optimiser/LiveModelPanel.svelte';
+	import { LiveModel } from '#lib/optimiser/live-model.svelte.ts';
 	import PlanPanels from '#lib/optimiser/PlanPanels.svelte';
 	import ReferencePanels from '#lib/optimiser/ReferencePanels.svelte';
 	import RunPanel from '#lib/optimiser/RunPanel.svelte';
@@ -120,6 +121,19 @@
 	}
 	const runCount = $derived(opt.runs.data?.length ?? 0);
 
+	// ------------------------------------------------------------------------------------ the live model
+	// One read for the Live model tab and the plan panel's model status; a change of its hours or period reads again.
+	const liveModel = new LiveModel();
+	$effect(() => untrack(() => liveModel.start()));
+	$effect(() => {
+		void liveModel.hours;
+		void liveModel.days;
+		untrack(() => void liveModel.sync());
+	});
+	const acceptedAt = $derived(
+		decision?.decision === 'accepted' ? new Date(Date.parse(decision.decided_at)) : null
+	);
+
 	// ------------------------------------------------------------------------------------------ the tabs
 	let tab = $state('blend');
 	const resultTabs = $derived([
@@ -173,7 +187,7 @@
 					message="Set the inputs and run the optimiser. Fixed production with Fixed-ω takes seconds; the cheapest production level and maximum production search output and oxygen and take minutes."
 				/>
 			</Panel>
-			<LiveModelPanel />
+			<LiveModelPanel model={liveModel} />
 		{:else if !result}
 			<Panel title="Result" icon={Lightbulb} busy>
 				<Skeleton variant="block" height="10rem" />
@@ -191,7 +205,14 @@
 				/>
 			</Panel>
 		{:else}
-			<PlanPanels {result} {plan} reference={opt.reference.data} updatedAt={finished}>
+			<PlanPanels
+				{result}
+				{plan}
+				reference={opt.reference.data}
+				updatedAt={finished}
+				live={liveModel}
+				{acceptedAt}
+			>
 				{#snippet actions()}
 					{#if result.mode === 'step1' && result.highest_output_plan}
 						<div class="switch" role="group" aria-label="Plan shown">
@@ -242,7 +263,7 @@
 						{:else if id === 'frontier'}
 							<FrontierPanel {result} />
 						{:else if id === 'live'}
-							<LiveModelPanel />
+							<LiveModelPanel model={liveModel} />
 						{:else if id === 'commentary'}
 							<CommentaryPanel page={opt} hasPlan={!!result?.plan && result.status === 'ok'} />
 						{:else if id === 'yard'}
@@ -271,7 +292,7 @@
 			</Tabs>
 		{/if}
 		{#if result && !plan}
-			<LiveModelPanel />
+			<LiveModelPanel model={liveModel} />
 			<CommentaryPanel page={opt} hasPlan={!!result?.plan && result.status === 'ok'} />
 			<YardPanel page={opt} {result} canEdit={supervisor} />
 			<ReferencePanels reference={opt.reference} onretry={() => void opt.loadReference()} />
@@ -297,6 +318,8 @@
 	}
 	.results {
 		display: grid;
+		/* minmax(0, …): the tab list scrolls inside its track instead of widening the page (768 px). */
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--vo-space-4);
 		min-width: 0;
 	}

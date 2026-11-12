@@ -25,7 +25,8 @@ from api.errors import ApiError
 from api.live import job_store, live_state
 from api.store import twin_store
 from data.twin.repositories import Actor, NotFound, TwinStore
-from services import live_model, optimiser_commentary, twin_reads, twin_views
+from services import live_model, live_status, optimiser_commentary, twin_reads, twin_views
+from services import status as status_service
 from services.auth import Principal
 from services.jobs import JobRecord, JobStore, OptimiserRunParams
 from services.live_model import LiveModelView
@@ -288,6 +289,7 @@ def decide(
 
 @router.get("/live-model", response_model=LiveModelView, summary="The energy model against the furnace, live")
 async def live_model_view(
+    request: Request,
     store: Annotated[TwinStore, Depends(twin_store)],
     hours: Annotated[
         int, Query(ge=8, le=live_model.MAX_HOURS, description="Hourly twin windows shown, h (default 48)")
@@ -296,9 +298,20 @@ async def live_model_view(
         int, Query(ge=1, le=92, description="Shift record of the model check, days (7, 14 or 30 on the page)")
     ] = live_model.SCORE_DAYS,
 ) -> LiveModelView:
-    """The Blend & Fuel Optimiser's live model tab (user decision 12 Nov 2026): the twin's hourly windows of the last
-    ``hours`` (burnt, energy-balance, STRATA-ω and charged coke; HMT, ηCO and top-gas temperature measured and of
-    the balance; the HMT forecast one descent time ahead with its gate and its live score against persistence), the
-    measured HMT per tap, and page 11's model check per shift over ``days`` on the FORGE view. Reads only what the
-    worker stored (``services.live_model``)."""
-    return LiveModelView.model_validate(await asyncio.to_thread(live_model.view, store, hours=hours, days=days))
+    """The Blend & Fuel Optimiser's live model tab (user decisions 12 Nov 2026): the data clock (age of the process
+    tags, the charge record and the taps), fuel and blast now, the coke balance (charged coke of the last charges,
+    burnt and modelled coke of the newest 8-hour window), the hot-metal temperature from the tap filter (estimate now,
+    next tap, 6 h ahead with a ±1σ band, its score against the last tap held), the twin's hourly windows of the last
+    ``hours`` and page 11's model check per shift over ``days`` on the FORGE view. Reads what the worker stored, the
+    furnace-status snapshot (the worker's live copy while it is fresh), the per-charge record and the taps
+    (``services.live_model``)."""
+    status = None
+    redis = getattr(getattr(request.app.state, "live", None), "redis", None)
+    if redis is not None:
+        try:
+            status = await live_status.read_latest(redis, now=status_service.clock())
+        except Exception:  # noqa: BLE001 - Redis briefly unavailable: the view takes the snapshot itself
+            status = None
+    process = (lambda: status) if status is not None else None
+    view = await asyncio.to_thread(live_model.view, store, hours=hours, days=days, process=process)
+    return LiveModelView.model_validate(view)

@@ -1062,17 +1062,33 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   draggable, resizable, foldable, place remembered per viewer; a bottom sheet below 1024 px). Result: the plan panel
   with *Accept plan* (supervisor, `POST /api/optimiser/runs/{id}/decision`), one *Overview* panel of tile rows, then
   tabs Blend / Slag balance / Limits and process / Frontier / **Live model** / Commentary / Yard and inputs (+ the
-  Streamlit page 9 links) / Facts and assumptions. **Live model** (`optimiser/LiveModelPanel`, builders
-  `lib/optimiser/live-model.ts`, `GET /api/optimiser/live-model?hours=&days=` = `services/live_model.py`, reads only
-  what the worker stored): the twin's hourly windows of the last 24 / 48 / 72 h — burnt coke (TRACE) against the
-  energy balance (FORGE, Fixed-ω; STRATA-ω on a toggle; modelled against actual only, no charged line), the HMT per
-  tap with the latest forecast one descent time ahead as one dashed segment (`hmt_forecast_c`; shown although the
-  SV-1.4 gate is pending, labelled, with its live score against persistence over 14 days: every stored forecast vs
-  the tap at its horizon — the earlier forecasts are scored, not drawn: hour by hour they swing ±100 °C because
-  dK/dHMT is 0.09 kg/tHM per °C, so 1 kg/tHM of coke mismatch is 11 °C), the future shaded from now
-  (`TimeSeriesSpec.futureFrom`), a folded chart of ηCO and top-gas temperature measured vs the balance's; below it
-  page 11's model check per shift over 7 / 14 / 30 days on the FORGE view (`utils.burden_engine.model_check`
-  verdict, thresholds `burden_optimiser.yml → model_check`); refreshed on every `twin.snapshot` event. The run form
+  Streamlit page 9 links) / Facts and assumptions. **Live model** (`optimiser/LiveModelPanel`, state
+  `lib/optimiser/live-model.svelte.ts` shared with the plan panel, builders `lib/optimiser/live-model.ts`,
+  `GET /api/optimiser/live-model?hours=&days=` = `services/live_model.py`; user decisions 12 Nov 2026): (1) data
+  clock: age of the process tags (10 s), the charge record (`offline_feed.charge_data`, one row per charge,
+  published once an hour) and the taps, with the notice that every per-tonne figure follows the charge record;
+  (2) fuel and blast now from the furnace-status snapshot (PCI t/h = PCI rate × production; followed on
+  `live.status`); (3) coke balance, dry kg/tHM: *Charged now* = coke / ferrous of the last 6 charges × the factor
+  K_charged / (coke / ferrous) of the stored 8-hour windows (`utils/coke_energy/charge_record.py`), burnt (TRACE)
+  and model (FORGE, Fixed-ω) of the newest window, model − burnt against the model check's bias limit, and the
+  hourly windows of the last 24 / 48 / 72 h (STRATA-ω on a toggle); a window whose PCI is outside
+  `twin.live_model.pci_valid_kg_thm` (80–320: tag stuck, injection off) carries no coke rates; (4) hot-metal
+  temperature from the tap filter (`utils/coke_energy/hmt_filter.py`: level as a random walk + deviation with a
+  4.06 h time constant + scatter of a single tap; parameters in `coke_energy.yml → twin.live_model.hmt.filter`,
+  fitted on Jan–Jun 2026): last tap, estimate now, next tap with the chance of a tap below `cold_tap_c` (1,460 °C),
+  6 h ahead, each ±1σ; taps as points (`TimeSeries.marksOnly`), the estimate, the forecast with a band that widens
+  with the lead, BAND-02 behind; score = every tap of the last 14 days against the forecast made 2 h and 6 h before
+  it with the taps published by then (`created_at`), next to the last tap held; watch when the newest tap is beyond
+  2σ or two in a row beyond 1σ on one side. The SV-1.4 forecast (`hmt_forecast_c` of the snapshots, gate pending)
+  is no longer shown here: it divides a coke surplus by dK/dHMT = 0.09 kg/tHM per °C, so 1 kg/tHM of noise is
+  11 °C; (5) a folded chart of ηCO and top-gas temperature measured vs the balance's; below it page 11's model
+  check per shift over 7 / 14 / 30 days on the FORGE view (`utils.burden_engine.model_check` verdict, thresholds
+  `burden_optimiser.yml → model_check`). Read again on every `twin.snapshot` event; the taps and the charge record
+  are read from Neon at most once per 5 min. The plan panel (`PlanPanels`, props `live`, `acceptedAt`) shows the
+  shift record's verdict with bias and typical error, the plan's dry coke next to charged now, burnt and model, the
+  time of each live input and, for an accepted plan, when its first charge reaches the cohesive zone and the
+  raceways (`tau_cz_h`, `tau_raceway_h` of the newest window). Uncertainty bands of `TimeSeriesChart` are drawn
+  above the plant band and the future shading (z 2). The run form
   always opens on Fixed production and Fixed-ω (no mode adopted from the shown run, user decision 12 Nov 2026); the
   SPA copy names no Streamlit page number. Chart end labels of different series are kept a line apart
   (`timeseries.spreadLabels`, `plotHeight` from the component). Ore

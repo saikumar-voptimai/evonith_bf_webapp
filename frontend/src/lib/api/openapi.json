@@ -4166,6 +4166,257 @@
         "title": "ChargingView",
         "type": "object"
       },
+      "ClockSource": {
+        "description": "One data stream of the model with the age of its newest record.",
+        "properties": {
+          "age_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Now minus the newest record, min",
+            "title": "Age Min"
+          },
+          "cadence": {
+            "description": "How often the stream is published",
+            "title": "Cadence",
+            "type": "string"
+          },
+          "delay_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Median publication delay of the stream's recent records, min",
+            "title": "Delay Min"
+          },
+          "key": {
+            "enum": [
+              "process",
+              "charges",
+              "taps"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "newest": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the newest record, UTC",
+            "title": "Newest"
+          },
+          "received": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the newest record was published, UTC",
+            "title": "Received"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "cadence"
+        ],
+        "title": "ClockSource",
+        "type": "object"
+      },
+      "CokeBalance": {
+        "description": "Coke per tonne of hot metal, dry kg/tHM: charged now, burnt and modelled over the newest 8-hour window.",
+        "properties": {
+          "burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke the blast burnt over the window, kg/tHM",
+            "title": "Burnt"
+          },
+          "charged_basis": {
+            "default": "none",
+            "description": "windows: factor from the stored windows; default: the configured factor",
+            "enum": [
+              "windows",
+              "default",
+              "none"
+            ],
+            "title": "Charged Basis",
+            "type": "string"
+          },
+          "charged_charges": {
+            "default": 0,
+            "description": "Charges of the ratio, count",
+            "title": "Charged Charges",
+            "type": "integer"
+          },
+          "charged_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "K_charged per kg of coke per t of ferrous burden",
+            "title": "Charged Factor"
+          },
+          "charged_first": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First charge of the ratio, UTC",
+            "title": "Charged First"
+          },
+          "charged_last": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last charge of the ratio, UTC",
+            "title": "Charged Last"
+          },
+          "charged_now": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke of the last charges on the pipeline's basis, kg/tHM",
+            "title": "Charged Now"
+          },
+          "charged_received": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Publication of the newest charge, UTC",
+            "title": "Charged Received"
+          },
+          "charged_window": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged coke of that window, kg/tHM",
+            "title": "Charged Window"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model minus burnt, kg/tHM",
+            "title": "Gap"
+          },
+          "limit": {
+            "description": "Limit of |model \u2212 burnt| (the model check's bias limit), kg/tHM",
+            "title": "Limit",
+            "type": "number"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Energy balance over the window, kg/tHM",
+            "title": "Model"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "watch",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End of the 8-hour window of burnt and model, UTC",
+            "title": "Window End"
+          }
+        },
+        "required": [
+          "limit",
+          "state",
+          "text"
+        ],
+        "title": "CokeBalance",
+        "type": "object"
+      },
       "CommentaryView": {
         "properties": {
           "context": {
@@ -4826,6 +5077,28 @@
           "band_sigmas"
         ],
         "title": "CusumState",
+        "type": "object"
+      },
+      "DataClock": {
+        "properties": {
+          "notice": {
+            "description": "What the delay of the charge record means for the per-tonne figures",
+            "title": "Notice",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ClockSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources",
+          "notice"
+        ],
+        "title": "DataClock",
         "type": "object"
       },
       "DatasetPart": {
@@ -7429,132 +7702,6 @@
         "title": "ForecastChargedCokeEvent",
         "type": "object"
       },
-      "ForecastPoint": {
-        "properties": {
-          "at": {
-            "description": "Instant the forecast is for, UTC",
-            "format": "date-time",
-            "title": "At",
-            "type": "string"
-          },
-          "measured": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Measured HMT at the horizon, \u00b0C, once known",
-            "title": "Measured"
-          },
-          "origin": {
-            "description": "The forecast's origin (its window end), UTC",
-            "format": "date-time",
-            "title": "Origin",
-            "type": "string"
-          },
-          "value": {
-            "description": "Forecast HMT, \u00b0C",
-            "title": "Value",
-            "type": "number"
-          }
-        },
-        "required": [
-          "origin",
-          "at",
-          "value"
-        ],
-        "title": "ForecastPoint",
-        "type": "object"
-      },
-      "ForecastScore": {
-        "description": "The stored forecasts against the tap temperature at their horizon, last ``days``.",
-        "properties": {
-          "bias_model_c": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Mean forecast \u2212 measured, \u00b0C",
-            "title": "Bias Model C"
-          },
-          "days": {
-            "description": "Days scored",
-            "title": "Days",
-            "type": "integer"
-          },
-          "n": {
-            "description": "Forecasts with a measured temperature at the horizon",
-            "title": "N",
-            "type": "integer"
-          },
-          "ratio": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "RMSE model / RMSE persistence (gate: at most 0.90)",
-            "title": "Ratio"
-          },
-          "rmse_model_c": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "RMSE of the forecast, \u00b0C",
-            "title": "Rmse Model C"
-          },
-          "rmse_persistence_c": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "RMSE of persistence (HMT at the origin), \u00b0C",
-            "title": "Rmse Persistence C"
-          },
-          "text": {
-            "description": "One line for the page",
-            "title": "Text",
-            "type": "string"
-          },
-          "verdict": {
-            "description": "Against persistence",
-            "enum": [
-              "better",
-              "worse",
-              "insufficient"
-            ],
-            "title": "Verdict",
-            "type": "string"
-          }
-        },
-        "required": [
-          "days",
-          "n",
-          "verdict",
-          "text"
-        ],
-        "title": "ForecastScore",
-        "type": "object"
-      },
       "ForecastSiEvent": {
         "properties": {
           "at": {
@@ -10024,46 +10171,297 @@
         "title": "HeartbeatEvent",
         "type": "object"
       },
-      "HmtForecastView": {
+      "HmtBand": {
         "properties": {
-          "gate": {
-            "description": "Validation gate of the forecast (SV-1.4)",
-            "enum": [
-              "pending",
-              "passed",
-              "failed"
-            ],
-            "title": "Gate",
+          "fact": {
+            "description": "Fact of the process fact register",
+            "title": "Fact",
             "type": "string"
           },
-          "latest": {
+          "hi": {
+            "description": "Upper edge, \u00b0C",
+            "title": "Hi",
+            "type": "number"
+          },
+          "lo": {
+            "description": "Lower edge, \u00b0C",
+            "title": "Lo",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lo",
+          "hi",
+          "fact"
+        ],
+        "title": "HmtBand",
+        "type": "object"
+      },
+      "HmtBandPoint": {
+        "properties": {
+          "at": {
+            "description": "Instant, UTC",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "hi": {
+            "description": "Mean + 1\u03c3 of a tap, \u00b0C",
+            "title": "Hi",
+            "type": "number"
+          },
+          "lo": {
+            "description": "Mean \u2212 1\u03c3 of a tap, \u00b0C",
+            "title": "Lo",
+            "type": "number"
+          },
+          "value": {
+            "description": "Forecast mean, \u00b0C",
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "at",
+          "value",
+          "lo",
+          "hi"
+        ],
+        "title": "HmtBandPoint",
+        "type": "object"
+      },
+      "HmtCheck": {
+        "description": "The newest tap against what the filter expected before it.",
+        "properties": {
+          "expected": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ForecastPoint"
+                "type": "number"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "The newest window's forecast"
+            "description": "Expected tap temperature, \u00b0C",
+            "title": "Expected"
           },
-          "points": {
-            "description": "Every stored forecast of the hours shown",
-            "items": {
-              "$ref": "#/components/schemas/ForecastPoint"
-            },
-            "title": "Points",
-            "type": "array"
+          "rule": {
+            "anyOf": [
+              {
+                "enum": [
+                  "single",
+                  "pair"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "single: beyond 2\u03c3; pair: two beyond 1\u03c3",
+            "title": "Rule"
           },
-          "score": {
-            "$ref": "#/components/schemas/ForecastScore"
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1\u03c3 of the expectation, \u00b0C",
+            "title": "Sd"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "watch",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tap, \u00b0C",
+            "title": "Value"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(tap \u2212 expected) / \u03c3",
+            "title": "Z"
           }
         },
         "required": [
-          "gate",
-          "score"
+          "state",
+          "text"
         ],
-        "title": "HmtForecastView",
+        "title": "HmtCheck",
+        "type": "object"
+      },
+      "HmtEstimate": {
+        "properties": {
+          "at": {
+            "description": "Instant of the estimate, UTC",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1\u03c3 of the estimate, \u00b0C",
+            "title": "Sd"
+          },
+          "value": {
+            "description": "Hot-metal temperature, \u00b0C",
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "at",
+          "value"
+        ],
+        "title": "HmtEstimate",
+        "type": "object"
+      },
+      "HmtScore": {
+        "description": "The filter's forecast against the taps, next to the last tap held, over ``days``.",
+        "properties": {
+          "bias_model_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean forecast \u2212 measured, \u00b0C",
+            "title": "Bias Model C"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "horizon_h": {
+            "description": "Lead of the forecast, h",
+            "title": "Horizon H",
+            "type": "number"
+          },
+          "n": {
+            "description": "Taps scored",
+            "title": "N",
+            "type": "integer"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE forecast / RMSE last tap held",
+            "title": "Ratio"
+          },
+          "rmse_model_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of the forecast, \u00b0C",
+            "title": "Rmse Model C"
+          },
+          "rmse_persistence_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of the last published tap held, \u00b0C",
+            "title": "Rmse Persistence C"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "better",
+              "worse",
+              "insufficient"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "within_1sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the taps inside \u00b11\u03c3, fraction",
+            "title": "Within 1Sd"
+          },
+          "within_2sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the taps inside \u00b12\u03c3, fraction",
+            "title": "Within 2Sd"
+          }
+        },
+        "required": [
+          "horizon_h",
+          "days",
+          "n",
+          "verdict",
+          "text"
+        ],
+        "title": "HmtScore",
         "type": "object"
       },
       "HmtTap": {
@@ -10073,6 +10471,19 @@
             "format": "date-time",
             "title": "At",
             "type": "string"
+          },
+          "received": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the tap was published, UTC",
+            "title": "Received"
           },
           "value": {
             "description": "Hot-metal temperature, \u00b0C",
@@ -10085,6 +10496,161 @@
           "value"
         ],
         "title": "HmtTap",
+        "type": "object"
+      },
+      "HmtView": {
+        "description": "Hot-metal temperature: taps, the filter's estimate and its forecast band.",
+        "properties": {
+          "ahead": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HmtEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A tap horizon_h from now (\u03c3 of a tap)"
+          },
+          "available": {
+            "description": "False with fewer taps than the filter needs",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "band": {
+            "description": "Forecast from the newest tap to the horizon",
+            "items": {
+              "$ref": "#/components/schemas/HmtBandPoint"
+            },
+            "title": "Band",
+            "type": "array"
+          },
+          "check": {
+            "$ref": "#/components/schemas/HmtCheck"
+          },
+          "cold_tap_c": {
+            "description": "A tap below it is cold, \u00b0C",
+            "title": "Cold Tap C",
+            "type": "number"
+          },
+          "estimate": {
+            "description": "Estimate after each tap of the hours",
+            "items": {
+              "$ref": "#/components/schemas/HmtEstimate"
+            },
+            "title": "Estimate",
+            "type": "array"
+          },
+          "horizon_h": {
+            "title": "Horizon H",
+            "type": "number"
+          },
+          "last_tap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HmtTap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_tap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HmtEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The next tap, at its expected time (\u03c3 of a tap)"
+          },
+          "now": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HmtEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Thermal state now (\u03c3 of the state)"
+          },
+          "p_cold_next": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Probability of the next tap below cold_tap_c, fraction",
+            "title": "P Cold Next"
+          },
+          "plant_band": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HmtBand"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Plausibility band of the HMT (BAND-02)"
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/HmtScore"
+            },
+            "title": "Scores",
+            "type": "array"
+          },
+          "stale": {
+            "default": false,
+            "description": "No tap within stale_after_h: the estimate is the level alone",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "tap_age_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Now minus the newest tap, h",
+            "title": "Tap Age H"
+          },
+          "tap_interval_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Median interval of the recent taps, h",
+            "title": "Tap Interval H"
+          },
+          "taps_used": {
+            "default": 0,
+            "description": "Taps the filter ran over, count",
+            "title": "Taps Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available",
+          "cold_tap_c",
+          "horizon_h",
+          "check"
+        ],
+        "title": "HmtView",
         "type": "object"
       },
       "HopperAdminView": {
@@ -13700,8 +14266,14 @@
       },
       "LiveModelView": {
         "properties": {
-          "forecast": {
-            "$ref": "#/components/schemas/HmtForecastView"
+          "clock": {
+            "$ref": "#/components/schemas/DataClock"
+          },
+          "coke": {
+            "$ref": "#/components/schemas/CokeBalance"
+          },
+          "hmt": {
+            "$ref": "#/components/schemas/HmtView"
           },
           "hourly": {
             "items": {
@@ -13740,6 +14312,9 @@
             "title": "Now",
             "type": "string"
           },
+          "process": {
+            "$ref": "#/components/schemas/ProcessNow"
+          },
           "shifts": {
             "anyOf": [
               {
@@ -13763,8 +14338,11 @@
         "required": [
           "now",
           "hours",
-          "hourly",
-          "forecast"
+          "clock",
+          "process",
+          "coke",
+          "hmt",
+          "hourly"
         ],
         "title": "LiveModelView",
         "type": "object"
@@ -13826,7 +14404,7 @@
             "description": "Hot-metal temperature of the window, \u00b0C",
             "title": "Hmt C"
           },
-          "hmt_forecast_c": {
+          "hot_blast_c": {
             "anyOf": [
               {
                 "type": "number"
@@ -13835,44 +14413,8 @@
                 "type": "null"
               }
             ],
-            "description": "HMT forecast at end + horizon, \u00b0C",
-            "title": "Hmt Forecast C"
-          },
-          "hmt_forecast_horizon_h": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Forecast horizon \u03c4_RW, h",
-            "title": "Hmt Forecast Horizon H"
-          },
-          "hmt_now_c": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Latest tap temperature before the window end, \u00b0C",
-            "title": "Hmt Now C"
-          },
-          "k_arr_kg_thm": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Coke of the charges of the last hour, dry kg/tHM",
-            "title": "K Arr Kg Thm"
+            "description": "Hot blast temperature of the window, \u00b0C",
+            "title": "Hot Blast C"
           },
           "k_burnt": {
             "anyOf": [
@@ -13922,6 +14464,30 @@
             "description": "Energy balance at \u03c9_STRATA, dry kg/tHM",
             "title": "K Strata"
           },
+          "oxygen_nm3_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen of the window, Nm\u00b3/tHM",
+            "title": "Oxygen Nm3 Thm"
+          },
+          "pci_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI of the window, dry kg/tHM",
+            "title": "Pci Kg Thm"
+          },
           "production_t_h": {
             "anyOf": [
               {
@@ -13938,6 +14504,18 @@
             "description": "complete | partial | failed",
             "title": "Status",
             "type": "string"
+          },
+          "tau_cz_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Descent time stockline to cohesive zone, h",
+            "title": "Tau Cz H"
           },
           "tau_raceway_h": {
             "anyOf": [
@@ -13974,6 +14552,12 @@
             ],
             "description": "Top-gas temperature of the energy balance, \u00b0C",
             "title": "Top Gas Forge C"
+          },
+          "valid": {
+            "default": true,
+            "description": "False when the window's PCI is outside the valid range: no coke rates",
+            "title": "Valid",
+            "type": "boolean"
           }
         },
         "required": [
@@ -14085,6 +14669,72 @@
           "kind"
         ],
         "title": "LivePoint",
+        "type": "object"
+      },
+      "LiveReading": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the reading, UTC",
+            "title": "At"
+          },
+          "digits": {
+            "description": "Decimals shown, count",
+            "title": "Digits",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "setpoint": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Setpoint, in unit, when the tag has one",
+            "title": "Setpoint"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest reading, in unit",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "digits"
+        ],
+        "title": "LiveReading",
         "type": "object"
       },
       "LiveReportParams": {
@@ -18268,6 +18918,39 @@
           "telemetry"
         ],
         "title": "ProcessGroup",
+        "type": "object"
+      },
+      "ProcessNow": {
+        "description": "Fuel and blast now, from the furnace-status snapshot (process tags, every 10 s).",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Newest reading of the snapshot, UTC",
+            "title": "At"
+          },
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/LiveReading"
+            },
+            "title": "Readings",
+            "type": "array"
+          },
+          "telemetry": {
+            "default": "offline",
+            "description": "live | partial | offline (furnace-status telemetry)",
+            "title": "Telemetry",
+            "type": "string"
+          }
+        },
+        "title": "ProcessNow",
         "type": "object"
       },
       "ProcessValue": {
@@ -32558,7 +33241,7 @@
     },
     "/api/optimiser/live-model": {
       "get": {
-        "description": "The Blend & Fuel Optimiser's live model tab (user decision 12 Nov 2026): the twin's hourly windows of the last\n``hours`` (burnt, energy-balance, STRATA-\u03c9 and charged coke; HMT, \u03b7CO and top-gas temperature measured and of\nthe balance; the HMT forecast one descent time ahead with its gate and its live score against persistence), the\nmeasured HMT per tap, and page 11's model check per shift over ``days`` on the FORGE view. Reads only what the\nworker stored (``services.live_model``).",
+        "description": "The Blend & Fuel Optimiser's live model tab (user decisions 12 Nov 2026): the data clock (age of the process\ntags, the charge record and the taps), fuel and blast now, the coke balance (charged coke of the last charges,\nburnt and modelled coke of the newest 8-hour window), the hot-metal temperature from the tap filter (estimate now,\nnext tap, 6 h ahead with a \u00b11\u03c3 band, its score against the last tap held), the twin's hourly windows of the last\n``hours`` and page 11's model check per shift over ``days`` on the FORGE view. Reads what the worker stored, the\nfurnace-status snapshot (the worker's live copy while it is fresh), the per-charge record and the taps\n(``services.live_model``).",
         "operationId": "optimiser_live_model_view",
         "parameters": [
           {

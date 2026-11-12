@@ -1163,11 +1163,13 @@ export interface paths {
         };
         /**
          * The energy model against the furnace, live
-         * @description The Blend & Fuel Optimiser's live model tab (user decision 12 Nov 2026): the twin's hourly windows of the last
-         *     ``hours`` (burnt, energy-balance, STRATA-ω and charged coke; HMT, ηCO and top-gas temperature measured and of
-         *     the balance; the HMT forecast one descent time ahead with its gate and its live score against persistence), the
-         *     measured HMT per tap, and page 11's model check per shift over ``days`` on the FORGE view. Reads only what the
-         *     worker stored (``services.live_model``).
+         * @description The Blend & Fuel Optimiser's live model tab (user decisions 12 Nov 2026): the data clock (age of the process
+         *     tags, the charge record and the taps), fuel and blast now, the coke balance (charged coke of the last charges,
+         *     burnt and modelled coke of the newest 8-hour window), the hot-metal temperature from the tap filter (estimate now,
+         *     next tap, 6 h ahead with a ±1σ band, its score against the last tap held), the twin's hourly windows of the last
+         *     ``hours`` and page 11's model check per shift over ``days`` on the FORGE view. Reads what the worker stored, the
+         *     furnace-status snapshot (the worker's live copy while it is fresh), the per-charge record and the taps
+         *     (``services.live_model``).
          */
         get: operations["optimiser_live_model_view"];
         put?: never;
@@ -3873,6 +3875,125 @@ export interface components {
              */
             pci_t_d: number;
         };
+        /**
+         * ClockSource
+         * @description One data stream of the model with the age of its newest record.
+         */
+        ClockSource: {
+            /**
+             * Age Min
+             * @description Now minus the newest record, min
+             */
+            age_min?: number | null;
+            /**
+             * Cadence
+             * @description How often the stream is published
+             */
+            cadence: string;
+            /**
+             * Delay Min
+             * @description Median publication delay of the stream's recent records, min
+             */
+            delay_min?: number | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "process" | "charges" | "taps";
+            /** Label */
+            label: string;
+            /**
+             * Newest
+             * @description Time of the newest record, UTC
+             */
+            newest?: string | null;
+            /**
+             * Received
+             * @description When the newest record was published, UTC
+             */
+            received?: string | null;
+        };
+        /**
+         * CokeBalance
+         * @description Coke per tonne of hot metal, dry kg/tHM: charged now, burnt and modelled over the newest 8-hour window.
+         */
+        CokeBalance: {
+            /**
+             * Burnt
+             * @description Coke the blast burnt over the window, kg/tHM
+             */
+            burnt?: number | null;
+            /**
+             * Charged Basis
+             * @description windows: factor from the stored windows; default: the configured factor
+             * @default none
+             * @enum {string}
+             */
+            charged_basis: "windows" | "default" | "none";
+            /**
+             * Charged Charges
+             * @description Charges of the ratio, count
+             * @default 0
+             */
+            charged_charges: number;
+            /**
+             * Charged Factor
+             * @description K_charged per kg of coke per t of ferrous burden
+             */
+            charged_factor?: number | null;
+            /**
+             * Charged First
+             * @description First charge of the ratio, UTC
+             */
+            charged_first?: string | null;
+            /**
+             * Charged Last
+             * @description Last charge of the ratio, UTC
+             */
+            charged_last?: string | null;
+            /**
+             * Charged Now
+             * @description Coke of the last charges on the pipeline's basis, kg/tHM
+             */
+            charged_now?: number | null;
+            /**
+             * Charged Received
+             * @description Publication of the newest charge, UTC
+             */
+            charged_received?: string | null;
+            /**
+             * Charged Window
+             * @description Charged coke of that window, kg/tHM
+             */
+            charged_window?: number | null;
+            /**
+             * Gap
+             * @description Model minus burnt, kg/tHM
+             */
+            gap?: number | null;
+            /**
+             * Limit
+             * @description Limit of |model − burnt| (the model check's bias limit), kg/tHM
+             */
+            limit: number;
+            /**
+             * Model
+             * @description Energy balance over the window, kg/tHM
+             */
+            model?: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "watch" | "unknown";
+            /** Text */
+            text: string;
+            /**
+             * Window End
+             * @description End of the 8-hour window of burnt and model, UTC
+             */
+            window_end?: string | null;
+        };
         /** CommentaryView */
         CommentaryView: {
             /**
@@ -4232,6 +4353,16 @@ export interface components {
              * @enum {string}
              */
             state: "in_control" | "high" | "low" | "both" | "collecting";
+        };
+        /** DataClock */
+        DataClock: {
+            /**
+             * Notice
+             * @description What the delay of the charge record means for the per-tonne figures
+             */
+            notice: string;
+            /** Sources */
+            sources: components["schemas"]["ClockSource"][];
         };
         /** DatasetPart */
         DatasetPart: {
@@ -5598,78 +5729,6 @@ export interface components {
              */
             type: "forecast.charged_coke";
         };
-        /** ForecastPoint */
-        ForecastPoint: {
-            /**
-             * At
-             * Format: date-time
-             * @description Instant the forecast is for, UTC
-             */
-            at: string;
-            /**
-             * Measured
-             * @description Measured HMT at the horizon, °C, once known
-             */
-            measured?: number | null;
-            /**
-             * Origin
-             * Format: date-time
-             * @description The forecast's origin (its window end), UTC
-             */
-            origin: string;
-            /**
-             * Value
-             * @description Forecast HMT, °C
-             */
-            value: number;
-        };
-        /**
-         * ForecastScore
-         * @description The stored forecasts against the tap temperature at their horizon, last ``days``.
-         */
-        ForecastScore: {
-            /**
-             * Bias Model C
-             * @description Mean forecast − measured, °C
-             */
-            bias_model_c?: number | null;
-            /**
-             * Days
-             * @description Days scored
-             */
-            days: number;
-            /**
-             * N
-             * @description Forecasts with a measured temperature at the horizon
-             */
-            n: number;
-            /**
-             * Ratio
-             * @description RMSE model / RMSE persistence (gate: at most 0.90)
-             */
-            ratio?: number | null;
-            /**
-             * Rmse Model C
-             * @description RMSE of the forecast, °C
-             */
-            rmse_model_c?: number | null;
-            /**
-             * Rmse Persistence C
-             * @description RMSE of persistence (HMT at the origin), °C
-             */
-            rmse_persistence_c?: number | null;
-            /**
-             * Text
-             * @description One line for the page
-             */
-            text: string;
-            /**
-             * Verdict
-             * @description Against persistence
-             * @enum {string}
-             */
-            verdict: "better" | "worse" | "insufficient";
-        };
         /** ForecastSiEvent */
         ForecastSiEvent: {
             /**
@@ -6950,22 +7009,159 @@ export interface components {
              */
             type: "heartbeat";
         };
-        /** HmtForecastView */
-        HmtForecastView: {
+        /** HmtBand */
+        HmtBand: {
             /**
-             * Gate
-             * @description Validation gate of the forecast (SV-1.4)
+             * Fact
+             * @description Fact of the process fact register
+             */
+            fact: string;
+            /**
+             * Hi
+             * @description Upper edge, °C
+             */
+            hi: number;
+            /**
+             * Lo
+             * @description Lower edge, °C
+             */
+            lo: number;
+        };
+        /** HmtBandPoint */
+        HmtBandPoint: {
+            /**
+             * At
+             * Format: date-time
+             * @description Instant, UTC
+             */
+            at: string;
+            /**
+             * Hi
+             * @description Mean + 1σ of a tap, °C
+             */
+            hi: number;
+            /**
+             * Lo
+             * @description Mean − 1σ of a tap, °C
+             */
+            lo: number;
+            /**
+             * Value
+             * @description Forecast mean, °C
+             */
+            value: number;
+        };
+        /**
+         * HmtCheck
+         * @description The newest tap against what the filter expected before it.
+         */
+        HmtCheck: {
+            /**
+             * Expected
+             * @description Expected tap temperature, °C
+             */
+            expected?: number | null;
+            /**
+             * Rule
+             * @description single: beyond 2σ; pair: two beyond 1σ
+             */
+            rule?: ("single" | "pair") | null;
+            /**
+             * Sd
+             * @description 1σ of the expectation, °C
+             */
+            sd?: number | null;
+            /**
+             * State
              * @enum {string}
              */
-            gate: "pending" | "passed" | "failed";
-            /** @description The newest window's forecast */
-            latest?: components["schemas"]["ForecastPoint"] | null;
+            state: "ok" | "watch" | "unknown";
+            /** Text */
+            text: string;
             /**
-             * Points
-             * @description Every stored forecast of the hours shown
+             * Value
+             * @description The tap, °C
              */
-            points?: components["schemas"]["ForecastPoint"][];
-            score: components["schemas"]["ForecastScore"];
+            value?: number | null;
+            /**
+             * Z
+             * @description (tap − expected) / σ
+             */
+            z?: number | null;
+        };
+        /** HmtEstimate */
+        HmtEstimate: {
+            /**
+             * At
+             * Format: date-time
+             * @description Instant of the estimate, UTC
+             */
+            at: string;
+            /**
+             * Sd
+             * @description 1σ of the estimate, °C
+             */
+            sd?: number | null;
+            /**
+             * Value
+             * @description Hot-metal temperature, °C
+             */
+            value: number;
+        };
+        /**
+         * HmtScore
+         * @description The filter's forecast against the taps, next to the last tap held, over ``days``.
+         */
+        HmtScore: {
+            /**
+             * Bias Model C
+             * @description Mean forecast − measured, °C
+             */
+            bias_model_c?: number | null;
+            /** Days */
+            days: number;
+            /**
+             * Horizon H
+             * @description Lead of the forecast, h
+             */
+            horizon_h: number;
+            /**
+             * N
+             * @description Taps scored
+             */
+            n: number;
+            /**
+             * Ratio
+             * @description RMSE forecast / RMSE last tap held
+             */
+            ratio?: number | null;
+            /**
+             * Rmse Model C
+             * @description RMSE of the forecast, °C
+             */
+            rmse_model_c?: number | null;
+            /**
+             * Rmse Persistence C
+             * @description RMSE of the last published tap held, °C
+             */
+            rmse_persistence_c?: number | null;
+            /** Text */
+            text: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "better" | "worse" | "insufficient";
+            /**
+             * Within 1Sd
+             * @description Share of the taps inside ±1σ, fraction
+             */
+            within_1sd?: number | null;
+            /**
+             * Within 2Sd
+             * @description Share of the taps inside ±2σ, fraction
+             */
+            within_2sd?: number | null;
         };
         /** HmtTap */
         HmtTap: {
@@ -6976,10 +7172,82 @@ export interface components {
              */
             at: string;
             /**
+             * Received
+             * @description When the tap was published, UTC
+             */
+            received?: string | null;
+            /**
              * Value
              * @description Hot-metal temperature, °C
              */
             value: number;
+        };
+        /**
+         * HmtView
+         * @description Hot-metal temperature: taps, the filter's estimate and its forecast band.
+         */
+        HmtView: {
+            /** @description A tap horizon_h from now (σ of a tap) */
+            ahead?: components["schemas"]["HmtEstimate"] | null;
+            /**
+             * Available
+             * @description False with fewer taps than the filter needs
+             */
+            available: boolean;
+            /**
+             * Band
+             * @description Forecast from the newest tap to the horizon
+             */
+            band?: components["schemas"]["HmtBandPoint"][];
+            check: components["schemas"]["HmtCheck"];
+            /**
+             * Cold Tap C
+             * @description A tap below it is cold, °C
+             */
+            cold_tap_c: number;
+            /**
+             * Estimate
+             * @description Estimate after each tap of the hours
+             */
+            estimate?: components["schemas"]["HmtEstimate"][];
+            /** Horizon H */
+            horizon_h: number;
+            last_tap?: components["schemas"]["HmtTap"] | null;
+            /** @description The next tap, at its expected time (σ of a tap) */
+            next_tap?: components["schemas"]["HmtEstimate"] | null;
+            /** @description Thermal state now (σ of the state) */
+            now?: components["schemas"]["HmtEstimate"] | null;
+            /**
+             * P Cold Next
+             * @description Probability of the next tap below cold_tap_c, fraction
+             */
+            p_cold_next?: number | null;
+            /** @description Plausibility band of the HMT (BAND-02) */
+            plant_band?: components["schemas"]["HmtBand"] | null;
+            /** Scores */
+            scores?: components["schemas"]["HmtScore"][];
+            /**
+             * Stale
+             * @description No tap within stale_after_h: the estimate is the level alone
+             * @default false
+             */
+            stale: boolean;
+            /**
+             * Tap Age H
+             * @description Now minus the newest tap, h
+             */
+            tap_age_h?: number | null;
+            /**
+             * Tap Interval H
+             * @description Median interval of the recent taps, h
+             */
+            tap_interval_h?: number | null;
+            /**
+             * Taps Used
+             * @description Taps the filter ran over, count
+             * @default 0
+             */
+            taps_used: number;
         };
         /** HopperAdminView */
         HopperAdminView: {
@@ -8740,7 +9008,9 @@ export interface components {
         };
         /** LiveModelView */
         LiveModelView: {
-            forecast: components["schemas"]["HmtForecastView"];
+            clock: components["schemas"]["DataClock"];
+            coke: components["schemas"]["CokeBalance"];
+            hmt: components["schemas"]["HmtView"];
             /** Hourly */
             hourly: components["schemas"]["LiveModelWindow"][];
             /**
@@ -8761,6 +9031,7 @@ export interface components {
              * @description Time of the request, UTC
              */
             now: string;
+            process: components["schemas"]["ProcessNow"];
             /** @description None until the FORGE view is built */
             shifts?: components["schemas"]["ShiftCheck"] | null;
             /**
@@ -8801,25 +9072,10 @@ export interface components {
              */
             hmt_c?: number | null;
             /**
-             * Hmt Forecast C
-             * @description HMT forecast at end + horizon, °C
+             * Hot Blast C
+             * @description Hot blast temperature of the window, °C
              */
-            hmt_forecast_c?: number | null;
-            /**
-             * Hmt Forecast Horizon H
-             * @description Forecast horizon τ_RW, h
-             */
-            hmt_forecast_horizon_h?: number | null;
-            /**
-             * Hmt Now C
-             * @description Latest tap temperature before the window end, °C
-             */
-            hmt_now_c?: number | null;
-            /**
-             * K Arr Kg Thm
-             * @description Coke of the charges of the last hour, dry kg/tHM
-             */
-            k_arr_kg_thm?: number | null;
+            hot_blast_c?: number | null;
             /**
              * K Burnt
              * @description Coke the blast burnt, TRACE, dry kg/tHM
@@ -8841,6 +9097,16 @@ export interface components {
              */
             k_strata?: number | null;
             /**
+             * Oxygen Nm3 Thm
+             * @description Oxygen of the window, Nm³/tHM
+             */
+            oxygen_nm3_thm?: number | null;
+            /**
+             * Pci Kg Thm
+             * @description PCI of the window, dry kg/tHM
+             */
+            pci_kg_thm?: number | null;
+            /**
              * Production T H
              * @description Production, t/h
              */
@@ -8850,6 +9116,11 @@ export interface components {
              * @description complete | partial | failed
              */
             status: string;
+            /**
+             * Tau Cz H
+             * @description Descent time stockline to cohesive zone, h
+             */
+            tau_cz_h?: number | null;
             /**
              * Tau Raceway H
              * @description Descent time stockline to raceway, h
@@ -8865,6 +9136,12 @@ export interface components {
              * @description Top-gas temperature of the energy balance, °C
              */
             top_gas_forge_c?: number | null;
+            /**
+             * Valid
+             * @description False when the window's PCI is outside the valid range: no coke rates
+             * @default true
+             */
+            valid: boolean;
         };
         /** LivePoint */
         LivePoint: {
@@ -8900,6 +9177,35 @@ export interface components {
              * @description STRATA version
              */
             version?: string | null;
+        };
+        /** LiveReading */
+        LiveReading: {
+            /**
+             * At
+             * @description Time of the reading, UTC
+             */
+            at?: string | null;
+            /**
+             * Digits
+             * @description Decimals shown, count
+             */
+            digits: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Setpoint
+             * @description Setpoint, in unit, when the tag has one
+             */
+            setpoint?: number | null;
+            /** Unit */
+            unit: string;
+            /**
+             * Value
+             * @description Latest reading, in unit
+             */
+            value?: number | null;
         };
         /**
          * LiveReportParams
@@ -10783,6 +11089,25 @@ export interface components {
              * @description Warnings of the read
              */
             warnings?: string[];
+        };
+        /**
+         * ProcessNow
+         * @description Fuel and blast now, from the furnace-status snapshot (process tags, every 10 s).
+         */
+        ProcessNow: {
+            /**
+             * At
+             * @description Newest reading of the snapshot, UTC
+             */
+            at?: string | null;
+            /** Readings */
+            readings?: components["schemas"]["LiveReading"][];
+            /**
+             * Telemetry
+             * @description live | partial | offline (furnace-status telemetry)
+             * @default offline
+             */
+            telemetry: string;
         };
         /** ProcessValue */
         ProcessValue: {

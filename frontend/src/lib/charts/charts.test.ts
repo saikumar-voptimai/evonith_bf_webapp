@@ -88,6 +88,23 @@ describe('time series option', () => {
 		expect(strata[1]).toBeNull();
 	});
 
+	it('draws a marks-only series as points without a connecting line', () => {
+		const taps: TimeSeries = {
+			id: 'taps',
+			label: 'Tap',
+			colour: 'series-hmt',
+			marksOnly: true,
+			points: [
+				[T0, 1480],
+				[T0 + 2 * H, 1476]
+			]
+		};
+		const option = timeSeriesOption(theme, { series: [taps, series[0]!], unit: '°C', digits: 0 });
+		const [marks, line] = seriesOf(option) as { showSymbol?: boolean; lineStyle?: { width: number } }[];
+		expect([marks?.showSymbol, marks?.lineStyle?.width]).toEqual([true, 0]);
+		expect([line?.showSymbol, line?.lineStyle?.width]).toEqual([false, 2]);
+	});
+
 	it('stacks a band whose lower edge is negative on all signs', () => {
 		const bias: TimeSeries = {
 			id: 'bias',
