@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FakeSource } from '../live/fake-source.ts';
 import { LiveStream, type StreamEvent } from '../live/stream.svelte.ts';
-import { LiveModel } from './live-model.svelte.ts';
+import { LiveModel, REFRESH_MS } from './live-model.svelte.ts';
 import {
 	annotations,
 	arrivalLine,
@@ -434,7 +434,8 @@ describe('shift record', () => {
 });
 
 describe('LiveModel', () => {
-	it('reads once per hours and period, again on twin.snapshot, and keeps the tags of live.status', async () => {
+	it('reads once per hours and period, again on twin.snapshot and every 5 min, and keeps the tags of live.status', async () => {
+		vi.useFakeTimers();
 		FakeSource.all = [];
 		const stream = new LiveStream({
 			create: (url) => new FakeSource(url),
@@ -464,7 +465,13 @@ describe('LiveModel', () => {
 		expect(model.tagsAt).toBe(at(0));
 		source.emit({ type: 'twin.snapshot', id: '2-0', at: NOW, data: {} } as unknown as StreamEvent);
 		expect(calls).toHaveLength(3);
+		// the periodic re-read, until the page leaves
+		vi.advanceTimersByTime(REFRESH_MS);
+		expect(calls).toHaveLength(4);
 		stop();
+		vi.advanceTimersByTime(3 * REFRESH_MS);
+		expect(calls).toHaveLength(4);
 		expect(source.closed).toBe(true);
+		vi.useRealTimers();
 	});
 });

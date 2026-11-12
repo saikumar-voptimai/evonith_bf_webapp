@@ -1083,8 +1083,8 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   is no longer shown here: it divides a coke surplus by dK/dHMT = 0.09 kg/tHM per °C, so 1 kg/tHM of noise is
   11 °C; (5) a folded chart of ηCO and top-gas temperature measured vs the balance's; below it page 11's model
   check per shift over 7 / 14 / 30 days on the FORGE view (`utils.burden_engine.model_check` verdict, thresholds
-  `burden_optimiser.yml → model_check`). Read again on every `twin.snapshot` event; the taps and the charge record
-  are read from Neon at most once per 5 min. The plan panel (`PlanPanels`, props `live`, `acceptedAt`) shows the
+  `burden_optimiser.yml → model_check`). Read again every 5 min and on every `twin.snapshot` event; the taps and the
+  charge record are read from Neon at most once per 5 min. The plan panel (`PlanPanels`, props `live`, `acceptedAt`) shows the
   shift record's verdict with bias and typical error, the plan's dry coke next to charged now, burnt and model, the
   time of each live input and, for an accepted plan, when its first charge reaches the cohesive zone and the
   raceways (`tau_cz_h`, `tau_raceway_h` of the newest window). Uncertainty bands of `TimeSeriesChart` are drawn
