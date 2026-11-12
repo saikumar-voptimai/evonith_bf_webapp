@@ -1,11 +1,10 @@
-"""Blend Mix Optimiser (SV-3.5, #302): LP runs at a fixed production, the forecast ledgers and the saved runs.
+"""Blend Mix Optimiser (SV-3.5, #302): the forecast ledgers, the saved runs and the plan board.
 
-``POST /api/bmo/runs`` queues ``bmo.run`` (page 9's Balanced Optimizer with page 9's inputs and the requested changes;
-composing the case reads Neon, InfluxDB and the hourly dataset, so it is a worker job) and answers 202 with the job;
-``GET /api/bmo/runs/{job id}`` returns the job and, once it is done, its plan; ``GET /api/bmo/runs`` the latest runs
-(the /bmo page opens on the newest, SV-3.6). The forecasts are read from the worker's ledgers (SV-1.5) as page 9 reads
-them; nothing is issued here. Snapshots are the runs saved on page 9, without the plant data frozen with them. Units
-are in the schemas (t/day, kg/tHM, Rs/tHM, Rs/t, mass %); times UTC unless IST.
+The LP runs of the Svelte app (``POST /api/bmo/runs``, job ``bmo.run``) were removed on 12 Nov 2026 (user decision:
+page 9's LP stays in Streamlit only; ``services.bmo_views.run_case`` remains for page 9's parity tests). The forecasts
+are read from the worker's ledgers (SV-1.5) as page 9 reads them; nothing is issued here. Snapshots are the runs saved
+on page 9, without the plant data frozen with them. Units are in the schemas (t/day, kg/tHM, Rs/tHM, Rs/t, mass %);
+times UTC unless IST.
 
 SV-7.4 (#327) adds the plan board: ``GET /api/bmo/plan`` names the burden engine's Step 2 runs the page shows (the
 shift's scheduled STRATA-ω run, the latest run, the implied production of the latest Step 1 run) and
@@ -31,73 +30,17 @@ from data.twin.repositories import TwinStore
 from services import bmo_plan, bmo_views
 from services.auth import Principal
 from services.bmo_plan import BmoPlanBoard, BmoPlanRunParams
-from services.bmo_views import (
-    BmoChargedCokeView,
-    BmoRunResult,
-    BmoSiForecastView,
-    BmoSnapshotDetail,
-    BmoSnapshotList,
-)
-from services.jobs import BmoRunParams, JobRecord, JobStore
+from services.bmo_views import BmoChargedCokeView, BmoSiForecastView, BmoSnapshotDetail, BmoSnapshotList
+from services.jobs import JobRecord, JobStore
 
 router = APIRouter(prefix="/api/bmo", tags=["bmo"], dependencies=[Depends(require_role("user"))])
 
-RUN_KIND = "bmo.run"
 PLAN_RUN_KIND = "optimiser.run"
 
 
 class BmoRunSubmitted(BaseModel):
     job: JobRecord
     duplicate: bool = Field(..., description="True when an identical run was already queued or running")
-
-
-class BmoRunLookup(BaseModel):
-    job: JobRecord
-    result: BmoRunResult | None = Field(None, description="The plan, once the job is done")
-
-
-@router.post("/runs", response_model=BmoRunSubmitted, status_code=202, summary="Start a Blend Mix Optimiser run")
-async def start_run(
-    request: Request,
-    jobs: Annotated[JobStore, Depends(job_store)],
-    body: Annotated[BmoRunParams | None, Body()] = None,
-) -> BmoRunSubmitted:
-    """Queue ``bmo.run``: page 9's LP at a fixed production. Fields left out take page 9's defaults. Follow the job
-    with GET /api/bmo/runs/{job id} or the ``job.done`` event. A request equal to a queued or running one returns it."""
-    principal: Principal = request.state.principal
-    try:
-        record, duplicate = await jobs.submit(RUN_KIND, (body or BmoRunParams()).model_dump(), principal.username)
-    except ValidationError as exc:
-        errors = [{**e, "loc": ("body", *e["loc"])} for e in exc.errors(include_url=False)]
-        raise RequestValidationError(jsonable_encoder(errors)) from exc
-    return BmoRunSubmitted(job=record, duplicate=duplicate)
-
-
-class BmoRunList(BaseModel):
-    runs: list[BmoRunLookup] = Field(default_factory=list, description="Newest first")
-
-
-def _lookup(job: JobRecord) -> BmoRunLookup:
-    result = BmoRunResult.model_validate(job.result) if job.status == "done" and job.result else None
-    return BmoRunLookup(job=job, result=result)
-
-
-@router.get("/runs", response_model=BmoRunList, summary="Recent Blend Mix Optimiser runs")
-async def list_runs(
-    jobs: Annotated[JobStore, Depends(job_store)],
-    limit: Annotated[int, Query(ge=1, le=50, description="Runs, count")] = 5,
-) -> BmoRunList:
-    """The latest ``bmo.run`` jobs of the last 7 days (any user), newest first, each with its plan once done."""
-    return BmoRunList(runs=[_lookup(job) for job in await jobs.list_kind(RUN_KIND, limit)])
-
-
-@router.get("/runs/{job_id}", response_model=BmoRunLookup, summary="A Blend Mix Optimiser run")
-async def get_run(job_id: str, jobs: Annotated[JobStore, Depends(job_store)]) -> BmoRunLookup:
-    """The job (records are kept 7 days) and its plan once it is done."""
-    job = await jobs.get(job_id)
-    if job is None or job.kind != RUN_KIND:
-        raise ApiError(404, "No Blend Mix Optimiser run with this id.")
-    return _lookup(job)
 
 
 # ---------------------------------------------------------------------------------------- plan (SV-7.4, #327)

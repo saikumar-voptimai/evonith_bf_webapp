@@ -61,7 +61,7 @@ def zone_terms(K, V, y_d, case, p, T_R=None, extra_lime=0.0, extra_qtz=0.0, eta_
     pci_ash = case['pci_kg'] * pc['ash'] / 100
     slag = r['slag_kg']
     m_red = (r['nSi'] * MW['SiO2'] + r['nMn'] * MW['MnO'] + r['nP'] * MW['P2O5'] / 2 + r['nTi'] * MW['TiO2'])
-    m_ox = slag * (1 - case['slag_FeO_pct'] / 100) + m_red - pci_ash   # oxides arriving with the solids at T_R
+    m_ox = slag - r['FeO_kg'] + m_red - pci_ash                 # oxides arriving with the solids at T_R (no FeO)
     hFe, hW, hC = h_fe_solid(T_R), h_wustite(T_R), h_graphite(T_R)
     etaWc, etaWh = eta_W(T_R)
     # ---- E1, E2 residual pieces

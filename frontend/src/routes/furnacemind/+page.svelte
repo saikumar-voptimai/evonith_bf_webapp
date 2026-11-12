@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	/**
 	 * FurnaceMind (SV-5.2, #313): page 7's agent on the SPA, through the agent service of SV-5.1. Conversations of the
 	 * user (stored in the twin store), the answer streamed token by token with the tool trace, the figures (Plotly.js,
@@ -10,6 +11,7 @@
 	 * menu in the chat header), one below.
 	 */
 	import Brain from '@lucide/svelte/icons/brain';
+	import ChartColumn from '@lucide/svelte/icons/chart-column';
 	import MessageSquarePlus from '@lucide/svelte/icons/message-square-plus';
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import Send from '@lucide/svelte/icons/send';
@@ -21,8 +23,8 @@
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import StatusChip from '#lib/components/StatusChip.svelte';
 	import { FurnaceMindChat } from '#lib/furnacemind/chat.svelte.ts';
-	import DatasetPanel from '#lib/furnacemind/DatasetPanel.svelte';
-	import FigurePanel from '#lib/furnacemind/FigurePanel.svelte';
+	import ArtifactsWindow from '#lib/furnacemind/ArtifactsWindow.svelte';
+	import ConversationsWindow from '#lib/furnacemind/ConversationsWindow.svelte';
 	import {
 		messageArtifacts,
 		REASONING_LEVELS,
@@ -33,11 +35,11 @@
 	import MessageItem from '#lib/furnacemind/MessageItem.svelte';
 	import ToolTrace from '#lib/furnacemind/ToolTrace.svelte';
 	import { session } from '#lib/session/session.svelte.ts';
-	import { istDateTime } from '#lib/time/format.ts';
 
 	const chat = new FurnaceMindChat();
 
-	$effect(() => chat.start());
+	// start() writes state it also reads: untracked, so the effect does not restart itself (a request loop)
+	$effect(() => untrack(() => chat.start()));
 
 	const EXAMPLES = [
 		'Plot the fuel rate and ETA CO of the last 3 days.',
@@ -92,70 +94,47 @@
 		if (id) void chat.open(id);
 		else chat.newConversation();
 	}
+
+	// The windows (user decision 12 Nov 2026): the conversations on request; the artifacts open by themselves when an
+	// answer brings a new chart or dataset, on the tab of the newcomer.
+	let conversationsOpen = $state(false);
+	let artifactsOpen = $state(false);
+	let artifactsTab = $state<'chart' | 'dataset'>('chart');
+	let lastFigure: string | null = null;
+	let lastDataset: string | null = null;
+	$effect(() => {
+		const f = chat.figure?.key ?? null;
+		const d = chat.dataset?.key ?? null;
+		untrack(() => {
+			const newFigure = f !== null && f !== lastFigure && lastFigure !== null;
+			const newDataset = d !== null && d !== lastDataset && lastDataset !== null;
+			if (newFigure || newDataset) {
+				artifactsTab = newFigure ? 'chart' : 'dataset';
+				artifactsOpen = true;
+			}
+			lastFigure = f;
+			lastDataset = d;
+		});
+	});
 </script>
 
 <div class="fm">
-	<aside class="history">
-		<Panel title="Conversations" icon={MessagesSquare} note="Yours, newest first.">
-			{#snippet actions()}
-				<Button size="sm" icon={MessageSquarePlus} disabled={!!live} onclick={() => chat.newConversation()}
-					>New</Button
-				>
-			{/snippet}
-			{#if chat.listState.loading && !chat.conversations.length}
-				<Skeleton lines={4} label="Loading the conversations" />
-			{:else if chat.listState.error && !chat.conversations.length}
-				<ErrorState
-					title="Conversations not loaded"
-					message={chat.listState.error}
-					onretry={() => void chat.loadList()}
-					compact
-				/>
-			{:else if !chat.conversations.length}
-				<EmptyState title="No conversations yet" message="Ask a question to start one." compact />
-			{:else}
-				{#if chat.listState.error}
-					<p class="warn">Refresh failed: {chat.listState.error} Showing the last list.</p>
-				{/if}
-				<ul class="list">
-					{#each chat.conversations as c (c.id)}
-						<li>
-							<button
-								type="button"
-								class={['item', conversation?.id === c.id && 'current']}
-								aria-current={conversation?.id === c.id ? 'true' : undefined}
-								disabled={!!live}
-								onclick={() => void chat.open(c.id)}
-							>
-								<span class="t">{c.title || 'Untitled'}</span>
-								<span class="s"
-									>{istDateTime(new Date(c.updated_at))} IST · {c.message_count}
-									{c.message_count === 1 ? 'message' : 'messages'}</span
-								>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</Panel>
-	</aside>
-
 	<section class="chat" aria-label="FurnaceMind chat">
 		<Panel {title} icon={Brain} note="Answers use plant data through FurnaceMind's tools. Times in IST.">
 			{#snippet actions()}
-				<label class="compact-history">
-					<span class="k">Conversation</span>
-					<select
-						value={conversation?.id ?? ''}
-						disabled={!!live}
-						onchange={(e) => open(e.currentTarget.value)}
-					>
-						<option value="">New conversation</option>
-						{#each chat.conversations as c (c.id)}
-							<option value={c.id}>{c.title || 'Untitled'}</option>
-						{/each}
-					</select>
-				</label>
+				<Button size="sm" icon={MessagesSquare} onclick={() => (conversationsOpen = !conversationsOpen)}
+					>Conversations{chat.conversations.length ? ` (${chat.conversations.length})` : ''}</Button
+				>
+				<Button size="sm" icon={MessageSquarePlus} disabled={!!live} onclick={() => chat.newConversation()}
+					>New</Button
+				>
+				<Button
+					size="sm"
+					icon={ChartColumn}
+					disabled={!chat.figure && !chat.dataset}
+					onclick={() => (artifactsOpen = !artifactsOpen)}
+					aria-expanded={artifactsOpen}>Artifacts</Button
+				>
 				<label class="reasoning">
 					<span class="k">Reasoning</span>
 					<select bind:value={chat.reasoning} disabled={chat.busy}>
@@ -311,53 +290,42 @@
 			</form>
 		</Panel>
 	</section>
-
-	<section class="side" aria-label="Answer artifacts">
-		<FigurePanel artifact={chat.figure} />
-		<DatasetPanel artifact={chat.dataset} fullCsv={(part) => chat.fullCsv(part)} />
-	</section>
 </div>
+
+<ConversationsWindow
+	bind:open={conversationsOpen}
+	conversations={chat.conversations}
+	currentId={conversation?.id ?? null}
+	loading={chat.listState.loading}
+	error={chat.listState.error}
+	busy={!!live}
+	onopen={(id) => {
+		open(id);
+		conversationsOpen = false;
+	}}
+	onnew={() => {
+		chat.newConversation();
+		conversationsOpen = false;
+	}}
+	onretry={() => void chat.loadList()}
+/>
+<ArtifactsWindow
+	bind:open={artifactsOpen}
+	bind:tab={artifactsTab}
+	figure={chat.figure}
+	dataset={chat.dataset}
+	fullCsv={(part) => chat.fullCsv(part)}
+/>
 
 <style>
 	.fm {
 		display: grid;
 		gap: var(--vo-space-4);
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-areas: 'chat' 'side';
 		align-items: start;
 	}
-	.history {
-		grid-area: history;
-		display: none;
-	}
 	.chat {
-		grid-area: chat;
 		min-width: 0;
-	}
-	.side {
-		grid-area: side;
-		display: flex;
-		flex-direction: column;
-		gap: var(--vo-space-4);
-		min-width: 0;
-	}
-	@media (min-width: 1024px) {
-		.fm {
-			grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-			grid-template-areas: 'chat side';
-		}
-	}
-	@media (min-width: 1600px) {
-		.fm {
-			grid-template-columns: 17rem minmax(0, 1.2fr) minmax(0, 1fr);
-			grid-template-areas: 'history chat side';
-		}
-		.history {
-			display: block;
-		}
-		.compact-history {
-			display: none;
-		}
 	}
 	.k {
 		display: inline-flex;
@@ -369,7 +337,6 @@
 		text-transform: uppercase;
 		color: var(--vo-text-muted);
 	}
-	.compact-history,
 	.reasoning {
 		display: inline-flex;
 		align-items: center;
@@ -386,49 +353,9 @@
 		font-size: var(--vo-fs-label);
 		font-weight: 600;
 	}
-	.list {
-		display: grid;
-		gap: 2px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		max-height: calc(100vh - 16rem);
-		overflow-y: auto;
-	}
-	.item {
-		display: grid;
-		gap: 2px;
-		width: 100%;
-		min-height: 40px;
-		padding: 6px 10px;
-		border: 0;
-		border-radius: var(--vo-radius-small);
-		background: none;
-		color: var(--vo-text);
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.item:hover:not(:disabled) {
-		background: var(--vo-surface-raised);
-	}
-	.item.current {
-		background: var(--vo-accent-soft);
-	}
-	.item .t {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: var(--vo-fs-body);
-		font-weight: 550;
-	}
-	.item .s {
-		font-size: var(--vo-fs-label);
-		color: var(--vo-text-muted);
-	}
 	.log {
-		max-height: calc(100vh - 22rem);
-		min-height: 16rem;
+		max-height: calc(100vh - 20rem);
+		min-height: 24rem;
 		overflow-y: auto;
 		padding-right: 4px;
 		scrollbar-width: thin;

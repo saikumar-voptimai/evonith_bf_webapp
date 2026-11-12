@@ -30,9 +30,15 @@ charged. Method, results and limits: `docs/burnt_vs_charged_coke.md`.
 
 | Mode | Question | Engine call | Typical time |
 |---|---|---|---|
-| Step 1 · Cheapest production level | Under today's limits (blast, O₂, pressures, HBT, charging, yard, slag), what output is cheapest per tHM, how far can output go, and what does each extra tonne cost? | `min_total_cost` (+ frontier) | ~50 s |
-| Step 2 · Fixed production | For a target t/d, which blend minimises ore + flux + fuel, and how does it differ from the ore + flux answer? What is relaxing each limit worth? | `min_cost(fuel=True)` and `min_cost(fuel=False)` | ~1 s |
-| Maximum production | The ceiling for the day, the blend and controls that reach it, and what binds | `max_production` | ~10 s |
+| Step 1 · Cheapest production level | Under today's limits (blast, O₂, pressures, HBT, charging, yard, slag), what output is cheapest per tHM, how far can output go, and what does each extra tonne cost? | `min_total_cost` (+ frontier) | ~50 s Fixed-ω; ~20 min STRATA-ω |
+| Step 2 · Fixed production | For a target t/d, which blend minimises ore + flux + fuel, and how does it differ from the ore + flux answer? What is relaxing each limit worth? | `min_cost(fuel=True)` and `min_cost(fuel=False)` | ~1 s Fixed-ω; ~1 min STRATA-ω |
+| Maximum production | The ceiling for the day, the blend and controls that reach it, and what binds | `max_production` | ~10 s Fixed-ω; ~4 min STRATA-ω |
+
+The STRATA-ω times are those of the reference hosts in `docs/jetson_benchmark.md` (the page shows the
+expected time next to *Optimise* and a progress bar). The same engine runs three other ways: the worker's scheduled
+jobs `optimiser.step2` (06:15 / 14:15 / 22:15 IST, STRATA-ω and Fixed-ω side by side) and `optimiser.step1`
+(06:30 / 14:30 / 22:30), the API (`POST /api/optimiser/runs`, `GET /api/optimiser/runs/{id}/result`) and the SPA page
+`/optimiser` (*Blend Simulator*), whose empty fields take this page's defaults (CLAUDE.md section 12).
 
 **Step 2 against today's blend.** With the live yard, Step 2 also prices the ferrous blend actually charged in the
 last 24 h (`charge_data`, `load_charged_blend`) at the same production, HMT / Si target and controls
@@ -42,7 +48,9 @@ much less (or more) it costs than today's blend in Rs/tHM and Rs lakh/day. The K
 tables show *Today* next to *Plan*. On the Neon export of 19 Oct 2026 (shipped calibration): today's blend (sinter
 60.8 / Lloyds CLO 14.1 / Geomin 9.7 / NMDC ROM 5.3 / pellet 10.1 %) costs Rs 30,357/tHM at 2,270 t/d; the plan
 (sinter 58 / Lloyds CLO 19 / Geomin 13 / pellet 10 %, limestone 8 kg) Rs 30,144, Rs 214/tHM (Rs 4.9 lakh/day) less
-for 1.6 kg/tHM more coke. Charged materials without lab chemistry in the window are listed and left out.
+for 1.6 kg/tHM more coke. Raw-material chemistry is each material's latest valid lab sample
+(`burden_optimiser.yml → yard.chemistry_mode: latest`, 10 Nov 2026), never a window average; charged materials
+without any lab chemistry are listed and left out.
 
 **Layout (as page 9).** Each plan opens with its title and a feasibility badge, an overview strip (ore + flux + fuel,
 production, burden Fe, saving against today's blend in Rs lakh/day or the change of production against today), then
@@ -87,7 +95,7 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
   dust, packed-bed anchor. Fewer than 10 stable shifts → the shipped Jul–Oct 2026 calibration, and the page says so.
 * **Operating regime**: 14-day medians of HBT, blast, O₂, pressures, ΔP, HMT, Si, production, ηCO, top gas.
   These pre-fill the controls (Step 2) and appear as "today" next to each limit.
-* **Fact register** (`src/config/facts_register.json`, v1.3): every coefficient outside the balance, the plausibility
+* **Fact register** (`src/config/facts_register.json`, v1.8): every coefficient outside the balance, the plausibility
   bands and the default limits. Retired facts (COKE-17 webapp hand coefficients, DATA-10 regressed RAFT) are
   refused in code.
 * **Bands.** Fuel rate (coke wet + nut + PCI) above 600 kg/tHM is a limit row; below 520 the result is marked
@@ -102,8 +110,9 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 formerly OMEGA. Modules: **STRATA-Flow** (layered packed-bed gas-flow model of BF-02, ring description of the thermal
 reserve zone; vendored in `src/utils/strata_flow/`), **STRATA-ω** (blend- and operation-dependent shaft efficiency,
 this section) and **STRATA-Learn** (continuous learning, shadow mode). The page switch offers **Fixed-ω (Rist
-baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM-18, page default; `Settings.omega_mode=
-"blend"` in code).
+baseline)** — omega held at the calibration, ASM-01; the default on the page, the SPA and the API since 11 Nov 2026
+(user decision), with Step 2 at the configured 2,270 t/d rather than the twin's or the regime's production — and
+**STRATA-ω** (ASM-18; `Settings.omega_mode="blend"` in code).
 
 ```
  omega(plan) = omega_cal                                   14-day calibration (the anchor, ASM-01)
@@ -380,7 +389,8 @@ Also changed on page 9 for this work (all checked against the lab, below):
 * `OreChemistry.loi_pct` (default 0; read from the same lab row, so page 9 picks the same rows).
 * Titani ferrous CLO mapped to `ore_13` (was `ore_11`, the Donimalai oversize return). `charge_data` has no
   `ore_13_mt` column, so the provider now skips charge columns the table does not have instead of failing the query.
-* The slag total includes TiO₂ (`SlagBalanceSettings.tio2_to_slag`, `setting_bmo.yml`).
+* TiO₂ in the slag total is a switch (`SlagBalanceSettings.tio2_to_slag`, `setting_bmo.yml`): on for the lab replay
+  below, off on both pages since 11 Nov 2026 (user decision, to read as the UAT page 9).
 * **Top-gas dust from the DPR.** The single "BF Gas Dust" row from the plant BURDEN workbook (530 kg per charge,
   CaO 5.63 %, MgO 3.57 %) is replaced by the two streams the DPR records, dust catcher and GCP dust
   (`data/bmo/dust_inputs.py`). Quantity: the DPR's dust over the charges `charge_data` counts on the same days, last
@@ -425,13 +435,69 @@ PCI 190, nut coke 70, HMT 1,470 °C, Jul–Oct 2026 calibration. `pytest tests/t
 ## Comparison with the Blend Mix Optimiser LP
 
 `python scripts/compare_bmo_vs_burden_engine.py [--live] [--target 2270]` runs both on the same yard, prices, bounds,
-slag limits, page-9 dust rows and page-9 fuel S / alkali, with fuel left out of the objective
-(`docs/burden_fuel_optimiser_vs_bmo.md`).
+slag limits, page-9 dust rows and page-9 fuel S / alkali, with fuel left out of the objective, and writes the table
+below (`--out <file>` for a copy).
+
+**One slag for one blend (11 Nov 2026).** The engine now computes its slag with page 9's own ledger
+(`utils/coke_energy/slag_basis.py` = `utils/bmo/slag_balance.py` on the two-zone case): hot-metal Si, S and C held for
+the slag side (`setting_bmo.yml → slag_balance`, Si 0.60 %; the coke balance keeps its thermal Si 0.38 %), the
+top-gas dust as the plant burden sheet's one row, 530 kg per charge with CaO 5.63 % and MgO 3.57 %, held constant and
+spread over the blend's charges per tHM (user decision 11 Nov 2026, to match the client's burden sheets;
+`data_sources.dust_quantity_source: dpr` restores the DPR's measured dust-catcher and GCP streams of the lab replay),
+alkalis 80 % to slag, sulphur less the pig iron's and 10 % to gas, FeO from 0.1 % of the Fe charged less
+the dust's, TiO₂ in the total, phosphorus to the hot metal. The basis is built from page 9's configuration, operator
+inputs and DPR rates in `data/burden_engine/inputs.py::slag_basis` and travels with the engine inputs; the same blend
+through both ledgers agrees to 1e-9 (`tests/test_burden_engine_slag_basis.py`). Before this the engine removed
+SiO₂ at its thermal Si, used the calibration's pooled dust (no MgO), a flat 1.2 % minor-oxide allowance and a slag
+FeO %; for one blend that read 4.9 kg/tHM more slag and CaO/SiO₂ 0.044 lower than page 9 (the held Si), ±1 kg on
+the dust and the minors. On the reference yard the Step 2 plan at 2,270 t/d moved from sinter 58.0 / Geomin 13.4 /
+Lloyds CLO 18.6 / pellet 10 % with 13.7 kg limestone (coke 305.7, Rs 30,139/tHM, the case report) to 61.2 / 14.15 /
+14.6 / 10 % with 1.7 kg dolomite and 0.9 kg quartz (coke 302.4, Rs 30,076/tHM) with TiO₂ counted, and to 62.5 /
+14.1 / 13.4 / 10 % with 2.45 kg quartz (coke 302.2, Rs 30,092/tHM) with TiO₂ left out (the setting since 11 Nov
+2026; the test pins and the SPA fixture): the held Si credits 4.6 kg/tHM more SiO₂ to the hot metal, so the basicity
+floor needs less lime. The case-report numbers are kept by the engine tests without the basis.
+
+**Slag breakup on the page (11 Nov 2026).** With the basis every plan also carries page 9's *Slag Balance Details*
+(`slag_basis.slag_detail`, in the result as `out.slag_detail`): per material the Fe and the slag-forming oxides
+charged (page 9's Fe (MT) and Slag (MT) columns per tHM: dry kg × total Fe %, dry kg × SiO₂ + Al₂O₃ + CaO + MgO + TiO₂ +
+MnO + Na₂O + K₂O), kg per charge and cost; the slag's components (kg/tHM and %); where each component goes (charged
+by the ore, the flux and the fuel ash, carried away by the dust, taken by the hot metal or the gas, left in the slag);
+the per-source rollup adding up to the slag rate; and the worked hot-metal removals with their rules. Page 11 shows
+them in the Blend and Slag tabs (`scenarios.material_rows`, `slag_components_table`, `slag_balance_table`,
+`slag_rollup_table`, `slag_removals_table`, `slag_basis_note`), the API in `BlendRow` / `FluxRow` (`fe_kg_thm`,
+`slag_kg_thm`, `kg_per_charge`, `cost_rs_thm`) and `SlagView` (`basis`, `dust_kg_thm`, `components`, `balance`,
+`rollup`, `removals`), the SPA in the Blend panel's columns and the *Slag balance* panel. A plan on the
+calibration's own slag rule carries none of it (empty lists, the columns absent). Parity with page 9's own
+diagnostics is tested per component, per material and per removal (`test_the_breakup_is_page_9s_slag_balance_details`).
+
+Page 9's two input tables travel with the plan too. *Fuels and ash* (`slag_detail.by_fuel`, `fuel_ash_table`,
+`SlagView.fuel_ash`): coke (the plan's), nut coke and PCI (the fixed inputs) as charged and dry, moisture, ash %, ash
+kg/tHM, the ash analysis the engine uses (the calibration's coke / nut / PCI analyses from the plant's fuel chemistry;
+alkalis, S and P from page 9's `fuel_ash_inputs`) and the slag-forming oxides each brings. *Top-gas dust*
+(`slag_detail.dust`, `dust_table`, `SlagView.dust`): each enabled stream's kg per charge, kg/tHM at the plan's
+charges per tHM, analysis, and the Fe and slag-forming oxides it carries away. The dust's kg per charge and analysis
+are editable where the plan is made: page 11's *Top-gas dust and fuel ash* expander (edits apply to the run; *Save as
+operator inputs*, supervisor or admin, writes the `dust_editor` section as a new version) and the SPA yard panel's
+*Operator inputs in force* tab (the streams of the shown run with the saved row on top, an editor per row for
+supervisors → `PUT /api/operator-inputs`). Both write what `slag_basis` lays over `setting_bmo.yml`, so page 9, page
+11, the API and the worker deduct one dust; `RunYard.dust` records the streams a run read.
+
+*Against the UAT branch's page 9 for one blend* (sinter 62.5 / Geomin 14.6 / NMDC ROM 12.9 / pellet 10 % at
+2,210 t/d, live yard of 11 Nov 2026). The UAT page 9 runs the ledger before the lab replay of
+`docs/slag_replay_vs_lab.md`: the burden sheet's dust row and no TiO₂ in the slag. The user's decision of 11 Nov
+2026 restored the burden sheet's dust row on both pages (above): with TiO₂ still counted the same blend read slag
+341.1 kg/tHM with 3.8 kg limestone to hold CaO/SiO₂ 1.05 (the sheet's row deducts more CaO than the measured streams
+did) against 336.8 kg/tHM on the UAT ledger, Al₂O₃ 19.9 against 20.2 %, the 4 kg/tHM being the TiO₂ (the lab's
+analyses carry about 1.1 % of it). The same day the user set `slag_balance.tio2_to_slag: false` as well, which
+reproduces the UAT ledger for the blend, so the two pages now read alike ("values are now very close"). The
+other differences are inputs (UAT page 9's own coke and PCI rates; its Fe (MT) column is on dry mass, so a wet
+quantity with moisture reads a lower Fe %) and limits: the engine's slag ≤ 340, CaO/SiO₂ 1.05–1.15 and Al₂O₃ ≤ 20 %
+all bind on this blend, while UAT page 9 runs with CaO/SiO₂ unconstrained and T-basicity 1.20–1.45.
 
 Page 9's slag total counts TiO₂, alkalis (80 % to slag), sulphur (ore, flux and fuel), MnO, FeO and CaF₂ from the
 analyses; phosphorus goes to the hot metal. Its dust is the DPR's two streams with the measured dust chemistry.
 
-At 2,270 t/d the two blends agree within 0.3 pt:
+Before the shared basis, at 2,270 t/d the two blends agreed within 0.3 pt:
 
 | | Reference yard (16 Oct) | Live yard (Neon, 19 Oct) |
 |---|---|---|
@@ -497,8 +563,9 @@ mean slag analysis (`docs/slag_replay_vs_lab.md`). 284 days, Sep 2025 – Oct 20
 
 ## What the engine does not see
 
-* STRATA-ω holds the charging matrix at the one in force over the calibration window, and
-  coke quality, nut coke, PCI and hot-blast temperature act on omega only through the calibration. The day-to-day
+* STRATA-ω holds the charging matrix at the one in force over the calibration window; coke quality (CSR, M40) and
+  sinter strength act on omega only through the calibration; PCI and hot-blast temperature act through the balance
+  and the network's other-operation channel; nut coke also through its data term (GAS-23). The day-to-day
   spread of omega (out-of-sample RMSE 0.028, about ±8 kg/tHM) is not in σ; it averages out over days.
 * Blast moisture is the day's Open-Meteo RH at Wardha mapped to 7–21 g/Nm³ (DATA-11, `config/coke_energy.yml →
   blast_moisture`), everywhere it enters: each shift's day in the pipeline, the window mean in a calibration (shipped

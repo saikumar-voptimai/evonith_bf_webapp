@@ -15,6 +15,7 @@ price; the flux rows; and a donut of the plan's (or today's) ferrous charge with
 		blendTable,
 		donutOf,
 		fluxTable,
+		hasSlagBreakup,
 		type BlendRowView,
 		type OptimiserResult,
 		type PlanView
@@ -28,6 +29,8 @@ price; the flux rows; and a donut of the plan's (or today's) ferrous charge with
 	let { result, plan }: Props = $props();
 
 	const main = $derived(plan === result.plan);
+	/** Page 9's per-material columns (Fe, slag, kg per charge, cost) when the plan carries the slag breakup. */
+	const breakup = $derived(hasSlagBreakup(plan));
 	const blend = $derived(
 		main ? blendTable(result) : blendTable({ ...result, plan, today_plan: null, ore_flux_plan: null })
 	);
@@ -45,7 +48,7 @@ price; the flux rows; and a donut of the plan's (or today's) ferrous charge with
 			label: `${c}, wet`,
 			unit: '%',
 			numeric: true,
-			digits: 1,
+			digits: 2,
 			value: (r) => r.share[i] ?? null
 		})),
 		...blend.columns.map((c, i): Column<BlendRowView> => ({
@@ -53,11 +56,19 @@ price; the flux rows; and a donut of the plan's (or today's) ferrous charge with
 			label: c,
 			unit: 'kg/tHM',
 			numeric: true,
-			digits: 1,
+			digits: 2,
 			value: (r) => r.kg[i] ?? null
 		})),
 		{ key: 'planTd', label: 'Plan', unit: 't/d', numeric: true, digits: 0 },
-		{ key: 'priceRsT', label: 'Price', unit: 'Rs/t', numeric: true, digits: 0 }
+		...(breakup
+			? [
+					{ key: 'feKg', label: 'Fe', unit: 'kg/tHM', numeric: true, digits: 2 },
+					{ key: 'slagKg', label: 'Slag', unit: 'kg/tHM', numeric: true, digits: 2 },
+					{ key: 'kgPerCharge', label: 'Per charge', unit: 'kg', numeric: true, digits: 0 }
+				]
+			: []),
+		{ key: 'priceRsT', label: 'Price', unit: 'Rs/t', numeric: true, digits: 0 },
+		...(breakup ? [{ key: 'costRsThm', label: 'Cost', unit: 'Rs/tHM', numeric: true, digits: 0 }] : [])
 	]);
 	type FluxRow = (typeof flux.rows)[number];
 	const fluxColumns = $derived<Column<FluxRow>[]>([
@@ -67,9 +78,16 @@ price; the flux rows; and a donut of the plan's (or today's) ferrous charge with
 			label: c,
 			unit: 'kg/tHM',
 			numeric: true,
-			digits: 1,
+			digits: 2,
 			value: (r) => r.kg[i] ?? null
-		}))
+		})),
+		...(breakup
+			? [
+					{ key: 'slagKg', label: 'Slag', unit: 'kg/tHM', numeric: true, digits: 2 },
+					{ key: 'kgPerCharge', label: 'Per charge', unit: 'kg', numeric: true, digits: 0 },
+					{ key: 'costRsThm', label: 'Cost', unit: 'Rs/tHM', numeric: true, digits: 0 }
+				]
+			: [])
 	]);
 </script>
 
@@ -102,6 +120,10 @@ price; the flux rows; and a donut of the plan's (or today's) ferrous charge with
 				)}&nbsp;% Fe.{#if main && result.today_plan}
 					Today = the ferrous blend charged {result.case?.today_window || 'over the last 24 h'}, modelled at
 					this plan’s output, targets and controls with flux to the same basicity band.{/if}
+				{#if breakup}
+					Fe and slag per material as page 9’s blend table: Fe = dry kg × total Fe %, slag = dry kg ×
+					slag-forming oxides (SiO₂ + Al₂O₃ + CaO + MgO + TiO₂ + MnO + Na₂O + K₂O); kg per charge at the
+					plan’s hot metal per charge.{/if}
 			</p>
 		</div>
 		<div class="donut">
@@ -119,7 +141,7 @@ price; the flux rows; and a donut of the plan's (or today's) ferrous charge with
 					: 'Plan: share of the ferrous charge'}
 				segments={donut.segments}
 				unit="%"
-				digits={1}
+				digits={2}
 				centre={{ value: formatNumber(donut.ferrousTd, 0), label: 't/d ferrous' }}
 			/>
 		</div>
@@ -129,11 +151,11 @@ price; the flux rows; and a donut of the plan's (or today's) ferrous charge with
 <style>
 	.layout {
 		display: grid;
-		grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
+		grid-template-columns: minmax(0, 1fr) minmax(15rem, 19rem);
 		gap: var(--vo-space-4);
 		padding: var(--vo-space-3) var(--vo-space-4) var(--vo-space-4);
 	}
-	@media (max-width: 1023px) {
+	@media (max-width: 1439px) {
 		.layout {
 			grid-template-columns: minmax(0, 1fr);
 		}

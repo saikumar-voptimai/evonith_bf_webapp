@@ -113,14 +113,15 @@
 
 	/* Type: Inter for everything (latin, Greek for omega and sigma), tabular figures in readouts */
 	--vo-font: 'Inter Variable', Inter, 'Segoe UI', system-ui, -apple-system, 'DejaVu Sans', sans-serif;
-	--vo-fs-eyebrow: 0.71875rem; /* 11.5 px, upper case, tracked */
-	--vo-fs-label: 0.8125rem; /* 13 px: labels, hints, table headers */
-	--vo-fs-body: 0.875rem; /* 14 px: table cells, controls */
-	--vo-fs-text: 0.9375rem; /* 15 px: prose, navigation */
-	--vo-fs-title: 1.0625rem; /* 17 px: panel titles */
-	--vo-fs-heading: 1.625rem; /* 26 px: page title */
-	--vo-fs-kpi: 1.875rem; /* 30 px: readouts */
-	--vo-fs-display: 2.5rem; /* 40 px: Live Twin headline readout */
+	/* One notch below the SV-0.5 scale (user review 12 Nov 2026: the pages read large and sparse next to Streamlit). */
+	--vo-fs-eyebrow: 0.6875rem; /* 11 px, upper case, tracked */
+	--vo-fs-label: 0.78125rem; /* 12.5 px: labels, hints, table headers */
+	--vo-fs-body: 0.84375rem; /* 13.5 px: table cells, controls */
+	--vo-fs-text: 0.875rem; /* 14 px: prose, navigation */
+	--vo-fs-title: 0.96875rem; /* 15.5 px: panel titles */
+	--vo-fs-heading: 1.375rem; /* 22 px: page title */
+	--vo-fs-kpi: 1.625rem; /* 26 px: readouts */
+	--vo-fs-display: 2.125rem; /* 34 px: Live Twin headline readout */
 	--vo-lh-body: 1.5;
 	--vo-lh-tight: 1.2;
 	--vo-tracking-eyebrow: 0.12em;

@@ -32,26 +32,29 @@ export const TRACE_KG = 0.5;
 /** Shares at or below this, % wet, are not part of a blend (`scenarios.blend_compare_table`). */
 export const SHARE_MIN = 0.05;
 
-export const MODES: { id: Mode; label: string; note: string }[] = [
+export const MODES: { id: Mode; label: string; short: string; note: string }[] = [
 	{
 		id: 'step2',
-		label: 'Step 2 · Fixed production',
+		label: 'Fixed production',
+		short: 'Fixed',
 		note: 'Cheapest blend at a production target, next to the ore + flux-only answer and today’s charged blend.'
 	},
 	{
 		id: 'step1',
-		label: 'Step 1 · Cheapest production level',
+		label: 'Cheapest production level',
+		short: 'Cheapest',
 		note: 'Ore + flux + fuel cost against production under the day’s limits: the cheapest level and the ceiling.'
 	},
 	{
 		id: 'max_production',
 		label: 'Maximum production',
+		short: 'Maximum',
 		note: 'Blend and controls at the production ceiling; oxygen searched within its limits.'
 	}
 ];
 export const MODE_LABEL: Record<Mode, string> = {
-	step1: 'Step 1, cheapest production',
-	step2: 'Step 2, fixed production',
+	step1: 'Cheapest production level',
+	step2: 'Fixed production',
 	max_production: 'Maximum production'
 };
 export const OMEGA_LABEL: Record<OmegaMode, string> = { strata: 'STRATA-ω', fixed: 'Fixed-ω' };
@@ -289,19 +292,66 @@ export interface RunForm {
 	production_t_d: number | null;
 	settings: Record<string, number | null>;
 	limits: Record<string, number | null>;
+	/** Top-gas dust entries for this run by stream id (page 11's dust editor applied to the run); an empty field
+	 * keeps the value in force. */
+	dust: Record<string, DustOverride>;
+}
+
+export type DustOverride = Partial<Schemas['OptimiserDustStream']>;
+
+/** The dust fields of the run form (API names of `OptimiserDustStream`), in the editor's order. */
+export const DUST_FIELDS: FieldSpec[] = [
+	{ key: 'kg_per_charge', label: 'Dust per charge, wet', unit: 'kg', min: 0, max: 5000, step: 10, digits: 0 },
+	{ key: 'cao_pct', label: 'CaO of the dry dust', unit: '%', min: 0, max: 100, step: 0.1, digits: 2 },
+	{ key: 'mgo_pct', label: 'MgO', unit: '%', min: 0, max: 100, step: 0.1, digits: 2 },
+	{ key: 'sio2_pct', label: 'SiO₂', unit: '%', min: 0, max: 100, step: 0.1, digits: 2 },
+	{ key: 'al2o3_pct', label: 'Al₂O₃', unit: '%', min: 0, max: 100, step: 0.1, digits: 2 },
+	{ key: 'fe_pct', label: 'Fe', unit: '%', min: 0, max: 100, step: 0.1, digits: 2 }
+];
+
+/** The dust row's value in force for a form field (`DUST_FIELDS` key -> `DustRow` property). */
+export const DUST_ROW_KEY: Record<string, keyof DustRow> = {
+	kg_per_charge: 'kgPerCharge',
+	cao_pct: 'cao',
+	mgo_pct: 'mgo',
+	sio2_pct: 'sio2',
+	al2o3_pct: 'al2o3',
+	fe_pct: 'fe',
+	moisture_pct: 'moisture'
+};
+
+/** The dust streams the form sets anything for. */
+export function dustStreamsSet(form: Pick<RunForm, 'dust'>): string[] {
+	return Object.entries(form.dust ?? {})
+		.filter(([, o]) => Object.values(o).some((v) => v !== null && v !== undefined))
+		.map(([id]) => id);
+}
+
+/** A stream's row in force with the form's entries laid over (what the run would deduct; also what *Save as operator
+ * inputs* writes). */
+export function dustRowWithOverrides(row: DustRow, over: DustOverride | undefined): DustRow {
+	if (!over) return row;
+	const out = { ...row };
+	if (typeof over.enabled === 'boolean') out.enabled = over.enabled;
+	for (const [api, prop] of Object.entries(DUST_ROW_KEY)) {
+		const v = over[api as keyof DustOverride];
+		if (isNumber(v)) (out as Record<string, unknown>)[prop] = v;
+	}
+	return out;
 }
 
 export function defaultForm(mode: Mode = 'step2'): RunForm {
 	return {
 		mode,
-		omega_mode: 'strata',
+		omega_mode: 'fixed', // Fixed-ω is the default (user decision 11 Nov 2026)
 		certainty: 'low',
 		risk_k: 0,
 		calibration: 'day',
 		yard: 'live',
 		production_t_d: null,
 		settings: {},
-		limits: {}
+		limits: {},
+		dust: {}
 	};
 }
 
@@ -340,6 +390,18 @@ export function runParams(form: RunForm): RunParams {
 	if (!process && isNumber(form.production_t_d)) params.production_t_d = form.production_t_d;
 	if (Object.keys(settings).length) params.settings = settings;
 	if (Object.keys(limits).length) params.limits = limits;
+	const dust: Record<string, DustOverride> = {};
+	for (const id of dustStreamsSet(form)) {
+		const o = form.dust[id] ?? {};
+		const entry: DustOverride = {};
+		if (typeof o.enabled === 'boolean') entry.enabled = o.enabled;
+		for (const f of DUST_FIELDS) {
+			const v = o[f.key as keyof DustOverride];
+			if (isNumber(v)) (entry as Record<string, unknown>)[f.key] = v;
+		}
+		if (Object.keys(entry).length) dust[id] = entry;
+	}
+	if (Object.keys(dust).length) params.dust = dust;
 	return params;
 }
 
@@ -364,7 +426,7 @@ export function fieldHint(
 	if (isNumber(used))
 		parts.push(`${set ? 'Set' : 'Default'} in the shown run: ${quantity(used, spec.digits, spec.unit)}`);
 	if (isNumber(today)) parts.push(`today ${quantity(today, spec.digits, spec.unit)}`);
-	return parts.length ? parts.join('; ') : (spec.emptyHint ?? 'Empty: page 11’s default at run time');
+	return parts.length ? parts.join('; ') : (spec.emptyHint ?? 'Empty: the configured default at run time');
 }
 
 /** The run's value of a form field (settings, then limits). */
@@ -469,7 +531,13 @@ export function overviewTiles(result: OptimiserResult, plan: PlanView): Tile[] {
 			note: `${formatSigned0(plan.production_t_d - todayT)} t/d (${formatNumber(todayT, 0)} to ${formatNumber(plan.production_t_d, 0)})`
 		});
 	} else {
-		tiles.push({ label: 'Coke, dry', value: plan.fuel.coke_dry_kg_thm, unit: 'kg/tHM', digits: 1 });
+		tiles.push({
+			label: 'Coke, as charged',
+			value: plan.fuel.coke_wet_kg_thm,
+			unit: 'kg/tHM',
+			digits: 2,
+			note: `${formatQuantity(plan.fuel.coke_dry_kg_thm, 2, 'kg/tHM')} dry`
+		});
 	}
 	return tiles;
 }
@@ -526,26 +594,27 @@ export function bandOf(
 	return { lo, hi, inside: !isNumber(value) || (lo <= value && value <= hi), label };
 }
 
-/** Fuel panel: coke dry (wet in the note), nut coke and PCI (fixed inputs), total fuel against BAND-01. */
+/** Fuel panel: coke as charged (wet; dry in the note), nut coke and PCI (fixed inputs), total fuel against BAND-01.
+ * Two decimals throughout (user decision 11 Nov 2026), so the three fuels add up to the total as shown. */
 export function fuelCells(plan: PlanView, today: PlanView | null | undefined, ref: Reference | null): Cell[] {
 	const f = plan.fuel;
 	const band = ref?.bands.find((b) => b.key === 'fuel_rate');
 	return [
 		{
-			key: 'coke_dry',
-			label: 'Coke, dry',
-			value: f.coke_dry_kg_thm,
+			key: 'coke_wet',
+			label: 'Coke, as charged',
+			value: f.coke_wet_kg_thm,
 			unit: 'kg/tHM',
-			digits: 1,
-			delta: vsToday(delta(f.coke_dry_kg_thm, today?.fuel.coke_dry_kg_thm), 0.05),
-			note: `${formatQuantity(f.coke_wet_kg_thm, 1, 'kg/tHM')} wet${isNumber(f.coke_sigma_kg_thm) ? `; σ ${formatQuantity(f.coke_sigma_kg_thm, 1, 'kg/tHM')}` : ''}; two-zone energy balance`
+			digits: 2,
+			delta: vsToday(delta(f.coke_wet_kg_thm, today?.fuel.coke_wet_kg_thm), 0.005),
+			note: `${formatQuantity(f.coke_dry_kg_thm, 2, 'kg/tHM')} dry${isNumber(f.coke_sigma_kg_thm) ? `; σ ${formatQuantity(f.coke_sigma_kg_thm, 2, 'kg/tHM')}` : ''}; two-zone energy balance`
 		},
 		{
 			key: 'nut',
 			label: 'Nut coke',
 			value: f.nut_coke_kg_thm,
 			unit: 'kg/tHM',
-			digits: 0,
+			digits: 2,
 			note: 'Fixed input, as charged'
 		},
 		{
@@ -553,7 +622,7 @@ export function fuelCells(plan: PlanView, today: PlanView | null | undefined, re
 			label: 'PCI',
 			value: f.pci_kg_thm,
 			unit: 'kg/tHM',
-			digits: 0,
+			digits: 2,
 			note: 'Fixed input, as injected'
 		},
 		{
@@ -561,7 +630,7 @@ export function fuelCells(plan: PlanView, today: PlanView | null | undefined, re
 			label: 'Total fuel',
 			value: f.fuel_rate_kg_thm,
 			unit: 'kg/tHM',
-			digits: 0,
+			digits: 2,
 			delta: vsToday(delta(f.fuel_rate_kg_thm, today?.fuel.fuel_rate_kg_thm), COST_TOL),
 			note: 'Coke wet + nut coke + PCI',
 			strong: true,
@@ -715,6 +784,12 @@ export interface BlendRowView {
 	kg: number[];
 	planTd: number | null;
 	priceRsT: number | null;
+	/** Page 9's blend-table columns of the plan: Fe and slag-forming oxides charged with the material (kg/tHM; null
+	 * on the calibration's own slag rule), wet kg per charge and cost Rs/tHM. */
+	feKg: number | null;
+	slagKg: number | null;
+	kgPerCharge: number | null;
+	costRsThm: number | null;
 }
 
 /** Ferrous rows of the plan and the plans compared with it (page 11's `blend_compare_table`): materials used by any of
@@ -739,13 +814,57 @@ export function blendTable(result: OptimiserResult): { columns: string[]; rows: 
 	const yardPrice = new Map((result.yard?.materials ?? []).map((m) => [m.id, m.price_rs_t ?? null]));
 	const rows = ids.map((id) => {
 		const of = (p: PlanView) => p.blend.find((b) => b.id === id);
+		const mine = of(plan);
 		return {
 			id,
 			name: names.get(id) ?? id,
 			share: plans.map((p) => of(p.plan)?.share_wet_pct ?? 0),
 			kg: plans.map((p) => of(p.plan)?.wet_kg_thm ?? 0),
-			planTd: of(plan)?.t_d ?? 0,
-			priceRsT: price.get(id) ?? yardPrice.get(id) ?? null
+			planTd: mine?.t_d ?? 0,
+			priceRsT: price.get(id) ?? yardPrice.get(id) ?? null,
+			feKg: mine?.fe_kg_thm ?? null,
+			slagKg: mine?.slag_kg_thm ?? null,
+			kgPerCharge: mine?.kg_per_charge ?? null,
+			costRsThm: mine?.cost_rs_thm ?? null
+		};
+	});
+	return { columns: plans.map((p) => p.label), rows };
+}
+
+/** Whether the plan carries page 9's slag breakup (the Blend Mix Optimiser's basis); a plan on the calibration's own
+ * slag rule has none. */
+export function hasSlagBreakup(plan: PlanView | null | undefined): boolean {
+	return (plan?.slag.components?.length ?? 0) > 0;
+}
+
+export interface SlagCompositionRow {
+	key: string;
+	label: string;
+	/** kg/tHM per plan, in the order of `columns`. */
+	kg: (number | null)[];
+	/** % of the slag per plan. */
+	pct: (number | null)[];
+}
+
+/** The slag's components of the plan and of today's blend modelled at the same output (page 11's Slag tab): page 9's
+ * order, the total last. */
+export function slagComposition(
+	plan: PlanView,
+	today?: PlanView | null
+): { columns: string[]; rows: SlagCompositionRow[] } {
+	const comps = plan.slag.components ?? [];
+	if (!comps.length) return { columns: [], rows: [] };
+	const plans = [
+		{ label: 'Plan', plan },
+		...(today && hasSlagBreakup(today) ? [{ label: 'Today', plan: today }] : [])
+	];
+	const rows = comps.map((c) => {
+		const of = (p: PlanView) => (p.slag.components ?? []).find((x) => x.key === c.key);
+		return {
+			key: c.key,
+			label: c.label,
+			kg: plans.map((p) => of(p.plan)?.kg_thm ?? null),
+			pct: plans.map((p) => of(p.plan)?.pct ?? null)
 		};
 	});
 	return { columns: plans.map((p) => p.label), rows };
@@ -754,7 +873,14 @@ export function blendTable(result: OptimiserResult): { columns: string[]; rows: 
 /** Fluxes used (≥ 0.5 kg/tHM in any plan), kg/tHM wet per plan (page 11's `flux_compare_table`). */
 export function fluxTable(result: OptimiserResult): {
 	columns: string[];
-	rows: { id: string; name: string; kg: number[] }[];
+	rows: {
+		id: string;
+		name: string;
+		kg: number[];
+		slagKg: number | null;
+		kgPerCharge: number | null;
+		costRsThm: number | null;
+	}[];
 } {
 	const plan = result.plan;
 	if (!plan) return { columns: [], rows: [] };
@@ -770,11 +896,17 @@ export function fluxTable(result: OptimiserResult): {
 	const order = new Map((result.yard?.fluxes ?? []).map((f, i) => [f.id, i]));
 	ids.sort((a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99));
 	const rows = ids
-		.map((id) => ({
-			id,
-			name: names.get(id) ?? id,
-			kg: plans.map((p) => p.plan.flux.find((f) => f.id === id)?.wet_kg_thm ?? 0)
-		}))
+		.map((id) => {
+			const mine = plan.flux.find((f) => f.id === id);
+			return {
+				id,
+				name: names.get(id) ?? id,
+				kg: plans.map((p) => p.plan.flux.find((f) => f.id === id)?.wet_kg_thm ?? 0),
+				slagKg: mine?.slag_kg_thm ?? null,
+				kgPerCharge: mine?.kg_per_charge ?? null,
+				costRsThm: mine?.cost_rs_thm ?? null
+			};
+		})
 		.filter((r) => Math.max(...r.kg) >= TRACE_KG);
 	return { columns: plans.map((p) => p.label), rows };
 }
@@ -916,9 +1048,100 @@ export function sourceLines(result: OptimiserResult): string[] {
 
 // ------------------------------------------------------------------------------------------------ yard and inputs
 
-/** An edit of the operator inputs on the page: one ferrous or flux row, or the three fuel prices. */
+/** An edit of the operator inputs on the page: one ferrous or flux row, the three fuel prices, or one top-gas dust
+ * stream (its kg per charge and analysis). */
 export type InputEdit =
-	{ kind: 'ore' | 'flux'; row: InputRow } | { kind: 'fuel'; prices: Record<string, number | null> };
+	| { kind: 'ore' | 'flux'; row: InputRow }
+	| { kind: 'fuel'; prices: Record<string, number | null> }
+	| { kind: 'dust'; row: DustRow };
+
+/** A top-gas dust stream as the operator inputs hold it (page 9's dust editor, the fields the engine deducts with):
+ * wet kg per charge, moisture and the analysis of the dry dust. */
+export interface DustRow {
+	id: string;
+	name: string;
+	enabled: boolean;
+	kgPerCharge: number | null;
+	moisture: number | null;
+	sio2: number | null;
+	al2o3: number | null;
+	cao: number | null;
+	mgo: number | null;
+	fe: number | null;
+	/** Where the figures in force came from: the saved operator inputs, else the configuration's source. */
+	source: string | null;
+}
+
+/** Dust streams in force: every stream of the shown run's slag basis (the configured values with the saved rows laid
+ * over, as the engine reads them) and every saved row, the saved value on top of the run's. */
+export function dustInputRows(
+	doc: OperatorInputsDocument | null | undefined,
+	result: OptimiserResult | null
+): DustRow[] {
+	const saved = doc?.dust_editor?.rows ?? {};
+	const yard = result?.yard?.dust ?? [];
+	const byId = new Map(yard.map((d) => [d.id, d]));
+	const ids = [...new Set([...yard.map((d) => d.id), ...Object.keys(saved)])];
+	return ids.map((id) => {
+		const y = byId.get(id);
+		const s = saved[id] ?? {};
+		return {
+			id,
+			name: y?.name ?? id,
+			enabled: s.enabled ?? y?.enabled ?? true,
+			kgPerCharge: s.quantity_kg_per_charge ?? y?.kg_per_charge ?? null,
+			moisture: s.moisture_pct ?? y?.moisture_pct ?? null,
+			sio2: s.sio2_pct ?? y?.sio2_pct ?? null,
+			al2o3: s.al2o3_pct ?? y?.al2o3_pct ?? null,
+			cao: s.cao_pct ?? y?.cao_pct ?? null,
+			mgo: s.mgo_pct ?? y?.mgo_pct ?? null,
+			fe: s.fe_pct ?? y?.fe_pct ?? null,
+			source: s.source === 'manual' ? 'Saved operator inputs' : (y?.source ?? null)
+		};
+	});
+}
+
+/** `PUT /api/operator-inputs` section for an edited dust stream: the whole section with the row replaced, on the
+ * kg-per-charge basis (what both pages deduct). */
+export function dustSection(
+	doc: OperatorInputsDocument,
+	edit: DustRow
+): NonNullable<OperatorInputsDocument['dust_editor']> {
+	const rows = { ...(doc.dust_editor?.rows ?? {}) };
+	rows[edit.id] = {
+		...(rows[edit.id] ?? {}),
+		enabled: edit.enabled,
+		rate_basis: 'kg_per_charge',
+		quantity_kg_per_charge: edit.kgPerCharge,
+		moisture_pct: edit.moisture,
+		sio2_pct: edit.sio2,
+		al2o3_pct: edit.al2o3,
+		cao_pct: edit.cao,
+		mgo_pct: edit.mgo,
+		fe_pct: edit.fe,
+		source: 'manual'
+	};
+	return { rows };
+}
+
+/** Problems of an edited dust row before it is sent. */
+export function dustProblems(row: DustRow): string[] {
+	const out: string[] = [];
+	if (isNumber(row.kgPerCharge) && row.kgPerCharge < 0) out.push('The dust per charge cannot be negative.');
+	const parts: [string, number | null][] = [
+		['moisture', row.moisture],
+		['SiO₂', row.sio2],
+		['Al₂O₃', row.al2o3],
+		['CaO', row.cao],
+		['MgO', row.mgo],
+		['Fe', row.fe]
+	];
+	for (const [name, v] of parts)
+		if (isNumber(v) && (v < 0 || v > 100)) out.push(`The ${name} must be within 0–100 %.`);
+	const sum = parts.slice(1).reduce((s, [, v]) => s + (isNumber(v) ? v : 0), 0);
+	if (sum > 100) out.push('The analysis adds up to more than 100 % of the dry dust.');
+	return out;
+}
 
 export interface InputRow {
 	id: string;
@@ -928,6 +1151,8 @@ export interface InputRow {
 	min: number | null;
 	max: number | null;
 	stock: number | null;
+	/** An ore's composition entered by an administrator (API names, `fe_t_pct` …); absent: the lab's stands. */
+	chem?: Record<string, number | null>;
 }
 
 /** Ferrous rows of the operator inputs in force: every material the inputs name, with the name the shown run's yard
@@ -995,7 +1220,8 @@ export function oreSection(
 		...(rows[edit.id] ?? {}),
 		price_rs_per_mt: edit.price,
 		min_share_pct: edit.min,
-		max_share_pct: edit.max
+		max_share_pct: edit.max,
+		...(edit.chem ?? {})
 	};
 	let selected = [...(ore.selected_ore_ids ?? [])];
 	if (selected.length === 0) selected = Object.keys(rows);

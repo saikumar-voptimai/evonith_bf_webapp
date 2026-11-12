@@ -6,6 +6,10 @@ ideal format.
 
 **Prepared:** August 2026
 **Reference:** `docs/energy_balance_findings_and_open_decisions.md`
+**Status (10 Nov 2026):** the plant answered on 15 Oct 2026 (`docs/coke_energy_model_plan.md`, "second round"):
+the stave heat-load tags are GJ/h, the dust streams come from the DPR (dust catcher + GCP, `data/bmo/dust_inputs.py`)
+and the operating limits are now default envelopes in the fact register. The top-gas analyser and the shell-loss
+items are still open.
 
 ---
 

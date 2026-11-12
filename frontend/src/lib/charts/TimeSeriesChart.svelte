@@ -36,6 +36,8 @@ series tokens (`series-trace`, `cat-2`, ...). With `onpick`, a click in the plot
 		yMax?: number;
 		/** Direct labels at the end of each line; left out below `END_LABEL_MIN_WIDTH`, where the legend suffices. */
 		endLabels?: boolean;
+		/** From this instant (UTC ms) the plot is shaded as the future (forecasts beyond it). */
+		futureFrom?: number;
 		loading?: boolean;
 		onrender?: (ms: number) => void;
 		/** Click in the plot: the instant under the pointer (UTC ms). */
@@ -54,6 +56,7 @@ series tokens (`series-trace`, `cat-2`, ...). With `onpick`, a click in the plot
 		yMin,
 		yMax,
 		endLabels = false,
+		futureFrom,
 		loading = false,
 		onrender,
 		onpick
@@ -93,7 +96,9 @@ series tokens (`series-trace`, `cat-2`, ...). With `onpick`, a click in the plot
 					yMin,
 					yMax,
 					endLabels: endLabels && width >= END_LABEL_MIN_WIDTH,
-					hidden: new Set(hidden)
+					hidden: new Set(hidden),
+					futureFrom,
+					plotHeight: height
 				})
 			: null
 	);

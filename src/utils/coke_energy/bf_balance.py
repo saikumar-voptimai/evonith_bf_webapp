@@ -86,7 +86,15 @@ def fuel_terms(K, case, p):
 
 
 def slag_and_flux(K, case, p, extra_lime=0.0, extra_qtz=0.0):
-    """Oxide balance -> slag mass & composition. extra_lime = kg limestone/tHM added for basicity correction."""
+    """Oxide balance -> slag mass & composition. extra_lime = kg limestone/tHM added for basicity correction.
+
+    With ``p['slag_basis']`` and dust streams in the case (the burden engine's plans) the slag is the Blend Mix
+    Optimiser's ledger (``utils.coke_energy.slag_basis``: held hot-metal Si, dust per stream with MgO and alkalis,
+    minor oxides from the analyses, FeO from the Fe not reaching the pig iron); otherwise this function's own rule,
+    unchanged, for the Coke Energy pipeline and the calibrations. Both return ``FeO`` and ``Fe_slag`` (kg/tHM)."""
+    if p.get('slag_basis') and case['dust'].get('streams') is not None:
+        from utils.coke_energy.slag_basis import slag_page9
+        return slag_page9(K, case, p, extra_lime, extra_qtz)
     b = burden_terms(case, p)['ox']; fu = fuel_terms(K, case, p); hm = case['hm']; du = case['dust']
     lime = extra_lime; q = extra_qtz
     CaO = b['CaO'] + fu['CaO'] + lime * p['lime_CaO'] + q * p['qtz_CaO']
@@ -108,6 +116,8 @@ def slag_and_flux(K, case, p, extra_lime=0.0, extra_qtz=0.0):
     slag = base / (1 - (feo + p['slag_minor_pct']) / 100.0)
     return dict(slag_kg=slag, CaO=CaO, MgO=MgO, SiO2=SiO2, Al2O3=Al2O3, TiO2=TiO2, MnO=MnO,
                 B2=CaO / SiO2, Al2O3_pct=100 * Al2O3 / slag, MgO_pct=100 * MgO / slag,
+                FeO=slag * feo / 100, Fe_slag=slag * feo / 100 * MW['Fe'] / MW['FeO'],
+                minor=slag * p['slag_minor_pct'] / 100,
                 lime_kg=lime, qtz_kg=q, CO2_lime=lime * p['lime_LOI'], CaO_lime=lime * p['lime_CaO'])
 
 
@@ -121,7 +131,11 @@ def core(K, V, case, p, eta_CO=None, measured_gas=None, extra_lime=0.0, slag_ove
 
     # ---- Fe and reduction oxygen
     Fe_HM = hm['Fe'] * 10.0
-    Fe_slag = slag_kg * case['slag_FeO_pct'] / 100 * MW['Fe'] / MW['FeO']
+    if slag_override is None:          # the slag rule's own FeO (page 9's basis: a fraction of the Fe charged)
+        Fe_slag, FeO_kg = sl['Fe_slag'], sl['FeO']
+    else:                              # a measured slag: FeO from the analysis
+        FeO_kg = slag_kg * case['slag_FeO_pct'] / 100
+        Fe_slag = FeO_kg * MW['Fe'] / MW['FeO']
     Fe_burden = b['Fe'] + fu['Fe']
     f_FeO = min(1.0, (b['FeO'] * MW['Fe'] / MW['FeO']) / max(b['Fe'], 1e-9))   # FeO share of iron-bearing burden Fe
     nFe = Fe_HM / MW['Fe']; nFes = Fe_slag / MW['Fe']
@@ -133,7 +147,7 @@ def core(K, V, case, p, eta_CO=None, measured_gas=None, extra_lime=0.0, slag_ove
     CO2_carb = b['CO2'] + sl['CO2_lime']                      # kg
     n_CO2carb = CO2_carb / MW['CO2']
     C_HM = hm['C'] * 10
-    C_dust = du['dc_kg'] * du['dc_C_pct'] / 100 + du['gcp_kg'] * du['gcp_C_pct'] / 100
+    C_dust = du['dc_kg'] * du['dc_C_pct'] / 100 + du['gcp_kg'] * du['gcp_C_pct'] / 100   # streams keep dc/gcp kg
     n_Cgas = (fu['C'] - C_HM - C_dust) / MW['C'] + n_CO2carb   # all carbon leaving as CO+CO2
 
     # ---- blast
@@ -199,7 +213,7 @@ def core(K, V, case, p, eta_CO=None, measured_gas=None, extra_lime=0.0, slag_ove
     res = dict(K=K, V=V, V_O2=V_O2, O_err=O_err, C_err=C_err, E=E, supply=supply, demand_ex_loss=demand,
                avail_for_loss=supply - demand, n_CO=n_CO, n_CO2=n_CO2, n_Cgas=n_Cgas, n_H2_top=n_H2_top,
                n_N2=n_N2, V_tg=V_tg, eta_CO=eta_used, eta_H2=(n_H2_used / n_H2_in if n_H2_in > 0 else np.nan),
-               slag=sl, slag_kg=slag_kg, Fe_burden=Fe_burden, Fe_HM=Fe_HM, Fe_slag=Fe_slag,
+               slag=sl, slag_kg=slag_kg, FeO_kg=FeO_kg, Fe_burden=Fe_burden, Fe_HM=Fe_HM, Fe_slag=Fe_slag,
                C_in=fu['C'], C_HM=C_HM, C_dust=C_dust, O_red=O_red, f_FeO=f_FeO,
                TG_CO=100 * n_CO * VM_N / V_tg, TG_CO2=100 * n_CO2 * VM_N / V_tg,
                TG_H2=100 * n_H2_top * VM_N / V_tg, CO2_carb_kg=CO2_carb, free_water=free_w,

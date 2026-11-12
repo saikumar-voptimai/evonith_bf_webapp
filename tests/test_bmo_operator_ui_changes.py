@@ -486,7 +486,7 @@ def test_ore_editor_preferences_persist_operator_defaults_but_not_stock_or_chemi
     assert "sio2_pct" not in prefs["ore_editor"]["rows"]["ore_a"]
 
 
-def test_ore_editor_preferences_apply_only_planning_fields() -> None:
+def test_ore_editor_preferences_apply_planning_fields_and_a_saved_composition() -> None:
     fresh = pd.DataFrame(
         [
             {
@@ -528,9 +528,11 @@ def test_ore_editor_preferences_apply_only_planning_fields() -> None:
     assert row["price_rs_per_mt"] == 7000.0
     assert row["min_share_pct"] == 10.0
     assert row["max_share_pct"] == 40.0
-    assert row["moisture_pct"] == 0.0
-    assert row["fe_t_pct"] == 55.0
-    assert row["sio2_pct"] == 5.0
+    # a saved composition is an administrator's entry through the API (12 Nov 2026): it applies; the editor itself
+    # never writes one (build_ore_editor_preferences keeps to the planning fields)
+    assert row["moisture_pct"] == 2.2
+    assert row["fe_t_pct"] == 61.5
+    assert row["sio2_pct"] == 4.4
 
 
 def test_ore_editor_preferences_save_writes_yaml(monkeypatch) -> None:

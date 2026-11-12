@@ -9,7 +9,6 @@ import { FakeSource } from '../live/fake-source.ts';
 import { LiveStream } from '../live/stream.svelte.ts';
 import { sampleLiveInputs } from '../inputs/sample.ts';
 import fixture from '../optimiser/fixtures/result.json';
-import { chargingRows, fuelRows, slagRows } from './bmo.ts';
 import { PlanPage, type PlanApi } from './plan.svelte.ts';
 import {
 	builtFrom,
@@ -22,11 +21,8 @@ import {
 	fuelLine,
 	impliedText,
 	initialRun,
-	lpRunParams,
 	oreConstraintRows,
-	planRows,
 	planRunParams,
-	planTargets,
 	recomputeParams,
 	runChip,
 	runLabel,
@@ -121,78 +117,6 @@ describe('the plan shown', () => {
 	});
 });
 
-describe('planRows', () => {
-	const plan = result.plan!;
-	const rows = planRows(plan);
-
-	it('carries page 11’s figures into page 9’s Blend tab: shares, tonnes, prices, flux added, costs', () => {
-		expect(rows.feasible).toBe(true);
-		expect(rows.ores!.map((o) => [o.ore_name, o.share_pct])).toEqual(
-			plan.blend.map((b) => [b.name, b.share_wet_pct])
-		);
-		expect(rows.ores![0]!.quantity_t_d).toBeCloseTo(2261.43, 2);
-		expect(rows.ores![0]!.price_rs_t).toBe(8724);
-		expect(rows.flux_t_d).toEqual({ Limestone: plan.flux[0]!.t_d });
-		expect(rows.total_qty_t_d).toBe(plan.charging.ferrous_t_d);
-		expect(rows.total_cost_rs_thm).toBe(plan.cost.total_rs_thm);
-		expect(rows.ore_cost_rs_thm).toBe(plan.cost.ore_rs_thm);
-		expect(rows.fuel_cost_rs_thm).toBe(plan.cost.fuel_rs_thm);
-		expect(rows.flux_cost_rs_thm).toBe(plan.cost.flux_rs_thm);
-		expect(rows.fe_t_pct).toBe(plan.burden_fe_wet_pct);
-	});
-
-	it('fills the Fuel tab with the coke rate dry and as charged, PCI and nut coke held, no correction rows', () => {
-		const fuel = fuelRows(rows, { engine: true, cokeDry: plan.fuel.coke_dry_kg_thm, certainty: 'High' });
-		expect(fuel.map((r) => r.id)).toEqual(['fuel', 'coke_dry', 'coke', 'nut_coke', 'pci', 'fuel_cost']);
-		expect(fuel[1]!.value).toBeCloseTo(305.68, 2);
-		expect(fuel[1]!.note).toBe('Certainty High');
-		expect(fuel[2]!.value).toBeCloseTo(307.0, 1);
-		expect(fuel[3]!.value).toBe(70);
-		expect(fuel[4]!.value).toBe(190);
-		expect(fuel[0]!.value).toBeCloseTo(567.0, 1);
-	});
-
-	it('reads the Slag tab against the limits the plan was solved under and the plant bands', () => {
-		const targets = planTargets(plan)!;
-		expect(targets).toMatchObject({
-			production_t_d: 2270,
-			slag_rate_cap_kg_thm: 340,
-			basicity_min: 1.05,
-			basicity_max: 1.15,
-			al2o3_max_pct: 20,
-			mgo_min_pct: 6.5,
-			mgo_al2o3_ratio_min: 0.345,
-			max_charges_per_hour: 6.5,
-			charge_mass_t: 26.46
-		});
-		const slag = slagRows(rows, targets, board.slag_bands);
-		const by = Object.fromEntries(slag.map((r) => [r.id, r]));
-		expect(by['slag_rate']!.status).toEqual({ kind: 'ok', label: 'Within limit' }); // 340 at the cap
-		expect(by['slag_rate']!.limit).toEqual({ max: 340 });
-		expect(by['slag_t_d']!.status).toBeUndefined(); // the engine caps the rate, not the t/d
-		expect(by['b2']!.status).toEqual({ kind: 'ok', label: 'Within limit' });
-		expect(by['b2']!.bandStatus).toEqual({ kind: 'ok', label: 'In plant band' });
-		expect(by['t_basicity']!.status).toEqual({ kind: 'info', label: 'Not enforced' });
-		expect(by['al2o3']!.status).toEqual({ kind: 'ok', label: 'Within limit' });
-		expect(by['mgo_al2o3']!.status).toEqual({ kind: 'ok', label: 'Within limit' });
-	});
-
-	it('reads the Charging tab against the charging limits', () => {
-		const charging = chargingRows(rows, planTargets(plan));
-		const by = Object.fromEntries(charging.map((r) => [r.id, r]));
-		expect(by['charges']!.value).toBeCloseTo(6.44, 2);
-		expect(by['charges']!.status).toEqual({ kind: 'ok', label: 'Within limit' });
-		expect(by['charges']!.note).toBe('26.5 t burden per charge');
-		expect(by['burden']!.status).toBeUndefined();
-		expect(by['coke_t']!.value).toBeCloseTo(696.9, 1);
-		expect(by['flux_rate']!.value).toBeCloseTo(13.68, 2);
-	});
-
-	it('names the plan without limits as having none', () => {
-		expect(planTargets({ ...plan, limits: null })).toBeNull();
-	});
-});
-
 describe('certainty, why and provenance', () => {
 	const plan = result.plan!;
 
@@ -208,12 +132,12 @@ describe('certainty, why and provenance', () => {
 	});
 
 	it('writes the binding limits in plant words, and the limits broken', () => {
-		expect(whyLine(plan)).toBe('Limited by CaO/SiO₂ floor and slag rate cap.');
+		expect(whyLine(plan)).toBe('Limited by Al₂O₃ cap, CaO/SiO₂ floor and slag rate cap.');
 		expect(whyLine({ ...plan, limited_by: 'pellet stock' })).toBe('Limited by pellet stock.');
 		expect(whyLine({ ...plan, limited_by: '' })).toBe('No limit is binding.');
 		expect(
 			whyLine({ ...plan, violations: [{ limit: 'slag cap', label: 'slag rate cap', amount: 3.456 }] })
-		).toBe('Limited by CaO/SiO₂ floor and slag rate cap. Breaks slag rate cap by 3.46.');
+		).toBe('Limited by Al₂O₃ cap, CaO/SiO₂ floor and slag rate cap. Breaks slag rate cap by 3.46.');
 	});
 
 	it('names the as-of times the plan was built from', () => {
@@ -275,16 +199,6 @@ describe('the constraints form', () => {
 		expect(recomputeParams({ ...emptyConstraints(), production: 2250, maxChargesPerHour: 6.4 })).toEqual({
 			mode: 'step1',
 			limits: { charges_per_h: 6.4 }
-		});
-	});
-
-	it('makes page 9’s request from the same fields', () => {
-		const form = { ...emptyConstraints(), production: 2250, slagRateMax: 330, chargeMass: 26.4, mgoMin: 7 };
-		expect(lpRunParams(form, null)).toEqual({
-			target_production_mt: 2250,
-			target_slag_rate_kg_per_thm: 330,
-			target_slag_mgo_min_pct: 7,
-			charge_mass_mt: 26.4
 		});
 	});
 

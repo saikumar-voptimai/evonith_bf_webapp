@@ -238,9 +238,11 @@ def shipped_info() -> CalibrationInfo:
     return CalibrationInfo(fallback_calibration(), None, "live", ("2026-10-13", "2026-10-26"), 40, "40 shifts", [])
 
 
-def test_step2_runs_strata_and_fixed_at_the_current_production_on_the_days_calibration(
+def test_step2_runs_fixed_and_strata_at_the_configured_target_on_the_days_calibration(
     store, day_dir, monkeypatch
 ) -> None:
+    """The scheduled Step 2 runs at the configured target (2,270 t/d), not the twin window's production
+    (user decision 11 Nov 2026), Fixed-ω first; a stored twin window changes nothing."""
     monkeypatch.setattr(optimiser, "compute_mode", fake_compute)
     day_calibration.save(shipped_info(), day_calibration.today(), made_at=datetime.now(UTC), job_id="cal-1")
     end = pd.Timestamp.now(tz="UTC").floor("h") - pd.Timedelta(hours=1)
@@ -253,23 +255,23 @@ def test_step2_runs_strata_and_fixed_at_the_current_production_on_the_days_calib
         asyncio.run(optimiser_kind.step2(job, NoParams()))
     job, _ = context("optimiser.step2", rec, attempt=CATALOG["optimiser.step2"].max_tries)
     out = asyncio.run(optimiser_kind.step2(job, NoParams()))
-    assert out["production_t_d"] == 2280.0 and out["production_source"].startswith("twin window")
-    assert [r["omega_mode"] for r in out["runs"]] == ["strata", "fixed"]
-    assert [r["coke_kg_thm"] for r in out["runs"]] == [301.0, 303.0]
+    assert out["production_t_d"] == 2270.0 and out["production_source"] == "configured default"
+    assert [r["omega_mode"] for r in out["runs"]] == ["fixed", "strata"]
+    assert [r["coke_kg_thm"] for r in out["runs"]] == [303.0, 301.0]
     runs = store.optimiser.recent()
     assert len(runs) == 2 and {r.trigger for r in runs} == {"schedule"} and {r.job_id for r in runs} == {rec.id}
     inputs = runs[0].inputs
     assert inputs["calibration"]["basis"] == "day" and inputs["calibration"]["made_at"]
-    assert inputs["production_target_t_d"] == 2280.0 and runs[0].versions["calibration_basis"] == "day"
+    assert inputs["production_target_t_d"] == 2270.0 and runs[0].versions["calibration_basis"] == "day"
     assert inputs["yard_source"] == "reference"  # the last try runs on the reference, labelled
 
 
-def test_step2_without_a_current_window_takes_page_11s_production(store, day_dir, monkeypatch) -> None:
+def test_step2_without_a_current_window_takes_the_configured_target(store, day_dir, monkeypatch) -> None:
     monkeypatch.setattr(optimiser, "compute_mode", fake_compute)
     rec = record("optimiser.step2", slot=datetime.now(UTC))
     job, _ = context("optimiser.step2", rec, attempt=CATALOG["optimiser.step2"].max_tries)
     out = asyncio.run(optimiser_kind.step2(job, NoParams()))
-    assert "no current production: no twin window stored" in out["production_source"]
+    assert out["production_t_d"] == 2270.0 and out["production_source"] == "configured default"
     assert store.optimiser.recent()[0].inputs["calibration"]["basis"] == "live"  # no calibration of today yet
     assert "calibration.nightly" in store.optimiser.recent()[0].inputs["calibration"]["note"]
 

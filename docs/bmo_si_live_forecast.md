@@ -4,6 +4,10 @@ The production HM Si model is an advisory furnace forecast. It does not change
 blend feasibility, optimiser cost or the charged-coke forecast. The retired
 proposed-blend Si model is no longer used by BMO.
 
+Since SV-1.5 (27 Oct 2026) the twin-worker issues the forecast (`forecast.si`, every 5 min IST,
+`services/forecasts.py`) into the ledger `src/storage/bmo_si_forecast/`; page 9 and `GET /api/bmo/forecasts/si`
+read it (`setting_bmo.yml → bmo.forecast_issuer`).
+
 ## What the model predicts
 
 A format-v2 deployment issues four values every five minutes: Si if sampled

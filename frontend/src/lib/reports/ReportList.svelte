@@ -36,9 +36,11 @@ action that reports the running shift. Not printed.
 		reports: ShiftReports;
 		view: ReportsView;
 		onview: (view: ReportsView) => void;
+		/** A strip above the report (the days side by side, scrolling sideways) instead of a column beside it. */
+		horizontal?: boolean;
 	}
 
-	let { reports, view, onview }: Props = $props();
+	let { reports, view, onview, horizontal = false }: Props = $props();
 
 	const today = istDay(new Date());
 	const rows = $derived(reports.list ?? []);
@@ -145,7 +147,7 @@ action that reports the running shift. Not printed.
 		{#if reports.listState.error}
 			<p class="warn">Refresh failed; showing the last list.</p>
 		{/if}
-		<div class="days">
+		<div class={['days', horizontal && 'row']}>
 			{#each days as day (day.date)}
 				<section class="day" aria-label={day.label}>
 					<h3 class="day-title">{day.label}</h3>
@@ -344,5 +346,17 @@ action that reports the running shift. Not printed.
 	.when {
 		font-size: 0.75rem;
 		color: var(--vo-text-muted);
+	}
+	/* The strip (user decision 12 Nov 2026): the report takes the full width, the recent days sit in one row. */
+	.days.row {
+		display: flex;
+		gap: var(--vo-space-4);
+		overflow-x: auto;
+		scrollbar-width: thin;
+		padding-bottom: var(--vo-space-1);
+	}
+	.days.row .day {
+		flex: 0 0 19rem;
+		min-width: 0;
 	}
 </style>

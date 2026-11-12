@@ -660,8 +660,8 @@ export interface PlanView {
 }
 
 export const MODE_LABEL: Record<string, string> = {
-	step1: 'Step 1, cheapest production',
-	step2: 'Step 2, fixed production',
+	step1: 'Cheapest production level',
+	step2: 'Fixed production',
 	max_production: 'Maximum production'
 };
 export const OMEGA_LABEL: Record<string, string> = { strata: 'STRATA-ω', fixed: 'Fixed-ω' };

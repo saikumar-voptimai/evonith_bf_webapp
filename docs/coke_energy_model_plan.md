@@ -1,5 +1,12 @@
 # Coke Energy Model — plan and status
 
+> **Status (10 Nov 2026): plan of 15 Oct 2026, kept as the decision record of step 1.** Step 1 (the page) is as
+> described below. The proposed next steps were delivered in other forms and are documented in CLAUDE.md sections
+> 11–12: the what-if (step 2) as `utils/coke_energy/whatif.py` and the admin page `/admin/what-if`; the blend and
+> production optimisation (steps 3–4) as the Burden & Fuel Optimiser (`docs/burden_fuel_optimiser.md`); the HMT
+> forecast (step 5) as `utils/coke_energy/hmt_forecast.py` behind its gate; the shaft-efficiency model (step 6) as
+> STRATA-ω. Blast moisture now comes from Open-Meteo (DATA-11), which closes open item 5 below.
+
 BF-02 mass and energy balance, brought into the app as its own page: **Coke Energy Model**
 (`src/custom_pages/10_Coke_Energy.py`). The model itself was built in the Claude web app (14–15 Oct 2026) and is kept
 almost unchanged in `src/utils/coke_energy/`. Delivery is step by step; each step is approved before the next starts.

@@ -19,3 +19,5 @@ Basis: charged masses by material from `charge_data`, each material's lab chemis
 
 `python scripts/replay_slag_vs_lab.py --start 2025-09-01 --out docs/slag_replay_vs_lab.md`
 
+
+**Decision, 11 Nov 2026.** Page 9 and the engine hold the plant burden sheet's dust row (530 kg per charge, CaO 5.63 %, MgO 3.57 %) constant, to match the client's burden sheets (`setting_bmo.yml` → `data_sources.dust_quantity_source: configured`). The measured streams of the "Page 9 now" column stay configured but off; `dust_quantity_source: dpr` with the two rows enabled restores them. The same day TiO₂ was taken out of the slag total as well (`slag_balance.tio2_to_slag: false`), so both pages read as the UAT page 9 ("Page 9 before" column); the replay's "TiO2 in" results describe the earlier setting.

@@ -70,10 +70,32 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_mode_override="validation")
 
 
+#: Composition fields of an ore row (dry %, as the laboratory reports them): set by administrators only (user
+#: decision 12 Nov 2026), laid over the laboratory's values by every optimiser until cleared.
+ORE_CHEMISTRY_FIELDS = (
+    "fe_t_pct", "sio2_pct", "al2o3_pct", "cao_pct", "mgo_pct", "loi_pct", "moisture_pct", "p_pct", "tio2_pct",
+    "mno_pct", "na2o_pct", "k2o_pct", "feo_pct",
+)  # fmt: skip
+
+
 class OreInputRow(_Section):
     price_rs_per_mt: float | None = Field(None, description="Price per wet tonne, Rs/t")
     min_share_pct: float | None = Field(None, description="Lower bound of the wet share of the ferrous charge, %")
     max_share_pct: float | None = Field(None, description="Upper bound of the wet share of the ferrous charge, %")
+    fe_t_pct: float | None = Field(None, ge=0, le=100, description="Total Fe of the dry ore (administrators), %")
+    sio2_pct: float | None = Field(None, ge=0, le=100, description="SiO₂ of the dry ore (administrators), %")
+    al2o3_pct: float | None = Field(None, ge=0, le=100, description="Al₂O₃ of the dry ore (administrators), %")
+    cao_pct: float | None = Field(None, ge=0, le=100, description="CaO of the dry ore (administrators), %")
+    mgo_pct: float | None = Field(None, ge=0, le=100, description="MgO of the dry ore (administrators), %")
+    loi_pct: float | None = Field(None, ge=0, le=100, description="Loss on ignition (administrators), %")
+    moisture_pct: float | None = Field(None, ge=0, le=100, description="Moisture (administrators), %")
+    p_pct: float | None = Field(None, ge=0, le=100, description="Phosphorus of the dry ore (administrators), %")
+    tio2_pct: float | None = Field(None, ge=0, le=100, description="TiO₂ of the dry ore (administrators), %")
+    mno_pct: float | None = Field(None, ge=0, le=100, description="MnO of the dry ore (administrators), %")
+    na2o_pct: float | None = Field(None, ge=0, le=100, description="Na₂O of the dry ore (administrators), %")
+    k2o_pct: float | None = Field(None, ge=0, le=100, description="K₂O of the dry ore (administrators), %")
+    feo_pct: float | None = Field(None, ge=0, le=100, description="FeO of the dry ore (administrators), %")
+    chemistry_source: str | None = Field(None, description="manual: the composition above was entered on a page")
 
 
 class OreEditorInputs(_Section):
@@ -247,6 +269,17 @@ def replace_sections(sections: Mapping[str, Any]) -> Callable[[dict[str, Any]], 
         return {k: v for k, v in out.items() if not (k in sections and sections[k] is None)}
 
     return change
+
+
+def ore_chemistry_set(sections: Mapping[str, Any]) -> list[str]:
+    """The ore ids whose rows in ``sections`` (None values ignored) carry a composition value: only an administrator
+    may save those (the API refuses the request for other roles)."""
+    rows = ((sections.get("ore_editor") or {}).get("rows") or {}) if sections.get("ore_editor") else {}
+    return sorted(
+        str(ore_id)
+        for ore_id, row in dict(rows).items()
+        if isinstance(row, Mapping) and any(row.get(k) is not None for k in ORE_CHEMISTRY_FIELDS)
+    )
 
 
 class InvalidInputs(ValueError):

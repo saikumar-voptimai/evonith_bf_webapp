@@ -112,9 +112,16 @@ centre and a legend with values and shares beside the ring. For comparing close 
 	}
 	.side {
 		flex: 1;
-		min-width: 12rem;
+		min-width: 15rem;
 	}
 	.side :global(.legend) {
 		flex-direction: column;
+	}
+	.side :global(.entry) {
+		width: 100%;
+	}
+	.side :global(.entry .name) {
+		flex: 1;
+		min-width: 0;
 	}
 </style>

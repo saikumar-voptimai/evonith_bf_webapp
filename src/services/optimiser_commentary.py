@@ -90,6 +90,7 @@ def run_context(
         settings=(plan or {}).get("settings") or inputs.get("settings") or {},
         limits=(plan or {}).get("limits") or inputs.get("limits") or {},
         yard_source=str(inputs.get("yard_source") or "reference"),
+        slag_basis=yard.get("slag_basis"),
         calibration=dict(
             source=cal.get("source"),
             window=cal.get("window", ""),

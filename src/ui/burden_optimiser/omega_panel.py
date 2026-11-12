@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 FILTERS = {"low": "Exclude Investigate", "any": "Any (incl. Investigate)", "medium": "Medium or better",
            "high": "High only", "auto": "Auto: rule + review"}
-MODELS = {"blend": "STRATA-ω (blend-dependent)", "fixed": "Fixed-ω (Rist baseline)"}
+MODELS = {"fixed": "Fixed-ω (Rist baseline)", "blend": "STRATA-ω (blend-dependent)"}   # Fixed-ω first = the default
 RISK = {0.0: "None (expected cost)", 1.0: "Moderate (+1 σ)", 1.28: "Cautious (+1.28 σ)", 1.64: "Strict (+1.64 σ)"}
 BADGE = {"High": ":green-badge[High certainty]", "Medium": ":orange-badge[Medium certainty]",
          "Low": ":red-badge[Low certainty]", "Investigate": ":violet-badge[Investigate: trial before adoption]",

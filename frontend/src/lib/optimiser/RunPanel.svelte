@@ -2,17 +2,24 @@
 @component
 The run form of the Burden & Fuel Optimiser (page 11's "Optimise" section): what to optimise, shaft efficiency and its
 STRATA-ω options, calibration and yard, the Step 2 production target, thermal target and fixed fuels, the controls held
-for a Step 2 plan and the day limits. An empty field keeps page 11's default at run time; the hint under each field
+for a Step 2 plan and the day limits. An empty field keeps the configured default at run time; the hint under each field
 gives the value the shown run used and, for the blast and gas limits, today's median. Supervisors start the run
 (`optimiser.run`, progress on the stream).
 -->
 <script lang="ts">
 	import Play from '@lucide/svelte/icons/play';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Save from '@lucide/svelte/icons/save';
 	import Button from '../components/Button.svelte';
+	import DataTable from '../components/DataTable.svelte';
 	import JobButton from '../components/JobButton.svelte';
 	import NumberInput from '../components/NumberInput.svelte';
 	import Panel from '../components/Panel.svelte';
+	import type { Column } from '../components/table.ts';
+	import { toasts } from '../components/toast.svelte.ts';
+	import { formatQuantity } from '../format/number.ts';
+	import { jobErrorText } from '../live/jobs.svelte.ts';
+	import type { Schemas } from '../api/client.ts';
 	import { runProgress } from '../twin/live-twin.ts';
 	import OverrideField from './OverrideField.svelte';
 	import type { OptimiserPage } from './optimiser.svelte.ts';
@@ -21,6 +28,12 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 		CONTROL_FIELDS,
 		countSet,
 		defaultForm,
+		DUST_FIELDS,
+		DUST_ROW_KEY,
+		dustInputRows,
+		dustRowWithOverrides,
+		dustSection,
+		dustStreamsSet,
 		expectedSeconds,
 		fieldHint,
 		MODES,
@@ -28,6 +41,7 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 		PRODUCTION_FIELD,
 		SLAG_LIMIT_FIELDS,
 		THERMAL_FIELDS,
+		type DustRow,
 		type FieldSpec,
 		type OptimiserResult
 	} from './optimiser.ts';
@@ -87,11 +101,87 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 		hintCase && shown?.production_target_t_d
 			? fieldHint(PRODUCTION_FIELD, shown.production_target_t_d, false) +
 					(hintCase.production_source ? ` (${hintCase.production_source})` : '')
-			: 'Empty: today’s production (latest twin window or the regime median)'
+			: 'Empty: the configured target, 2,270 t/d'
 	);
+
+	// Top-gas dust and fuel ash (page 11's expander): the streams in force, entries for this run, save as operator inputs.
+	const inputsDoc = $derived(page.inputs.data?.inputs ?? null);
+	const dustRows = $derived(dustInputRows(inputsDoc, shown));
+	const dustCount = $derived(dustStreamsSet(form).length);
+	let savingDust = $state(false);
+
+	function dustValue(id: string, key: string): number | null {
+		const v = (form.dust[id] ?? {})[key as keyof (typeof form.dust)[string]];
+		return typeof v === 'number' ? v : null;
+	}
+
+	function setDust(id: string, key: string, value: number | boolean | null): void {
+		const entry = { ...(page.form.dust[id] ?? {}) } as Record<string, number | boolean | null>;
+		if (value === null) delete entry[key];
+		else entry[key] = value;
+		page.form.dust = { ...page.form.dust, [id]: entry };
+	}
+
+	function dustEnabled(row: DustRow): boolean {
+		const v = form.dust[row.id]?.enabled;
+		return typeof v === 'boolean' ? v : row.enabled;
+	}
+
+	function dustHint(row: DustRow, f: FieldSpec): string {
+		const inForce = row[DUST_ROW_KEY[f.key] ?? 'kgPerCharge'];
+		return `In force: ${formatQuantity(typeof inForce === 'number' ? inForce : null, f.digits, f.unit)}`;
+	}
+
+	async function saveDust(): Promise<void> {
+		savingDust = true;
+		try {
+			let doc = { ...(page.inputs.data?.inputs ?? {}) };
+			for (const row of dustRows)
+				doc = { ...doc, dust_editor: dustSection(doc, dustRowWithOverrides(row, form.dust[row.id])) };
+			await page.saveInputs({ dust_editor: doc.dust_editor }, 'Blend Simulator: dust inputs');
+			page.form.dust = {};
+			toasts.ok(
+				'Dust inputs saved',
+				`Version ${page.inputs.data?.version ?? ''}: every optimiser reads it from the next run.`
+			);
+		} catch (e) {
+			toasts.critical('Dust inputs not saved', jobErrorText(e));
+		} finally {
+			savingDust = false;
+		}
+	}
+
+	type FuelAsh = Schemas['FuelAshRow'];
+	const fuelAsh = $derived(shown?.plan?.slag.fuel_ash ?? []);
+	const pct = (key: string, label: string, digits = 2): Column<FuelAsh> => ({
+		key,
+		label,
+		unit: '%',
+		numeric: true,
+		digits,
+		sortable: false
+	});
+	const fuelAshColumns: Column<FuelAsh>[] = [
+		{ key: 'fuel', label: 'Fuel', sortable: false },
+		pct('moisture_pct', 'Moisture'),
+		pct('ash_pct', 'Ash'),
+		pct('sio2_pct', 'SiO₂ of ash'),
+		pct('al2o3_pct', 'Al₂O₃ of ash'),
+		pct('cao_pct', 'CaO of ash'),
+		pct('mgo_pct', 'MgO of ash'),
+		pct('fe2o3_pct', 'Fe₂O₃ of ash'),
+		pct('tio2_pct', 'TiO₂ of ash'),
+		pct('alkali_pct', 'Na₂O + K₂O of ash'),
+		pct('s_pct', 'S of fuel', 3),
+		pct('p_pct', 'P of fuel', 3)
+	];
 </script>
 
-<Panel title="Run the optimiser" icon={Play} note="Empty fields take page 11’s defaults when the run starts.">
+<Panel
+	title="Run the optimiser"
+	icon={Play}
+	note="Empty fields take the configured defaults when the run starts."
+>
 	<form class="form" onsubmit={(e) => e.preventDefault()}>
 		<fieldset class="choice">
 			<legend>What to optimise</legend>
@@ -111,13 +201,13 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 			</summary>
 			<fieldset class="choice">
 				<legend>Shaft efficiency</legend>
+				<label class={['option', !strata && 'on']}>
+					<input type="radio" name="omega" value="fixed" bind:group={page.form.omega_mode} />
+					<span>Fixed-ω (calibration, ASM-01; the default)</span>
+				</label>
 				<label class={['option', strata && 'on']}>
 					<input type="radio" name="omega" value="strata" bind:group={page.form.omega_mode} />
 					<span>STRATA-ω (blend-dependent, ASM-18)</span>
-				</label>
-				<label class={['option', !strata && 'on']}>
-					<input type="radio" name="omega" value="fixed" bind:group={page.form.omega_mode} />
-					<span>Fixed-ω (calibration, ASM-01)</span>
 				</label>
 			</fieldset>
 			{#if strata}
@@ -194,6 +284,75 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 					/>
 				{/each}
 			</div>
+		</details>
+
+		<details>
+			<summary>
+				Top-gas dust and fuel ash
+				<span class="count">{dustCount} set</span>
+			</summary>
+			<p class="muted">
+				Dust is deducted per charge of the plan’s blend before the slag forms. In force: the plant burden
+				sheet’s row unless saved as operator inputs. Entries here apply to this run only.
+			</p>
+			{#if dustRows.length === 0}
+				<p class="muted">No stream listed yet: the streams come with the shown run’s yard.</p>
+			{/if}
+			{#each dustRows as row (row.id)}
+				<div class="stream">
+					<label class="check">
+						<input
+							type="checkbox"
+							checked={dustEnabled(row)}
+							onchange={(e) =>
+								setDust(
+									row.id,
+									'enabled',
+									e.currentTarget.checked === row.enabled ? null : e.currentTarget.checked
+								)}
+						/>
+						<span><strong>{row.name}</strong> · deducted</span>
+						{#if row.source}<span class="count">{row.source}</span>{/if}
+					</label>
+					<div class="grid">
+						{#each DUST_FIELDS as f (f.key)}
+							<OverrideField
+								spec={f}
+								value={dustValue(row.id, f.key)}
+								hint={dustHint(row, f)}
+								onchange={(key, v) => setDust(row.id, key, v)}
+								onvalid={(key, valid) => onvalid(`${row.id}.${key}`, valid)}
+							/>
+						{/each}
+					</div>
+				</div>
+			{/each}
+			{#if canRun && dustRows.length}
+				<div class="actions">
+					<Button
+						size="sm"
+						icon={Save}
+						disabled={savingDust || dustCount === 0}
+						onclick={() => void saveDust()}>Save as operator inputs</Button
+					>
+					<span class="count"
+						>Writes the streams above, with the entries, as a new version shared with the Streamlit pages.</span
+					>
+				</div>
+			{/if}
+			{#if fuelAsh.length}
+				<DataTable
+					caption="Fuel ash of the shown run: the calibration’s analyses; alkalis, S and P from the Blend Mix Optimiser’s fuel-ash inputs"
+					rows={fuelAsh}
+					columns={fuelAshColumns}
+					rowKey={(r) => r.fuel}
+					dense
+				/>
+			{:else}
+				<p class="muted">
+					Fuel-ash analyses are shown with a run (the calibration’s coke, nut coke and PCI).
+				</p>
+			{/if}
 		</details>
 
 		{#if !process}
@@ -284,13 +443,24 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 	.form {
 		display: grid;
 		gap: var(--vo-space-3);
+		min-width: 0;
+	}
+	/* a wide table inside a section scrolls within it; it never widens the form past its column */
+	.form > details,
+	.form > details > * {
+		min-width: 0;
+		max-width: 100%;
 	}
 	.choice {
 		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
 		gap: 6px;
 		margin: 0;
 		padding: 0;
 		border: 0;
+	}
+	.choice legend {
+		grid-column: 1 / -1;
 	}
 	legend,
 	.select > span {
@@ -329,6 +499,8 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 		display: grid;
 	}
 	.select select {
+		width: 100%;
+		min-width: 0;
 		min-height: 40px;
 		padding: 0 8px;
 		border: 1px solid var(--vo-border-input);
@@ -373,5 +545,25 @@ gives the value the shown run used and, for the blast and gas limits, today's me
 		flex-wrap: wrap;
 		align-items: flex-start;
 		gap: var(--vo-space-2) var(--vo-space-3);
+	}
+	.stream {
+		display: grid;
+		gap: var(--vo-space-2);
+		padding: var(--vo-space-2) 0;
+		border-top: 1px solid var(--vo-border);
+	}
+	.check {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--vo-space-2);
+		min-height: 32px;
+		font-size: var(--vo-fs-body);
+	}
+	.check input {
+		width: 18px;
+		height: 18px;
+		margin: 0;
+		accent-color: var(--vo-accent-ink);
 	}
 </style>

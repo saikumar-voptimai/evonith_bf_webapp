@@ -24,7 +24,23 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from services.live_inputs import LiveInputsRef
-from utils.burden_engine.scenarios import binding_table, limit_label, limit_labels, plan_sentence, plan_tiles
+from utils.burden_engine.scenarios import (
+    binding_table,
+    limit_label,
+    limit_labels,
+    material_rows,
+    plan_sentence,
+    plan_tiles,
+    slag_balance_table,
+    slag_basis_note,
+    slag_components_table,
+    slag_detail_of,
+    slag_removals_table,
+    slag_rollup_table,
+    dust_table,
+    fuel_ash_table,
+)
+from utils.coke_energy.slag_basis import SLAG_KEYS
 
 
 class BlendRow(BaseModel):
@@ -36,6 +52,14 @@ class BlendRow(BaseModel):
     dry_kg_thm: float | None = Field(None, description="Charged dry, kg/tHM")
     t_d: float | None = Field(None, description="Charged wet per day, t/d")
     price_rs_t: float | None = Field(None, description="Price of the wet material in the case's yard, Rs/t")
+    fe_kg_thm: float | None = Field(None, description="Fe charged with it (page 9's Fe (MT) per tHM: dry kg × total Fe %), kg/tHM")
+    slag_kg_thm: float | None = Field(
+        None,
+        description="Slag-forming oxides charged with it (page 9's Slag (MT) per tHM: SiO₂ + Al₂O₃ + CaO + MgO + TiO₂ + "
+        "MnO + Na₂O + K₂O on the dry mass; None on the calibration's own slag rule), kg/tHM",
+    )
+    kg_per_charge: float | None = Field(None, description="Wet mass per charge at the plan's hot metal per charge, kg")
+    cost_rs_thm: float | None = Field(None, description="Wet kg/tHM × price, Rs/tHM")
 
 
 class FluxRow(BaseModel):
@@ -44,6 +68,83 @@ class FluxRow(BaseModel):
     wet_kg_thm: float = Field(..., description="Charged wet, kg/tHM")
     t_d: float | None = Field(None, description="Charged wet per day, t/d")
     price_rs_t: float | None = Field(None, description="Price of the wet flux in the case's yard, Rs/t")
+    slag_kg_thm: float | None = Field(None, description="Slag-forming oxides charged with it (as the blend rows), kg/tHM")
+    kg_per_charge: float | None = Field(None, description="Wet mass per charge at the plan's hot metal per charge, kg")
+    cost_rs_thm: float | None = Field(None, description="Wet kg/tHM × price, Rs/tHM")
+
+
+class SlagComponent(BaseModel):
+    key: str = Field(..., description="CaO, SiO2, MgO, Al2O3, FeO, MnO, TiO2, S, alk (Na₂O + K₂O), CaF2 or Slag (the total)")
+    label: str
+    kg_thm: float = Field(..., description="In the slag, kg/tHM")
+    pct: float | None = Field(None, description="Of the slag, %")
+
+
+class SlagBalanceRow(BaseModel):
+    """Where one component goes (page 9's per-oxide balance), kg/tHM. Fe, Mn and Ti are charged as the element and
+    leave as FeO, MnO and TiO₂ (``slag`` in the oxide; ``hot_metal_gas`` of those rows in the element)."""
+
+    component: str
+    ore_kg_thm: float = Field(..., description="Charged by the ferrous materials, kg/tHM")
+    flux_kg_thm: float = Field(..., description="Charged by the flux, kg/tHM")
+    fuel_ash_kg_thm: float = Field(..., description="Charged by the coke, nut coke and PCI ash, kg/tHM")
+    dust_kg_thm: float = Field(..., description="Carried away by the top-gas dust (negative), kg/tHM")
+    hot_metal_gas_kg_thm: float = Field(..., description="Taken by the hot metal or the gas (negative), kg/tHM")
+    slag_kg_thm: float = Field(..., description="Left in the slag, kg/tHM")
+
+
+class SlagRollupRow(BaseModel):
+    source: str
+    kg_thm: float = Field(
+        ..., description="Slag-forming oxides from this source (negative: taken away; the rows add up to the slag), kg/tHM"
+    )
+
+
+class SlagRemoval(BaseModel):
+    removal: str
+    rule: str
+    kg_thm: float = Field(..., description="Taken by the hot metal or the gas, kg/tHM")
+
+
+class FuelAshRow(BaseModel):
+    """Page 9's fuel-ash inputs on the plan: one fuel's rate, ash and ash analysis, and the slag it brings."""
+
+    fuel: str = Field(..., description="Coke, Nut coke or PCI")
+    wet_kg_thm: float = Field(..., description="As charged (coke the plan's, nut coke and PCI the fixed inputs), kg/tHM")
+    dry_kg_thm: float = Field(..., description="Dry, kg/tHM")
+    moisture_pct: float = Field(..., description="Moisture of the fuel, %")
+    ash_pct: float = Field(..., description="Ash of the dry fuel, %")
+    ash_kg_thm: float = Field(..., description="Ash, kg/tHM")
+    sio2_pct: float = Field(..., description="SiO₂ of the ash, %")
+    al2o3_pct: float = Field(..., description="Al₂O₃ of the ash, %")
+    cao_pct: float = Field(..., description="CaO of the ash, %")
+    mgo_pct: float = Field(..., description="MgO of the ash, %")
+    fe2o3_pct: float = Field(..., description="Fe₂O₃ of the ash, %")
+    mno_pct: float = Field(..., description="MnO of the ash, %")
+    tio2_pct: float = Field(..., description="TiO₂ of the ash, %")
+    alkali_pct: float = Field(..., description="Na₂O + K₂O of the ash, %")
+    s_pct: float = Field(..., description="Sulphur of the dry fuel, %")
+    p_pct: float = Field(..., description="Phosphorus of the dry fuel, %")
+    slag_kg_thm: float = Field(..., description="Slag-forming oxides the ash brings, kg/tHM")
+
+
+class DustStreamRow(BaseModel):
+    """One top-gas dust stream deducted on the plan (page 9's dust row)."""
+
+    id: str
+    stream: str = Field(..., description="The stream's name")
+    kg_per_charge: float | None = Field(None, description="Wet dust per charge (configured or saved), kg")
+    kg_thm: float = Field(..., description="Wet dust at the plan's charges per tHM, kg/tHM")
+    dry_kg_thm: float = Field(..., description="Dry dust, kg/tHM")
+    moisture_pct: float = Field(..., description="Moisture of the dust, %")
+    sio2_pct: float = Field(..., description="SiO₂ of the dry dust, %")
+    al2o3_pct: float = Field(..., description="Al₂O₃ of the dry dust, %")
+    cao_pct: float = Field(..., description="CaO of the dry dust, %")
+    mgo_pct: float = Field(..., description="MgO of the dry dust, %")
+    fe_pct: float = Field(..., description="Fe of the dry dust, %")
+    fe_kg_thm: float = Field(..., description="Fe carried away, kg/tHM")
+    slag_kg_thm: float = Field(..., description="Slag-forming oxides carried away, kg/tHM")
+    source: str | None = Field(None, description="Where the figure came from (plant burden sheet, DPR, saved)")
 
 
 class CostSplit(BaseModel):
@@ -78,6 +179,18 @@ class SlagView(BaseModel):
     t_basicity: float | None = Field(None, description="(CaO + MgO)/SiO₂, dimensionless")
     ib4: float | None = Field(None, description="(CaO + MgO)/(SiO₂ + Al₂O₃), dimensionless")
     mgo_al2o3: float | None = Field(None, description="MgO/Al₂O₃, dimensionless")
+    basis: str | None = Field(
+        None,
+        description="The slag basis of the plan (held hot-metal chemistry, dust deducted, minor-oxide rules); None on "
+        "the calibration's own slag rule, when the breakup below is empty",
+    )
+    dust_kg_thm: float | None = Field(None, description="Top-gas dust deducted, kg/tHM")
+    components: list[SlagComponent] = Field(default_factory=list, description="The slag's components, page 9's order, then the total")
+    balance: list[SlagBalanceRow] = Field(default_factory=list, description="Where each component goes (page 9's per-oxide balance)")
+    rollup: list[SlagRollupRow] = Field(default_factory=list, description="Slag-forming oxides per source, adding up to the slag")
+    removals: list[SlagRemoval] = Field(default_factory=list, description="What the hot metal and the gas take, with the rule")
+    fuel_ash: list[FuelAshRow] = Field(default_factory=list, description="Page 9's fuel-ash inputs on the plan (coke, nut coke, PCI)")
+    dust: list[DustStreamRow] = Field(default_factory=list, description="The top-gas dust streams deducted, per stream")
 
 
 class ChargingView(BaseModel):
@@ -216,6 +329,7 @@ class FrontierPoint(BaseModel):
     ore_flux_rs_thm: float | None = Field(None, description="Ore + flux, Rs/tHM")
     fuel_rs_thm: float | None = Field(None, description="Fuel, Rs/tHM")
     coke_dry_kg_thm: float | None = Field(None, description="Coke rate, dry, kg/tHM")
+    coke_wet_kg_thm: float | None = Field(None, description="Coke rate as charged, kg/tHM")
     fuel_rate_kg_thm: float | None = Field(None, description="Fuel rate, kg/tHM")
     slag_kg_thm: float | None = Field(None, description="Slag rate, kg/tHM")
     hbt_c: float | None = Field(None, description="Hot-blast temperature, °C")
@@ -282,6 +396,10 @@ class RunCase(BaseModel):
     limits: PlanLimits = Field(..., description="Limits used")
     settings_set: list[str] = Field(default_factory=list, description="Settings the request set (others: defaults)")
     limits_set: list[str] = Field(default_factory=list, description="Limits the request set (others: defaults)")
+    dust_set: list[str] = Field(
+        default_factory=list,
+        description="Dust streams the request set for this run (others: the operator inputs in force)",
+    )
     certainty_filter: str | None = Field(None, description="STRATA-ω certainty filter: any, low, medium, high")
     risk_k: float | None = Field(None, description="STRATA-ω risk aversion k (cost + k × σ), dimensionless")
     search_o2: bool = Field(False, description="Oxygen searched up to its limit (Step 1, maximum production)")
@@ -341,12 +459,31 @@ class YardFuel(BaseModel):
     slag_rs_t: float | None = Field(None, description="Granulated slag sale price (ASM-20), Rs/t")
 
 
+class YardDust(BaseModel):
+    """A top-gas dust stream of the slag basis the run read (page 9's dust row: the configured values with the saved
+    operator inputs laid over)."""
+
+    id: str
+    name: str
+    enabled: bool = Field(True, description="Deducted from the burden before the slag forms")
+    kg_per_charge: float | None = Field(None, description="Wet dust per charge, kg")
+    moisture_pct: float | None = Field(None, description="Moisture of the dust, %")
+    sio2_pct: float | None = Field(None, description="SiO₂ of the dry dust, %")
+    al2o3_pct: float | None = Field(None, description="Al₂O₃ of the dry dust, %")
+    cao_pct: float | None = Field(None, description="CaO of the dry dust, %")
+    mgo_pct: float | None = Field(None, description="MgO of the dry dust, %")
+    fe_pct: float | None = Field(None, description="Fe of the dry dust, %")
+    source: str | None = Field(None, description="Where the figure came from (plant burden sheet, DPR, saved)")
+
+
 class RunYard(BaseModel):
-    """The yard the run read: ferrous materials (carried or not), fluxes and fuel prices."""
+    """The yard the run read: ferrous materials (carried or not), fluxes, fuel prices and the dust streams of the
+    slag basis."""
 
     materials: list[YardMaterial] = Field(default_factory=list)
     fluxes: list[YardFlux] = Field(default_factory=list)
     fuel: YardFuel = Field(default_factory=YardFuel)
+    dust: list[YardDust] = Field(default_factory=list, description="Top-gas dust streams of the slag basis (empty on the calibration's rule)")
 
 
 class OptimiserResult(BaseModel):
@@ -456,6 +593,7 @@ def case_view(inputs: Mapping[str, Any]) -> RunCase | None:
         limits=limits_view(limits) or PlanLimits(),
         settings_set=sorted(dict(over.get("settings") or {})),
         limits_set=sorted(dict(over.get("limits") or {})),
+        dust_set=sorted(dict(over.get("dust") or {})),
         certainty_filter=_text(settings.get("certainty")) if blend else None,
         risk_k=_num(settings.get("risk_k")) if blend else None,
         search_o2=bool(inputs.get("search_o2", False)),
@@ -526,7 +664,24 @@ def yard_view(yard: Mapping[str, Any] | None) -> RunYard | None:
         pci_rs_t=_num(fu.get("pci_price")),
         slag_rs_t=_num(fu.get("slag_price")),
     )
-    return RunYard(materials=materials, fluxes=fluxes, fuel=fuel)
+    dust = [
+        YardDust(
+            id=str(d["id"]),
+            name=str(d.get("name") or d["id"]),
+            enabled=bool(d.get("enabled", True)),
+            kg_per_charge=_num(d.get("kg_per_charge")),
+            moisture_pct=_num(d.get("moist_pct")),
+            sio2_pct=_num(d.get("SiO2_pct")),
+            al2o3_pct=_num(d.get("Al2O3_pct")),
+            cao_pct=_num(d.get("CaO_pct")),
+            mgo_pct=_num(d.get("MgO_pct")),
+            fe_pct=_num(d.get("Fe_pct")),
+            source=_text(d.get("source")),
+        )
+        for d in (dict(yard.get("slag_basis") or {}).get("dust") or [])
+        if isinstance(d, Mapping) and "id" in d
+    ]
+    return RunYard(materials=materials, fluxes=fluxes, fuel=fuel, dust=dust)
 
 
 def lead_view(engine_mode: Any, plan: Mapping[str, Any] | None, today: Mapping[str, Any] | None,
@@ -578,6 +733,9 @@ def plan_view(
     c, f, s, g, ov = tiles["cost"], tiles["fuel"], tiles["slag"], tiles["charging"], tiles["overview"]
     out, st, om = r.get("out") or {}, r.get("settings") or {}, r.get("omega") or {}
     wet, dry, t_day = r.get("wet_kg") or {}, r.get("dry_kg") or {}, r.get("t_day") or {}
+    # page 9's blend-table columns per material (Fe, slag-forming oxides, kg per charge, cost); Fe and slag only with
+    # the plan's slag breakup (the Blend Mix Optimiser's basis)
+    per = {m["id"]: m for m in material_rows(r, names, prices, kinds)} if r.get("wet_kg") and r.get("P_th") else {}
     blend = sorted(
         (
             BlendRow(
@@ -589,6 +747,10 @@ def plan_view(
                 dry_kg_thm=_num(dry.get(i)),
                 t_d=_num(t_day.get(i)),
                 price_rs_t=_num((prices or {}).get(i)),
+                fe_kg_thm=_num((per.get(i) or {}).get("fe_kg")),
+                slag_kg_thm=_num((per.get(i) or {}).get("slag_kg")),
+                kg_per_charge=_num((per.get(i) or {}).get("kg_per_charge")),
+                cost_rs_thm=_num((per.get(i) or {}).get("cost_rs_thm")),
             )
             for i, share in (r.get("share_wet") or {}).items()
             if share is not None and float(share) > 0.05
@@ -602,10 +764,62 @@ def plan_view(
             wet_kg_thm=float(wet.get(i, 0.0) or 0.0),
             t_d=_num(t_day.get(i)),
             price_rs_t=_num((prices or {}).get(i)),
+            slag_kg_thm=_num((per.get(i) or {}).get("slag_kg")),
+            kg_per_charge=_num((per.get(i) or {}).get("kg_per_charge")),
+            cost_rs_thm=_num((per.get(i) or {}).get("cost_rs_thm")),
         )  # fmt: skip
         for i in flux_ids
         if float(wet.get(i, 0.0) or 0.0) >= 0.5
     ]
+    detail = slag_detail_of(r)
+    slag_extra: dict[str, Any] = {}
+    if detail:
+        comps = slag_components_table(r)
+        bal = slag_balance_table(r)
+        roll = slag_rollup_table(r)
+        rem = slag_removals_table(r)
+        keys = [*[k for k, _ in SLAG_KEYS], "Slag"]
+        slag_extra = dict(
+            basis=slag_basis_note(r),
+            dust_kg_thm=_num(detail.get("dust_kg")),
+            components=[
+                SlagComponent(key=k, label=str(x.component), kg_thm=float(x.kg_per_thm), pct=_num(x.pct))
+                for k, x in zip(keys, comps.itertuples())
+            ],
+            balance=[
+                SlagBalanceRow(
+                    component=str(x.component),
+                    ore_kg_thm=float(x.ore),
+                    flux_kg_thm=float(x.flux),
+                    fuel_ash_kg_thm=float(x.fuel_ash),
+                    dust_kg_thm=float(x.dust),
+                    hot_metal_gas_kg_thm=float(x.hot_metal_gas),
+                    slag_kg_thm=float(x.slag),
+                )
+                for x in bal.itertuples()
+            ],
+            rollup=[SlagRollupRow(source=str(x.source), kg_thm=float(x.kg_per_thm)) for x in roll.itertuples()],
+            removals=[SlagRemoval(removal=str(x.removal), rule=str(x.rule), kg_thm=float(x.kg_per_thm)) for x in rem.itertuples()],
+            fuel_ash=[
+                FuelAshRow(
+                    fuel=str(x.fuel), wet_kg_thm=float(x.wet_kg), dry_kg_thm=float(x.dry_kg), moisture_pct=float(x.moist_pct),
+                    ash_pct=float(x.ash_pct), ash_kg_thm=float(x.ash_kg), sio2_pct=float(x.sio2_pct), al2o3_pct=float(x.al2o3_pct),
+                    cao_pct=float(x.cao_pct), mgo_pct=float(x.mgo_pct), fe2o3_pct=float(x.fe2o3_pct), mno_pct=float(x.mno_pct),
+                    tio2_pct=float(x.tio2_pct), alkali_pct=float(x.alk_pct), s_pct=float(x.s_pct), p_pct=float(x.p_pct),
+                    slag_kg_thm=float(x.slag_kg),
+                )
+                for x in fuel_ash_table(r).itertuples()
+            ],
+            dust=[
+                DustStreamRow(
+                    id=str(x.id), stream=str(x.stream), kg_per_charge=_num(x.kg_per_charge), kg_thm=float(x.kg_per_thm),
+                    dry_kg_thm=float(x.dry_kg), moisture_pct=float(x.moist_pct), sio2_pct=float(x.sio2_pct),
+                    al2o3_pct=float(x.al2o3_pct), cao_pct=float(x.cao_pct), mgo_pct=float(x.mgo_pct), fe_pct=float(x.fe_pct),
+                    fe_kg_thm=float(x.fe_kg), slag_kg_thm=float(x.slag_kg), source=_text(x.source),
+                )
+                for x in dust_table(r).itertuples()
+            ],
+        )
     sigma_cost = _num((r.get("cost") or {}).get("sigma"))
     blend_mode = om.get("mode") == "blend"
     bt = binding_table(r)
@@ -653,6 +867,7 @@ def plan_view(
             t_basicity=_num(s["t_basicity"]),
             ib4=_num(s["ib4"]),
             mgo_al2o3=_num(s["mgo_al2o3"]),
+            **slag_extra,
         ),
         charging=ChargingView(
             coke_t_d=g["coke_t"],
@@ -727,6 +942,7 @@ def _frontier(rows: Sequence[Mapping[str, Any]] | None) -> list[FrontierPoint]:
             ore_flux_rs_thm=_num(x.get("ore_flux_rs_thm")),
             fuel_rs_thm=_num(x.get("fuel_rs_thm")),
             coke_dry_kg_thm=_num(x.get("coke_dry")),
+            coke_wet_kg_thm=_num(x.get("coke_wet")),
             fuel_rate_kg_thm=_num(x.get("fuel_rate")),
             slag_kg_thm=_num(x.get("slag")),
             hbt_c=_num(x.get("HBT")),

@@ -12,16 +12,7 @@ import type { StatusKind } from '../components/status.ts';
 import { formatNumber, formatQuantity, isNumber } from '../format/number.ts';
 import type { LiveInputs } from '../inputs/inputs.ts';
 import { istDateTime } from '../time/format.ts';
-import {
-	emptyForm,
-	runParams,
-	type BmoOreRow,
-	type BmoPlan,
-	type BmoRunParams,
-	type Chip,
-	type RunForm,
-	type TabTargets
-} from './bmo.ts';
+import type { Chip } from './bmo.ts';
 
 export type PlanBoard = Schemas['BmoPlanBoard'];
 export type PlanRun = Schemas['BmoPlanRun'];
@@ -137,25 +128,6 @@ export function recomputeParams(form: ConstraintsForm): PlanRunParams {
 }
 
 /** The same constraints as a request of page 9's optimiser (`POST /api/bmo/runs`). */
-export function lpRunParams(
-	form: ConstraintsForm,
-	implied: ImpliedProduction | null | undefined
-): Partial<BmoRunParams> {
-	const lp: RunForm = {
-		...emptyForm(),
-		production: chosenProduction(form, implied),
-		slagRateCap: form.slagRateMax,
-		basicityMin: form.basicityMin,
-		basicityMax: form.basicityMax,
-		al2o3Max: form.al2o3Max,
-		mgoMin: form.mgoMin,
-		mgoAl2o3Min: form.mgoAl2o3Min,
-		maxChargesPerHour: form.maxChargesPerHour,
-		chargeMass: form.chargeMass
-	};
-	return runParams(lp);
-}
-
 /** The implied production in words: `2,310 t/d, shift run of 30 Oct 06:32 IST`. */
 export function impliedText(implied: ImpliedProduction | null | undefined): string {
 	if (!implied) return 'Not available yet';
@@ -267,82 +239,40 @@ export function builtFrom(result: OptimiserResult | null | undefined): string[] 
 
 // ------------------------------------------------------------------------------------------------ page 9's tabs
 /** A plan of the burden engine as page 9's result cards show it (`PlanTabs`). */
-export function planRows(plan: PlanView): BmoPlan {
-	const P = plan.production_t_d;
-	const ores: BmoOreRow[] = (plan.blend ?? []).map((b) => ({
-		ore_id: b.id,
-		ore_name: b.name,
-		share_pct: b.share_wet_pct,
-		quantity_t_d: b.t_d ?? (b.wet_kg_thm * P) / 1000,
-		dry_quantity_t_d: null,
-		kg_per_charge: null,
-		moisture_pct: null,
-		fe_t_d: null,
-		slag_t_d: null,
-		price_rs_t: b.price_rs_t ?? null,
-		stock_t: null,
-		cost_rs_d: null
-	}));
-	const flux: Record<string, number> = {};
-	for (const f of plan.flux ?? []) flux[f.name] = f.t_d ?? (f.wet_kg_thm * P) / 1000;
-	return {
-		feasible: plan.feasible,
-		violations: (plan.violations ?? []).map((v) => `${v.label} by ${formatNumber(v.amount, 2)}`),
-		total_qty_t_d: plan.charging.ferrous_t_d,
-		ore_cost_rs_thm: plan.cost.ore_rs_thm,
-		fuel_cost_rs_thm: plan.cost.fuel_rs_thm,
-		flux_cost_rs_thm: plan.cost.flux_rs_thm,
-		total_cost_rs_thm: plan.cost.total_rs_thm,
-		fe_t_pct: plan.burden_fe_wet_pct ?? null,
-		fe_production_t_d: null,
-		slag_t_d: plan.slag.t_d,
-		slag_rate_kg_thm: plan.slag.rate_kg_thm,
-		slag_basicity: plan.slag.cao_sio2 ?? null,
-		slag_t_basicity: plan.slag.t_basicity ?? null,
-		slag_ib4: plan.slag.ib4 ?? null,
-		slag_al2o3_pct: plan.slag.al2o3_pct ?? null,
-		slag_mgo_pct: plan.slag.mgo_pct ?? null,
-		slag_mgo_al2o3_ratio: plan.slag.mgo_al2o3 ?? null,
-		coke_rate_kg_thm: plan.fuel.coke_wet_kg_thm,
-		coke_rate_uncorrected_kg_thm: null,
-		coke_correction_kg_thm: null,
-		nut_coke_rate_kg_thm: plan.fuel.nut_coke_kg_thm,
-		pci_rate_kg_thm: plan.fuel.pci_kg_thm,
-		fuel_rate_kg_thm: plan.fuel.fuel_rate_kg_thm,
-		flux_t_d: flux,
-		charging: {
-			production_t_d: P,
-			flux_rate_kg_thm: plan.charging.flux_kg_thm,
-			coke_t_d: plan.charging.coke_t_d,
-			nut_coke_t_d: plan.charging.nut_coke_t_d,
-			pci_t_d: plan.charging.pci_t_d,
-			required_charges_per_hour: plan.charging.charges_per_h ?? null,
-			chemical_hm_per_charge_t: plan.charging.hm_per_charge_t ?? null
-		},
-		ores
-	};
-}
-
 /** The limits a plan was solved under as the tabs' limits (page 9's names); null for a plan stored without them. */
-export function planTargets(plan: PlanView): TabTargets | null {
-	const L = plan.limits;
-	if (!L) return null;
-	return {
-		production_t_d: plan.production_t_d,
-		slag_rate_cap_kg_thm: L.slag_max_kg_thm ?? undefined,
-		basicity_min: L.cao_sio2_min ?? undefined,
-		basicity_max: L.cao_sio2_max ?? undefined,
-		al2o3_max_pct: L.al2o3_max_pct ?? null,
-		mgo_min_pct: L.mgo_min_pct ?? null,
-		mgo_al2o3_ratio_min: L.mgo_al2o3_min ?? null,
-		max_charges_per_hour: L.charges_per_h ?? undefined,
-		charge_mass_t: L.charge_t ?? undefined
-	};
-}
-
-// ------------------------------------------------------------------------------------------------ constraints rows
 /** One ferrous material of the constraints panel: availability and bounds (operator inputs), stock and chemistry
  * (live inputs), price (operator inputs, else the shown run's yard). */
+/** The composition the ore table shows and an administrator may replace (API names of `OreInputRow`). */
+export const ORE_CHEM_FIELDS: { key: OreChemKey; label: string; digits: number }[] = [
+	{ key: 'fe_t_pct', label: 'Fe', digits: 1 },
+	{ key: 'sio2_pct', label: 'SiO₂', digits: 2 },
+	{ key: 'al2o3_pct', label: 'Al₂O₃', digits: 2 },
+	{ key: 'cao_pct', label: 'CaO', digits: 2 },
+	{ key: 'mgo_pct', label: 'MgO', digits: 2 },
+	{ key: 'loi_pct', label: 'LOI', digits: 2 },
+	{ key: 'moisture_pct', label: 'Moisture', digits: 1 },
+	{ key: 'p_pct', label: 'P', digits: 3 },
+	{ key: 'tio2_pct', label: 'TiO₂', digits: 2 },
+	{ key: 'mno_pct', label: 'MnO', digits: 2 },
+	{ key: 'na2o_pct', label: 'Na₂O', digits: 3 },
+	{ key: 'k2o_pct', label: 'K₂O', digits: 3 },
+	{ key: 'feo_pct', label: 'FeO', digits: 2 }
+];
+export type OreChemKey =
+	| 'fe_t_pct'
+	| 'sio2_pct'
+	| 'al2o3_pct'
+	| 'cao_pct'
+	| 'mgo_pct'
+	| 'loi_pct'
+	| 'moisture_pct'
+	| 'p_pct'
+	| 'tio2_pct'
+	| 'mno_pct'
+	| 'na2o_pct'
+	| 'k2o_pct'
+	| 'feo_pct';
+
 export interface OreConstraintRow {
 	id: string;
 	name: string;
@@ -354,6 +284,8 @@ export interface OreConstraintRow {
 	fe: number | null;
 	sio2: number | null;
 	al2o3: number | null;
+	/** The whole composition in force: the saved operator inputs (an administrator's entry) over the lab's. */
+	chem: Record<OreChemKey, number | null>;
 	chemSource: string | null;
 	price: number | null;
 }
@@ -373,21 +305,27 @@ export function oreConstraintRows(
 	return ids.map((id) => {
 		const s = stock.get(id);
 		const c = chem.get(id);
-		const r = rows[id] ?? {};
+		const r = (rows[id] ?? {}) as Record<string, number | null | undefined>;
 		const y = yardRows.get(id);
+		const lab = (c ?? {}) as Record<string, number | null | undefined>;
+		const composition = Object.fromEntries(
+			ORE_CHEM_FIELDS.map((f) => [f.key, r[f.key] ?? lab[f.key] ?? null])
+		) as Record<OreChemKey, number | null>;
+		const manual = ORE_CHEM_FIELDS.some((f) => typeof r[f.key] === 'number');
 		return {
 			id,
 			name: s?.name ?? c?.name ?? y?.name ?? id,
 			offered: selected.length === 0 || selected.includes(id),
-			min: r.min_share_pct ?? y?.min_share_pct ?? null,
-			max: r.max_share_pct ?? y?.max_share_pct ?? null,
+			min: r['min_share_pct'] ?? y?.min_share_pct ?? null,
+			max: r['max_share_pct'] ?? y?.max_share_pct ?? null,
 			stock: s?.stock_t ?? null,
 			stockSource: s?.source ?? null,
-			fe: c?.fe_t_pct ?? null,
-			sio2: c?.sio2_pct ?? null,
-			al2o3: c?.al2o3_pct ?? null,
-			chemSource: c?.source ?? null,
-			price: r.price_rs_per_mt ?? y?.price_rs_t ?? null
+			fe: composition.fe_t_pct,
+			sio2: composition.sio2_pct,
+			al2o3: composition.al2o3_pct,
+			chem: composition,
+			chemSource: manual ? 'manual' : (c?.source ?? null),
+			price: r['price_rs_per_mt'] ?? y?.price_rs_t ?? null
 		};
 	});
 }

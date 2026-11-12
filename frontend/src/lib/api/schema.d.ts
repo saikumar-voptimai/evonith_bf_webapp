@@ -710,51 +710,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/bmo/runs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Recent Blend Mix Optimiser runs
-         * @description The latest ``bmo.run`` jobs of the last 7 days (any user), newest first, each with its plan once done.
-         */
-        get: operations["bmo_list_runs"];
-        put?: never;
-        /**
-         * Start a Blend Mix Optimiser run
-         * @description Queue ``bmo.run``: page 9's LP at a fixed production. Fields left out take page 9's defaults. Follow the job
-         *     with GET /api/bmo/runs/{job id} or the ``job.done`` event. A request equal to a queued or running one returns it.
-         */
-        post: operations["bmo_start_run"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/bmo/runs/{job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * A Blend Mix Optimiser run
-         * @description The job (records are kept 7 days) and its plan once it is done.
-         */
-        get: operations["bmo_get_run"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/bmo/snapshots": {
         parameters: {
             query?: never;
@@ -1191,6 +1146,30 @@ export interface paths {
          * @description The latest run with status ok, with its decisions.
          */
         get: operations["optimiser_latest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/optimiser/live-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The energy model against the furnace, live
+         * @description The Blend & Fuel Optimiser's live model tab (user decision 12 Nov 2026): the twin's hourly windows of the last
+         *     ``hours`` (burnt, energy-balance, STRATA-ω and charged coke; HMT, ηCO and top-gas temperature measured and of
+         *     the balance; the HMT forecast one descent time ahead with its gate and its live score against persistence), the
+         *     measured HMT per tap, and page 11's model check per shift over ``days`` on the FORGE view. Reads only what the
+         *     worker stored (``services.live_model``).
+         */
+        get: operations["optimiser_live_model_view"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2360,12 +2339,27 @@ export interface components {
         /** BlendRow */
         BlendRow: {
             /**
+             * Cost Rs Thm
+             * @description Wet kg/tHM × price, Rs/tHM
+             */
+            cost_rs_thm?: number | null;
+            /**
              * Dry Kg Thm
              * @description Charged dry, kg/tHM
              */
             dry_kg_thm?: number | null;
+            /**
+             * Fe Kg Thm
+             * @description Fe charged with it (page 9's Fe (MT) per tHM: dry kg × total Fe %), kg/tHM
+             */
+            fe_kg_thm?: number | null;
             /** Id */
             id: string;
+            /**
+             * Kg Per Charge
+             * @description Wet mass per charge at the plan's hot metal per charge, kg
+             */
+            kg_per_charge?: number | null;
             /**
              * Kind
              * @description sinter, ore or pellet (from the yard of the case)
@@ -2384,6 +2378,11 @@ export interface components {
              */
             share_wet_pct: number;
             /**
+             * Slag Kg Thm
+             * @description Slag-forming oxides charged with it (page 9's Slag (MT) per tHM: SiO₂ + Al₂O₃ + CaO + MgO + TiO₂ + MnO + Na₂O + K₂O on the dry mass; None on the calibration's own slag rule), kg/tHM
+             */
+            slag_kg_thm?: number | null;
+            /**
              * T D
              * @description Charged wet per day, t/d
              */
@@ -2393,19 +2392,6 @@ export interface components {
              * @description Charged wet, kg/tHM
              */
             wet_kg_thm: number;
-        };
-        /** BmoAnchor */
-        BmoAnchor: {
-            /**
-             * Basis
-             * @enum {string}
-             */
-            basis: "data_driven" | "energy_balance";
-            /**
-             * Rate Kg Thm
-             * @description Coke level of the fuel cost, kg/tHM; null = the fuel model's
-             */
-            rate_kg_thm?: number | null;
         };
         /** BmoChargedCokeView */
         BmoChargedCokeView: {
@@ -2481,77 +2467,6 @@ export interface components {
             required_charges_per_hour?: number | null;
         };
         /**
-         * BmoFuelPrices
-         * @description Fuel prices of the run (None keeps page 9's price).
-         */
-        BmoFuelPrices: {
-            /**
-             * Coke
-             * @description Coke, Rs/t
-             */
-            coke?: number | null;
-            /**
-             * Nut Coke
-             * @description Nut coke, Rs/t
-             */
-            nut_coke?: number | null;
-            /**
-             * Pci
-             * @description PCI coal, Rs/t
-             */
-            pci?: number | null;
-        };
-        /** BmoFuelRates */
-        BmoFuelRates: {
-            /**
-             * Coke Rate Kg Thm
-             * @description Coke rate read for the run, kg/tHM
-             */
-            coke_rate_kg_thm?: number | null;
-            /** Coke Source */
-            coke_source?: string | null;
-            /**
-             * Nut Coke Rate Kg Thm
-             * @description Nut-coke rate of the run, kg/tHM
-             */
-            nut_coke_rate_kg_thm?: number | null;
-            /** Nut Coke Source */
-            nut_coke_source?: string | null;
-            /**
-             * Pci Rate Kg Thm
-             * @description PCI rate of the run, kg/tHM
-             */
-            pci_rate_kg_thm?: number | null;
-            /** Pci Source */
-            pci_source?: string | null;
-        };
-        /**
-         * BmoHmChemistry
-         * @description Slag-side hot-metal chemistry of page 9's slag balance (None keeps the saved or configured value).
-         */
-        BmoHmChemistry: {
-            /**
-             * Carbon Pct
-             * @description C in hot metal, mass %
-             */
-            carbon_pct?: number | null;
-            /**
-             * Other Pct
-             * @description Other elements in hot metal, mass %
-             */
-            other_pct?: number | null;
-            /**
-             * Silicon Pct
-             * @description Si in hot metal, mass %
-             */
-            silicon_pct?: number | null;
-            /**
-             * Sulphur Pct
-             * @description S in hot metal, mass %
-             */
-            sulphur_pct?: number | null;
-        };
-        /**
          * BmoImpliedProduction
          * @description The production implied by the latest Step 1 run: the cheapest production level under the day's limits.
          */
@@ -2583,32 +2498,6 @@ export interface components {
              * @enum {string}
              */
             trigger: "schedule" | "user";
-        };
-        /**
-         * BmoOreOverride
-         * @description The operator's edit of one ore row of page 9's ore table (None keeps the table's value).
-         */
-        BmoOreOverride: {
-            /**
-             * Max Share Pct
-             * @description Highest share of the wet burden, %
-             */
-            max_share_pct?: number | null;
-            /**
-             * Min Share Pct
-             * @description Lowest share of the wet burden, %
-             */
-            min_share_pct?: number | null;
-            /**
-             * Price Rs Per Mt
-             * @description Price of the wet ore, Rs/t
-             */
-            price_rs_per_mt?: number | null;
-            /**
-             * Stock Mt
-             * @description Stock available, t wet
-             */
-            stock_mt?: number | null;
         };
         /** BmoOreRow */
         BmoOreRow: {
@@ -2948,218 +2837,6 @@ export interface components {
             /** Violations */
             violations?: string[];
         };
-        /** BmoRunList */
-        BmoRunList: {
-            /**
-             * Runs
-             * @description Newest first
-             */
-            runs?: components["schemas"]["BmoRunLookup"][];
-        };
-        /** BmoRunLookup */
-        BmoRunLookup: {
-            job: components["schemas"]["JobRecord"];
-            /** @description The plan, once the job is done */
-            result?: components["schemas"]["BmoRunResult"] | null;
-        };
-        /**
-         * BmoRunParams
-         * @description One Balanced Optimizer (LP) run of the Blend Mix Optimiser at a fixed production (``bmo.run``, SV-3.5).
-         *
-         *     Every field left out takes page 9's default: the configured target and slag window, the hourly dataset's window,
-         *     the operator's saved inputs, the live yard, chemistry and fuel rates.
-         */
-        BmoRunParams: {
-            /**
-             * Blend Response Kg Coke Per Kg Slag
-             * @description Data-Driven blend response, kg coke per kg slag
-             */
-            blend_response_kg_coke_per_kg_slag?: number | null;
-            /**
-             * Burden Capacity Enabled
-             * @description Enforce the charging ceiling (default: config)
-             */
-            burden_capacity_enabled?: boolean | null;
-            /**
-             * Charge Mass Mt
-             * @description Burden per charge, t
-             */
-            charge_mass_mt?: number | null;
-            /**
-             * Chemistry Mode
-             * @description Raw-material chemistry: latest = last charged instance, avg = window mean
-             */
-            chemistry_mode?: ("latest" | "avg") | null;
-            /**
-             * Chemistry Window Days
-             * @description Chemistry window, d
-             */
-            chemistry_window_days?: number | null;
-            /**
-             * Coke Model
-             * @description Coke level: data_driven = charged-coke forecast, energy_balance = Physics-Driven anchor
-             */
-            coke_model?: ("data_driven" | "energy_balance") | null;
-            /**
-             * Force Data Driven
-             * @description Use the charged-coke forecast while its state pauses it (page 9's force option)
-             * @default false
-             */
-            force_data_driven: boolean;
-            fuel_prices?: components["schemas"]["BmoFuelPrices"] | null;
-            hm_chemistry?: components["schemas"]["BmoHmChemistry"] | null;
-            /**
-             * Manual Blend Lookback Hours
-             * @description Blend history window, h
-             */
-            manual_blend_lookback_hours?: number | null;
-            /**
-             * Max Charges Per Hour
-             * @description Charging rate limit, charges/h
-             */
-            max_charges_per_hour?: number | null;
-            /**
-             * Nut Coke Override Kg Thm
-             * @description Nut-coke rate (default: plant set point), kg/tHM
-             */
-            nut_coke_override_kg_thm?: number | null;
-            /**
-             * Ore Overrides
-             * @description Edits by ore id
-             */
-            ore_overrides?: {
-                [key: string]: components["schemas"]["BmoOreOverride"];
-            } | null;
-            /**
-             * Pci Override Kg Thm
-             * @description PCI rate (default: live tag), kg/tHM
-             */
-            pci_override_kg_thm?: number | null;
-            /**
-             * Pellet Inputs Confirmed
-             * @description The operator has reviewed pellet inputs flagged as stale or incomplete
-             * @default false
-             */
-            pellet_inputs_confirmed: boolean;
-            /**
-             * Selected Ore Ids
-             * @description Ores in the blend (default: page 9's selection)
-             */
-            selected_ore_ids?: string[] | null;
-            /**
-             * Target Production Mt
-             * @description Hot-metal target, t/day
-             */
-            target_production_mt?: number | null;
-            /**
-             * Target Slag Al2O3 Max Pct
-             * @description Highest Al₂O₃ in slag, mass %; 0 = not enforced
-             */
-            target_slag_al2o3_max_pct?: number | null;
-            /**
-             * Target Slag Basicity Max
-             * @description Highest CaO/SiO₂, ratio
-             */
-            target_slag_basicity_max?: number | null;
-            /**
-             * Target Slag Basicity Min
-             * @description Lowest CaO/SiO₂, ratio
-             */
-            target_slag_basicity_min?: number | null;
-            /**
-             * Target Slag Mgo Al2O3 Ratio Min
-             * @description Lowest MgO/Al₂O₃ in slag, ratio; 0 = not enforced
-             */
-            target_slag_mgo_al2o3_ratio_min?: number | null;
-            /**
-             * Target Slag Mgo Min Pct
-             * @description Lowest MgO in slag, mass %; 0 = not enforced
-             */
-            target_slag_mgo_min_pct?: number | null;
-            /**
-             * Target Slag Rate Kg Per Thm
-             * @description Slag cap on the plant basis, kg/tHM
-             */
-            target_slag_rate_kg_per_thm?: number | null;
-            /**
-             * Target Slag T Basicity Max
-             * @description Highest (CaO+MgO)/SiO₂, ratio; 0 = not enforced
-             */
-            target_slag_t_basicity_max?: number | null;
-            /**
-             * Target Slag T Basicity Min
-             * @description Lowest (CaO+MgO)/SiO₂, ratio; 0 = not enforced
-             */
-            target_slag_t_basicity_min?: number | null;
-        };
-        /**
-         * BmoRunResult
-         * @description The result of a ``bmo.run`` job: the LP plan at a fixed production, or why there is none.
-         */
-        BmoRunResult: {
-            anchor?: components["schemas"]["BmoAnchor"] | null;
-            /** Chemistry Mode */
-            chemistry_mode: string;
-            /**
-             * Chemistry Window Days
-             * @description Chemistry window, d
-             */
-            chemistry_window_days: number;
-            /**
-             * Coke Model
-             * @enum {string}
-             */
-            coke_model: "data_driven" | "energy_balance";
-            /**
-             * Computed At
-             * Format: date-time
-             * @description UTC
-             */
-            computed_at: string;
-            /**
-             * Errors
-             * @description LP errors
-             */
-            errors?: string[];
-            fuel_rates: components["schemas"]["BmoFuelRates"];
-            /** @description The live-inputs snapshot the run was built from (SV-7.3): its id equals GET /api/inputs/live's while the stock, composition, process and operator-input data are the same; null for a run on given sources */
-            live_inputs?: components["schemas"]["LiveInputsRef"] | null;
-            /**
-             * Live Si Pct
-             * @description Hot-metal Si of the Si forecast the run used, mass %
-             */
-            live_si_pct?: number | null;
-            /** Pellet Issues */
-            pellet_issues?: string[];
-            plan?: components["schemas"]["BmoPlanView"] | null;
-            /**
-             * Refusal
-             * @description Why page 9 would not run the optimiser with these inputs
-             */
-            refusal?: string | null;
-            /**
-             * Seconds
-             * @description Run time, s
-             */
-            seconds: number;
-            /**
-             * Slag Bands
-             * @description Plant p5–p95 bands of B2, T-basicity and IB4
-             */
-            slag_bands?: components["schemas"]["BmoSlagBand"][];
-            /**
-             * Status
-             * @description ok: a feasible plan; infeasible: the LP found none or broke a limit; refused: see refusal
-             * @enum {string}
-             */
-            status: "ok" | "infeasible" | "refused";
-            targets: components["schemas"]["BmoRunTargets"];
-            /**
-             * Warnings
-             * @description Data and input warnings of the run
-             */
-            warnings?: string[];
-        };
         /** BmoRunSubmitted */
         BmoRunSubmitted: {
             /**
@@ -3168,99 +2845,6 @@ export interface components {
              */
             duplicate: boolean;
             job: components["schemas"]["JobRecord"];
-        };
-        /** BmoRunTargets */
-        BmoRunTargets: {
-            /**
-             * Al2O3 Max Pct
-             * @description Highest Al₂O₃ in slag, mass %; null = not enforced
-             */
-            al2o3_max_pct?: number | null;
-            /**
-             * Basicity Max
-             * @description Highest CaO/SiO₂, ratio
-             */
-            basicity_max: number;
-            /**
-             * Basicity Min
-             * @description Lowest CaO/SiO₂, ratio
-             */
-            basicity_min: number;
-            /**
-             * Charge Mass T
-             * @description Burden per charge, t
-             */
-            charge_mass_t: number;
-            /**
-             * Fe T D
-             * @description Fe required in hot metal, t/day
-             */
-            fe_t_d: number;
-            /**
-             * Hm Fe Pct
-             * @description Fe in hot metal used for the Fe requirement, mass %
-             */
-            hm_fe_pct: number;
-            /**
-             * Max Burden T D
-             * @description Ore + flux charging ceiling, t/day; null = not enforced
-             */
-            max_burden_t_d?: number | null;
-            /**
-             * Max Charges Per Hour
-             * @description Charging rate limit, charges/h
-             */
-            max_charges_per_hour: number;
-            /**
-             * Mgo Al2O3 Ratio Min
-             * @description Lowest MgO/Al₂O₃, ratio; null = not enforced
-             */
-            mgo_al2o3_ratio_min?: number | null;
-            /**
-             * Mgo Min Pct
-             * @description Lowest MgO in slag, mass %; null = not enforced
-             */
-            mgo_min_pct?: number | null;
-            /**
-             * Model To Plant Slag Factor
-             * @description plant slag = model slag × factor, ratio
-             */
-            model_to_plant_slag_factor: number;
-            /**
-             * Nut Coke Charge Moisture Pct
-             * @description Moisture added to the nut-coke charge, mass %
-             */
-            nut_coke_charge_moisture_pct: number;
-            /**
-             * Nut Coke Rate Kg Thm
-             * @description Nut-coke rate held in the charges, kg/tHM
-             */
-            nut_coke_rate_kg_thm: number;
-            /**
-             * Production T D
-             * @description Hot-metal target, t/day
-             */
-            production_t_d: number;
-            /**
-             * Slag Cap T D
-             * @description Slag cap the LP enforces, t/day (model basis)
-             */
-            slag_cap_t_d: number;
-            /**
-             * Slag Rate Cap Kg Thm
-             * @description Slag cap, kg/tHM (plant basis)
-             */
-            slag_rate_cap_kg_thm: number;
-            /**
-             * T Basicity Max
-             * @description Highest (CaO+MgO)/SiO₂, ratio; null = not enforced
-             */
-            t_basicity_max?: number | null;
-            /**
-             * T Basicity Min
-             * @description Lowest (CaO+MgO)/SiO₂, ratio; null = not enforced
-             */
-            t_basicity_min?: number | null;
         };
         /** BmoSiForecastView */
         BmoSiForecastView: {
@@ -4995,6 +4579,79 @@ export interface components {
              */
             zn_pct?: number | null;
         };
+        /**
+         * DustStreamRow
+         * @description One top-gas dust stream deducted on the plan (page 9's dust row).
+         */
+        DustStreamRow: {
+            /**
+             * Al2O3 Pct
+             * @description Al₂O₃ of the dry dust, %
+             */
+            al2o3_pct: number;
+            /**
+             * Cao Pct
+             * @description CaO of the dry dust, %
+             */
+            cao_pct: number;
+            /**
+             * Dry Kg Thm
+             * @description Dry dust, kg/tHM
+             */
+            dry_kg_thm: number;
+            /**
+             * Fe Kg Thm
+             * @description Fe carried away, kg/tHM
+             */
+            fe_kg_thm: number;
+            /**
+             * Fe Pct
+             * @description Fe of the dry dust, %
+             */
+            fe_pct: number;
+            /** Id */
+            id: string;
+            /**
+             * Kg Per Charge
+             * @description Wet dust per charge (configured or saved), kg
+             */
+            kg_per_charge?: number | null;
+            /**
+             * Kg Thm
+             * @description Wet dust at the plan's charges per tHM, kg/tHM
+             */
+            kg_thm: number;
+            /**
+             * Mgo Pct
+             * @description MgO of the dry dust, %
+             */
+            mgo_pct: number;
+            /**
+             * Moisture Pct
+             * @description Moisture of the dust, %
+             */
+            moisture_pct: number;
+            /**
+             * Sio2 Pct
+             * @description SiO₂ of the dry dust, %
+             */
+            sio2_pct: number;
+            /**
+             * Slag Kg Thm
+             * @description Slag-forming oxides carried away, kg/tHM
+             */
+            slag_kg_thm: number;
+            /**
+             * Source
+             * @description Where the figure came from (plant burden sheet, DPR, saved)
+             */
+            source?: string | null;
+            /**
+             * Stream
+             * @description The stream's name
+             */
+            stream: string;
+        };
         /** ExpandingTest */
         ExpandingTest: {
             /**
@@ -5586,8 +5243,18 @@ export interface components {
         };
         /** FluxRow */
         FluxRow: {
+            /**
+             * Cost Rs Thm
+             * @description Wet kg/tHM × price, Rs/tHM
+             */
+            cost_rs_thm?: number | null;
             /** Id */
             id: string;
+            /**
+             * Kg Per Charge
+             * @description Wet mass per charge at the plan's hot metal per charge, kg
+             */
+            kg_per_charge?: number | null;
             /** Name */
             name: string;
             /**
@@ -5595,6 +5262,11 @@ export interface components {
              * @description Price of the wet flux in the case's yard, Rs/t
              */
             price_rs_t?: number | null;
+            /**
+             * Slag Kg Thm
+             * @description Slag-forming oxides charged with it (as the blend rows), kg/tHM
+             */
+            slag_kg_thm?: number | null;
             /**
              * T D
              * @description Charged wet per day, t/d
@@ -5925,6 +5597,78 @@ export interface components {
              * @enum {string}
              */
             type: "forecast.charged_coke";
+        };
+        /** ForecastPoint */
+        ForecastPoint: {
+            /**
+             * At
+             * Format: date-time
+             * @description Instant the forecast is for, UTC
+             */
+            at: string;
+            /**
+             * Measured
+             * @description Measured HMT at the horizon, °C, once known
+             */
+            measured?: number | null;
+            /**
+             * Origin
+             * Format: date-time
+             * @description The forecast's origin (its window end), UTC
+             */
+            origin: string;
+            /**
+             * Value
+             * @description Forecast HMT, °C
+             */
+            value: number;
+        };
+        /**
+         * ForecastScore
+         * @description The stored forecasts against the tap temperature at their horizon, last ``days``.
+         */
+        ForecastScore: {
+            /**
+             * Bias Model C
+             * @description Mean forecast − measured, °C
+             */
+            bias_model_c?: number | null;
+            /**
+             * Days
+             * @description Days scored
+             */
+            days: number;
+            /**
+             * N
+             * @description Forecasts with a measured temperature at the horizon
+             */
+            n: number;
+            /**
+             * Ratio
+             * @description RMSE model / RMSE persistence (gate: at most 0.90)
+             */
+            ratio?: number | null;
+            /**
+             * Rmse Model C
+             * @description RMSE of the forecast, °C
+             */
+            rmse_model_c?: number | null;
+            /**
+             * Rmse Persistence C
+             * @description RMSE of persistence (HMT at the origin), °C
+             */
+            rmse_persistence_c?: number | null;
+            /**
+             * Text
+             * @description One line for the page
+             */
+            text: string;
+            /**
+             * Verdict
+             * @description Against persistence
+             * @enum {string}
+             */
+            verdict: "better" | "worse" | "insufficient";
         };
         /** ForecastSiEvent */
         ForecastSiEvent: {
@@ -6729,6 +6473,11 @@ export interface components {
              */
             coke_dry_kg_thm?: number | null;
             /**
+             * Coke Wet Kg Thm
+             * @description Coke rate as charged, kg/tHM
+             */
+            coke_wet_kg_thm?: number | null;
+            /**
              * Cost Rs Thm
              * @description Ore + flux + fuel − slag credit, Rs/tHM
              */
@@ -6899,6 +6648,97 @@ export interface components {
              * @enum {string}
              */
             trigger: "schedule" | "user";
+        };
+        /**
+         * FuelAshRow
+         * @description Page 9's fuel-ash inputs on the plan: one fuel's rate, ash and ash analysis, and the slag it brings.
+         */
+        FuelAshRow: {
+            /**
+             * Al2O3 Pct
+             * @description Al₂O₃ of the ash, %
+             */
+            al2o3_pct: number;
+            /**
+             * Alkali Pct
+             * @description Na₂O + K₂O of the ash, %
+             */
+            alkali_pct: number;
+            /**
+             * Ash Kg Thm
+             * @description Ash, kg/tHM
+             */
+            ash_kg_thm: number;
+            /**
+             * Ash Pct
+             * @description Ash of the dry fuel, %
+             */
+            ash_pct: number;
+            /**
+             * Cao Pct
+             * @description CaO of the ash, %
+             */
+            cao_pct: number;
+            /**
+             * Dry Kg Thm
+             * @description Dry, kg/tHM
+             */
+            dry_kg_thm: number;
+            /**
+             * Fe2O3 Pct
+             * @description Fe₂O₃ of the ash, %
+             */
+            fe2o3_pct: number;
+            /**
+             * Fuel
+             * @description Coke, Nut coke or PCI
+             */
+            fuel: string;
+            /**
+             * Mgo Pct
+             * @description MgO of the ash, %
+             */
+            mgo_pct: number;
+            /**
+             * Mno Pct
+             * @description MnO of the ash, %
+             */
+            mno_pct: number;
+            /**
+             * Moisture Pct
+             * @description Moisture of the fuel, %
+             */
+            moisture_pct: number;
+            /**
+             * P Pct
+             * @description Phosphorus of the dry fuel, %
+             */
+            p_pct: number;
+            /**
+             * S Pct
+             * @description Sulphur of the dry fuel, %
+             */
+            s_pct: number;
+            /**
+             * Sio2 Pct
+             * @description SiO₂ of the ash, %
+             */
+            sio2_pct: number;
+            /**
+             * Slag Kg Thm
+             * @description Slag-forming oxides the ash brings, kg/tHM
+             */
+            slag_kg_thm: number;
+            /**
+             * Tio2 Pct
+             * @description TiO₂ of the ash, %
+             */
+            tio2_pct: number;
+            /**
+             * Wet Kg Thm
+             * @description As charged (coke the plan's, nut coke and PCI the fixed inputs), kg/tHM
+             */
+            wet_kg_thm: number;
         };
         /** FuelEditorInputs */
         FuelEditorInputs: {
@@ -7109,6 +6949,37 @@ export interface components {
              * @enum {string}
              */
             type: "heartbeat";
+        };
+        /** HmtForecastView */
+        HmtForecastView: {
+            /**
+             * Gate
+             * @description Validation gate of the forecast (SV-1.4)
+             * @enum {string}
+             */
+            gate: "pending" | "passed" | "failed";
+            /** @description The newest window's forecast */
+            latest?: components["schemas"]["ForecastPoint"] | null;
+            /**
+             * Points
+             * @description Every stored forecast of the hours shown
+             */
+            points?: components["schemas"]["ForecastPoint"][];
+            score: components["schemas"]["ForecastScore"];
+        };
+        /** HmtTap */
+        HmtTap: {
+            /**
+             * At
+             * Format: date-time
+             * @description Tap time, UTC
+             */
+            at: string;
+            /**
+             * Value
+             * @description Hot-metal temperature, °C
+             */
+            value: number;
         };
         /** HopperAdminView */
         HopperAdminView: {
@@ -8867,6 +8738,134 @@ export interface components {
             stale?: string[];
             stock: components["schemas"]["StockGroup"];
         };
+        /** LiveModelView */
+        LiveModelView: {
+            forecast: components["schemas"]["HmtForecastView"];
+            /** Hourly */
+            hourly: components["schemas"]["LiveModelWindow"][];
+            /**
+             * Hours
+             * @description Hours of hourly windows shown
+             */
+            hours: number;
+            /** @description The newest stored window */
+            latest?: components["schemas"]["LiveModelWindow"] | null;
+            /**
+             * Notes
+             * @description What is missing and why
+             */
+            notes?: string[];
+            /**
+             * Now
+             * Format: date-time
+             * @description Time of the request, UTC
+             */
+            now: string;
+            /** @description None until the FORGE view is built */
+            shifts?: components["schemas"]["ShiftCheck"] | null;
+            /**
+             * Taps
+             * @description Measured HMT per tap over the hours
+             */
+            taps?: components["schemas"]["HmtTap"][];
+        };
+        /**
+         * LiveModelWindow
+         * @description One stored twin window (8 h ending at ``end``).
+         */
+        LiveModelWindow: {
+            /**
+             * End
+             * Format: date-time
+             * @description Window end, UTC
+             */
+            end: string;
+            /**
+             * Eta Co Forge Pct
+             * @description ηCO of the energy balance, %
+             */
+            eta_co_forge_pct?: number | null;
+            /**
+             * Eta Co Pct
+             * @description ηCO, analyser, %
+             */
+            eta_co_pct?: number | null;
+            /**
+             * Hm Si Pct
+             * @description Hot-metal Si, %
+             */
+            hm_si_pct?: number | null;
+            /**
+             * Hmt C
+             * @description Hot-metal temperature of the window, °C
+             */
+            hmt_c?: number | null;
+            /**
+             * Hmt Forecast C
+             * @description HMT forecast at end + horizon, °C
+             */
+            hmt_forecast_c?: number | null;
+            /**
+             * Hmt Forecast Horizon H
+             * @description Forecast horizon τ_RW, h
+             */
+            hmt_forecast_horizon_h?: number | null;
+            /**
+             * Hmt Now C
+             * @description Latest tap temperature before the window end, °C
+             */
+            hmt_now_c?: number | null;
+            /**
+             * K Arr Kg Thm
+             * @description Coke of the charges of the last hour, dry kg/tHM
+             */
+            k_arr_kg_thm?: number | null;
+            /**
+             * K Burnt
+             * @description Coke the blast burnt, TRACE, dry kg/tHM
+             */
+            k_burnt?: number | null;
+            /**
+             * K Charged
+             * @description Coke charged, dry kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * K Forge
+             * @description Energy balance at fixed ω (FORGE), dry kg/tHM
+             */
+            k_forge?: number | null;
+            /**
+             * K Strata
+             * @description Energy balance at ω_STRATA, dry kg/tHM
+             */
+            k_strata?: number | null;
+            /**
+             * Production T H
+             * @description Production, t/h
+             */
+            production_t_h?: number | null;
+            /**
+             * Status
+             * @description complete | partial | failed
+             */
+            status: string;
+            /**
+             * Tau Raceway H
+             * @description Descent time stockline to raceway, h
+             */
+            tau_raceway_h?: number | null;
+            /**
+             * Top Gas C
+             * @description Top-gas temperature, measured, °C
+             */
+            top_gas_c?: number | null;
+            /**
+             * Top Gas Forge C
+             * @description Top-gas temperature of the energy balance, °C
+             */
+            top_gas_forge_c?: number | null;
+        };
         /** LivePoint */
         LivePoint: {
             calibration?: components["schemas"]["LiveCalibration"] | null;
@@ -9254,6 +9253,29 @@ export interface components {
              * @description RMSE of STRATA - TRACE over the days, kg/tHM dry
              */
             strata_trace_rmse_kg_thm?: number | null;
+        };
+        /** ModelStats */
+        ModelStats: {
+            /**
+             * Bias
+             * @description Mean model − burnt, kg/tHM
+             */
+            bias?: number | null;
+            /**
+             * Mae
+             * @description Mean absolute error, kg/tHM
+             */
+            mae?: number | null;
+            /**
+             * N
+             * @description Stable shifts scored
+             */
+            n: number;
+            /**
+             * Sd
+             * @description SD of model − burnt, kg/tHM
+             */
+            sd?: number | null;
         };
         /**
          * NetworkSolves
@@ -9669,6 +9691,53 @@ export interface components {
             version?: number | null;
         };
         /**
+         * OptimiserDustStream
+         * @description One top-gas dust stream of the slag basis as the run deducts it, instead of the operator inputs in force
+         *     (page 11's *Top-gas dust and fuel ash* editor, applied to the run). Unset fields keep the value in force.
+         */
+        OptimiserDustStream: {
+            /**
+             * Al2O3 Pct
+             * @description Al₂O₃ of the dry dust, %
+             */
+            al2o3_pct?: number | null;
+            /**
+             * Cao Pct
+             * @description CaO of the dry dust, %
+             */
+            cao_pct?: number | null;
+            /**
+             * Enabled
+             * @description Deducted from the burden before the slag forms
+             */
+            enabled?: boolean | null;
+            /**
+             * Fe Pct
+             * @description Fe of the dry dust, %
+             */
+            fe_pct?: number | null;
+            /**
+             * Kg Per Charge
+             * @description Wet dust per charge, kg
+             */
+            kg_per_charge?: number | null;
+            /**
+             * Mgo Pct
+             * @description MgO of the dry dust, %
+             */
+            mgo_pct?: number | null;
+            /**
+             * Moisture Pct
+             * @description Moisture of the dust, %
+             */
+            moisture_pct?: number | null;
+            /**
+             * Sio2 Pct
+             * @description SiO₂ of the dry dust, %
+             */
+            sio2_pct?: number | null;
+        };
+        /**
          * OptimiserLimits
          * @description Limits of a run that replace the fact register's defaults (ASM-11/12/13, FLOW-12) and the operator's saved slag
          *     limits and charging. The fuel-rate band (BAND-01) is the register's and cannot be changed here. Unset fields keep
@@ -9927,7 +9996,7 @@ export interface components {
             certainty?: string | null;
             /**
              * Coke Kg Thm
-             * @description Coke rate of the plan, kg/tHM dry
+             * @description Coke rate of the plan as charged (wet), kg/tHM
              */
             coke_kg_thm?: number | null;
             /**
@@ -10027,7 +10096,7 @@ export interface components {
         /**
          * OptimiserRunParams
          * @description One Burden & Fuel Optimiser run (``services.optimiser.default_case``): page 11's defaults, with the yard, the
-         *     calibration, the controls and the limits that a request names instead.
+         *     calibration, the controls, the limits and the top-gas dust that a request names instead.
          */
         OptimiserRunParams: {
             /**
@@ -10050,6 +10119,13 @@ export interface components {
              * @enum {string}
              */
             certainty: "low" | "any" | "medium" | "high";
+            /**
+             * Dust
+             * @description Top-gas dust streams by id (bf_gas_dust, dust_catcher, gcp_dust) deducted as given for this run instead of the operator inputs in force; the streams not named keep their values
+             */
+            dust?: {
+                [key: string]: components["schemas"]["OptimiserDustStream"];
+            } | null;
             /** @description Limits instead of the register's and the saved ones */
             limits?: components["schemas"]["OptimiserLimits"] | null;
             /**
@@ -10060,14 +10136,14 @@ export interface components {
             mode: "step1" | "step2" | "max_production";
             /**
              * Omega Mode
-             * @description Shaft efficiency: STRATA-ω (blend-dependent, ASM-18) or Fixed-ω (calibration, ASM-01)
-             * @default strata
+             * @description Shaft efficiency: Fixed-ω (calibration, ASM-01; the default, user decision 11 Nov 2026) or STRATA-ω (blend-dependent, ASM-18)
+             * @default fixed
              * @enum {string}
              */
             omega_mode: "strata" | "fixed";
             /**
              * Production T D
-             * @description Step 2 hot-metal target, t/d (default: today's production)
+             * @description Step 2 hot-metal target, t/d (default: the configured target, 2,270 t/d)
              */
             production_t_d?: number | null;
             /**
@@ -10095,7 +10171,7 @@ export interface components {
             certainty?: string | null;
             /**
              * Coke Kg Thm
-             * @description Coke rate of the plan, kg/tHM dry
+             * @description Coke rate of the plan as charged (wet), kg/tHM
              */
             coke_kg_thm?: number | null;
             /**
@@ -10243,20 +10319,90 @@ export interface components {
         /** OreInputRow */
         OreInputRow: {
             /**
+             * Al2O3 Pct
+             * @description Al₂O₃ of the dry ore (administrators), %
+             */
+            al2o3_pct?: number | null;
+            /**
+             * Cao Pct
+             * @description CaO of the dry ore (administrators), %
+             */
+            cao_pct?: number | null;
+            /**
+             * Chemistry Source
+             * @description manual: the composition above was entered on a page
+             */
+            chemistry_source?: string | null;
+            /**
+             * Fe T Pct
+             * @description Total Fe of the dry ore (administrators), %
+             */
+            fe_t_pct?: number | null;
+            /**
+             * Feo Pct
+             * @description FeO of the dry ore (administrators), %
+             */
+            feo_pct?: number | null;
+            /**
+             * K2O Pct
+             * @description K₂O of the dry ore (administrators), %
+             */
+            k2o_pct?: number | null;
+            /**
+             * Loi Pct
+             * @description Loss on ignition (administrators), %
+             */
+            loi_pct?: number | null;
+            /**
              * Max Share Pct
              * @description Upper bound of the wet share of the ferrous charge, %
              */
             max_share_pct?: number | null;
+            /**
+             * Mgo Pct
+             * @description MgO of the dry ore (administrators), %
+             */
+            mgo_pct?: number | null;
             /**
              * Min Share Pct
              * @description Lower bound of the wet share of the ferrous charge, %
              */
             min_share_pct?: number | null;
             /**
+             * Mno Pct
+             * @description MnO of the dry ore (administrators), %
+             */
+            mno_pct?: number | null;
+            /**
+             * Moisture Pct
+             * @description Moisture (administrators), %
+             */
+            moisture_pct?: number | null;
+            /**
+             * Na2O Pct
+             * @description Na₂O of the dry ore (administrators), %
+             */
+            na2o_pct?: number | null;
+            /**
+             * P Pct
+             * @description Phosphorus of the dry ore (administrators), %
+             */
+            p_pct?: number | null;
+            /**
              * Price Rs Per Mt
              * @description Price per wet tonne, Rs/t
              */
             price_rs_per_mt?: number | null;
+            /**
+             * Sio2 Pct
+             * @description SiO₂ of the dry ore (administrators), %
+             */
+            sio2_pct?: number | null;
+            /**
+             * Tio2 Pct
+             * @description TiO₂ of the dry ore (administrators), %
+             */
+            tio2_pct?: number | null;
         };
         /** ParamStatsView */
         ParamStatsView: {
@@ -11528,6 +11674,11 @@ export interface components {
              * @description STRATA-ω certainty filter: any, low, medium, high
              */
             certainty_filter?: string | null;
+            /**
+             * Dust Set
+             * @description Dust streams the request set for this run (others: the operator inputs in force)
+             */
+            dust_set?: string[];
             /** @description Limits used */
             limits: components["schemas"]["PlanLimits"];
             /**
@@ -11648,9 +11799,15 @@ export interface components {
         };
         /**
          * RunYard
-         * @description The yard the run read: ferrous materials (carried or not), fluxes and fuel prices.
+         * @description The yard the run read: ferrous materials (carried or not), fluxes, fuel prices and the dust streams of the
+         *     slag basis.
          */
         RunYard: {
+            /**
+             * Dust
+             * @description Top-gas dust streams of the slag basis (empty on the calibration's rule)
+             */
+            dust?: components["schemas"]["YardDust"][];
             /** Fluxes */
             fluxes?: components["schemas"]["YardFlux"][];
             fuel?: components["schemas"]["YardFuel"];
@@ -11839,6 +11996,87 @@ export interface components {
              * @description Where the plan is outside what BF-2 has run
              */
             outside?: string[];
+        };
+        /**
+         * ShiftCheck
+         * @description Page 11's model check: the record of the energy model over the period.
+         */
+        ShiftCheck: {
+            /**
+             * Age Days
+             * @description Days since the latest scored shift
+             */
+            age_days?: number | null;
+            /**
+             * Built At
+             * @description When the FORGE view was built, UTC
+             */
+            built_at?: string | null;
+            /**
+             * Days
+             * @description Period, days
+             */
+            days: number;
+            energy: components["schemas"]["ModelStats"];
+            /**
+             * Latest Shift
+             * @description Latest scored shift
+             */
+            latest_shift?: string | null;
+            oxygen: components["schemas"]["ModelStats"];
+            /** Reason */
+            reason: string;
+            /** Rows */
+            rows: components["schemas"]["ShiftCheckRow"][];
+            /**
+             * State
+             * @description On track, check, or too few shifts
+             * @enum {string}
+             */
+            state: "ok" | "watch" | "insufficient";
+            /**
+             * Thresholds
+             * @description bias_kgthm, sd_kgthm, min_shifts
+             */
+            thresholds?: {
+                [key: string]: number;
+            };
+        };
+        /** ShiftCheckRow */
+        ShiftCheckRow: {
+            /**
+             * K Burnt
+             * @description Burnt coke, dry kg/tHM
+             */
+            k_burnt?: number | null;
+            /**
+             * K Charged
+             * @description Charged coke, dry kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * K Energy
+             * @description Energy balance, dry kg/tHM
+             */
+            k_energy?: number | null;
+            /**
+             * K Obal
+             * @description Oxygen balance at the analyser's ηCO, dry kg/tHM
+             */
+            k_obal?: number | null;
+            /**
+             * Shift Key
+             * @description YYYY-MM-DD_A|B|C
+             */
+            shift_key: string;
+            /** Stable */
+            stable: boolean;
+            /**
+             * T Mid
+             * Format: date-time
+             * @description Shift middle, UTC
+             */
+            t_mid: string;
         };
         /** ShiftRecordDetail */
         ShiftRecordDetail: {
@@ -12654,6 +12892,45 @@ export interface components {
              */
             upper_pct?: number | null;
         };
+        /**
+         * SlagBalanceRow
+         * @description Where one component goes (page 9's per-oxide balance), kg/tHM. Fe, Mn and Ti are charged as the element and
+         *     leave as FeO, MnO and TiO₂ (``slag`` in the oxide; ``hot_metal_gas`` of those rows in the element).
+         */
+        SlagBalanceRow: {
+            /** Component */
+            component: string;
+            /**
+             * Dust Kg Thm
+             * @description Carried away by the top-gas dust (negative), kg/tHM
+             */
+            dust_kg_thm: number;
+            /**
+             * Flux Kg Thm
+             * @description Charged by the flux, kg/tHM
+             */
+            flux_kg_thm: number;
+            /**
+             * Fuel Ash Kg Thm
+             * @description Charged by the coke, nut coke and PCI ash, kg/tHM
+             */
+            fuel_ash_kg_thm: number;
+            /**
+             * Hot Metal Gas Kg Thm
+             * @description Taken by the hot metal or the gas (negative), kg/tHM
+             */
+            hot_metal_gas_kg_thm: number;
+            /**
+             * Ore Kg Thm
+             * @description Charged by the ferrous materials, kg/tHM
+             */
+            ore_kg_thm: number;
+            /**
+             * Slag Kg Thm
+             * @description Left in the slag, kg/tHM
+             */
+            slag_kg_thm: number;
+        };
         /** SlagBand */
         SlagBand: {
             /**
@@ -12737,6 +13014,48 @@ export interface components {
              */
             target_slag_t_basicity_min?: number | null;
         };
+        /** SlagComponent */
+        SlagComponent: {
+            /**
+             * Key
+             * @description CaO, SiO2, MgO, Al2O3, FeO, MnO, TiO2, S, alk (Na₂O + K₂O), CaF2 or Slag (the total)
+             */
+            key: string;
+            /**
+             * Kg Thm
+             * @description In the slag, kg/tHM
+             */
+            kg_thm: number;
+            /** Label */
+            label: string;
+            /**
+             * Pct
+             * @description Of the slag, %
+             */
+            pct?: number | null;
+        };
+        /** SlagRemoval */
+        SlagRemoval: {
+            /**
+             * Kg Thm
+             * @description Taken by the hot metal or the gas, kg/tHM
+             */
+            kg_thm: number;
+            /** Removal */
+            removal: string;
+            /** Rule */
+            rule: string;
+        };
+        /** SlagRollupRow */
+        SlagRollupRow: {
+            /**
+             * Kg Thm
+             * @description Slag-forming oxides from this source (negative: taken away; the rows add up to the slag), kg/tHM
+             */
+            kg_thm: number;
+            /** Source */
+            source: string;
+        };
         /** SlagView */
         SlagView: {
             /**
@@ -12745,10 +13064,40 @@ export interface components {
              */
             al2o3_pct?: number | null;
             /**
+             * Balance
+             * @description Where each component goes (page 9's per-oxide balance)
+             */
+            balance?: components["schemas"]["SlagBalanceRow"][];
+            /**
+             * Basis
+             * @description The slag basis of the plan (held hot-metal chemistry, dust deducted, minor-oxide rules); None on the calibration's own slag rule, when the breakup below is empty
+             */
+            basis?: string | null;
+            /**
              * Cao Sio2
              * @description CaO/SiO₂ (B2), dimensionless
              */
             cao_sio2?: number | null;
+            /**
+             * Components
+             * @description The slag's components, page 9's order, then the total
+             */
+            components?: components["schemas"]["SlagComponent"][];
+            /**
+             * Dust
+             * @description The top-gas dust streams deducted, per stream
+             */
+            dust?: components["schemas"]["DustStreamRow"][];
+            /**
+             * Dust Kg Thm
+             * @description Top-gas dust deducted, kg/tHM
+             */
+            dust_kg_thm?: number | null;
+            /**
+             * Fuel Ash
+             * @description Page 9's fuel-ash inputs on the plan (coke, nut coke, PCI)
+             */
+            fuel_ash?: components["schemas"]["FuelAshRow"][];
             /**
              * Ib4
              * @description (CaO + MgO)/(SiO₂ + Al₂O₃), dimensionless
@@ -12769,6 +13118,16 @@ export interface components {
              * @description Slag rate, kg/tHM
              */
             rate_kg_thm: number;
+            /**
+             * Removals
+             * @description What the hot metal and the gas take, with the rule
+             */
+            removals?: components["schemas"]["SlagRemoval"][];
+            /**
+             * Rollup
+             * @description Slag-forming oxides per source, adding up to the slag
+             */
+            rollup?: components["schemas"]["SlagRollupRow"][];
             /**
              * T Basicity
              * @description (CaO + MgO)/SiO₂, dimensionless
@@ -15644,6 +16003,63 @@ export interface components {
              */
             started_at: string;
         };
+        /**
+         * YardDust
+         * @description A top-gas dust stream of the slag basis the run read (page 9's dust row: the configured values with the saved
+         *     operator inputs laid over).
+         */
+        YardDust: {
+            /**
+             * Al2O3 Pct
+             * @description Al₂O₃ of the dry dust, %
+             */
+            al2o3_pct?: number | null;
+            /**
+             * Cao Pct
+             * @description CaO of the dry dust, %
+             */
+            cao_pct?: number | null;
+            /**
+             * Enabled
+             * @description Deducted from the burden before the slag forms
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Fe Pct
+             * @description Fe of the dry dust, %
+             */
+            fe_pct?: number | null;
+            /** Id */
+            id: string;
+            /**
+             * Kg Per Charge
+             * @description Wet dust per charge, kg
+             */
+            kg_per_charge?: number | null;
+            /**
+             * Mgo Pct
+             * @description MgO of the dry dust, %
+             */
+            mgo_pct?: number | null;
+            /**
+             * Moisture Pct
+             * @description Moisture of the dust, %
+             */
+            moisture_pct?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Sio2 Pct
+             * @description SiO₂ of the dry dust, %
+             */
+            sio2_pct?: number | null;
+            /**
+             * Source
+             * @description Where the figure came from (plant burden sheet, DPR, saved)
+             */
+            source?: string | null;
+        };
         /** YardFlux */
         YardFlux: {
             /**
@@ -17365,129 +17781,6 @@ export interface operations {
             };
         };
     };
-    bmo_list_runs: {
-        parameters: {
-            query?: {
-                /** @description Runs, count */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BmoRunList"];
-                };
-            };
-            /** @description Client error (problem+json) */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Server error (problem+json) */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    bmo_start_run: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["BmoRunParams"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BmoRunSubmitted"];
-                };
-            };
-            /** @description Client error (problem+json) */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Server error (problem+json) */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
-    bmo_get_run: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BmoRunLookup"];
-                };
-            };
-            /** @description Client error (problem+json) */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetail"];
-                };
-            };
-            /** @description Server error (problem+json) */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetail"];
-                };
-            };
-        };
-    };
     bmo_list_snapshots: {
         parameters: {
             query?: {
@@ -18495,6 +18788,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OptimiserRunDetail"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    optimiser_live_model_view: {
+        parameters: {
+            query?: {
+                /** @description Hourly twin windows shown, h (default 48) */
+                hours?: number;
+                /** @description Shift record of the model check, days (7, 14 or 30 on the page) */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveModelView"];
                 };
             };
             /** @description Client error (problem+json) */

@@ -403,7 +403,7 @@ def test_the_optimiser_case_carries_the_snapshot_and_recomposes_the_yard_when_a_
 
 
 def test_the_blend_mix_case_carries_the_snapshot_of_its_sources() -> None:
-    """``CaseSources.live_inputs`` reaches the composed case and the run result (``bmo.run``'s JSON)."""
+    """``CaseSources.live_inputs`` reaches the composed case and the run result (``run_case``'s JSON)."""
     import json
 
     from services import bmo_views

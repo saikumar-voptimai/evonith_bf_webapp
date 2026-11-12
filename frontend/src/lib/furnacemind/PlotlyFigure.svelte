@@ -5,6 +5,7 @@ One Plotly figure of a FurnaceMind answer (the JSON the agent's plot tool produc
 and purges the plot with the component.
 -->
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import { loadPlotly, panelLayout, plotlyConfig, type PlotlyApi, type PlotlyFigureJson } from './plotly.ts';
 
@@ -22,25 +23,38 @@ and purges the plot with the component.
 	let host = $state<HTMLDivElement>();
 	let plotly = $state.raw<PlotlyApi | null>(null);
 	let failed = $state(false);
+	/** Bumped by Retry: the loader runs again (a dev server re-optimising its dependencies answers 504 once). */
+	let attempt = $state(0);
 
 	$effect(() => {
 		const element = host;
+		void attempt;
 		if (!element) return;
 		let disposed = false;
 		let observer: ResizeObserver | null = null;
-		loadPlotly()
+		const load = (tries: number): Promise<PlotlyApi> =>
+			loadPlotly().catch((error: unknown) =>
+				tries > 0
+					? new Promise((r) => setTimeout(r, 1500)).then(() => load(tries - 1))
+					: Promise.reject(error)
+			);
+		load(1)
 			.then((api) => {
 				if (disposed) return;
-				plotly = api;
+				untrack(() => (plotly = api));
 				observer = new ResizeObserver(() => api.Plots.resize(element));
 				observer.observe(element);
 			})
-			.catch(() => (failed = true));
+			.catch(() => {
+				if (!disposed) untrack(() => (failed = true));
+			});
 		return () => {
 			disposed = true;
 			observer?.disconnect();
-			plotly?.purge(element);
-			plotly = null;
+			untrack(() => {
+				plotly?.purge(element);
+				plotly = null;
+			});
 		};
 	});
 
@@ -48,13 +62,18 @@ and purges the plot with the component.
 		const api = plotly;
 		const element = host;
 		if (!api || !element) return;
+		// Plotly writes into the data and layout it is given (uids, computed fields): a plain copy, never the
+		// conversation's reactive figure, or the effect would re-run itself.
+		const fig = $state.snapshot(figure) as PlotlyFigureJson;
 		const style = getComputedStyle(element);
 		const layout = panelLayout(
-			figure.layout,
+			fig.layout,
 			style.getPropertyValue('--vo-font').trim() || undefined,
 			style.getPropertyValue('--vo-text').trim() || undefined
 		);
-		api.react(element, figure.data ?? [], layout, plotlyConfig(filename)).catch(() => (failed = true));
+		api
+			.react(element, fig.data ?? [], layout, plotlyConfig(filename))
+			.catch(() => untrack(() => (failed = true)));
 	});
 </script>
 
@@ -69,6 +88,14 @@ and purges the plot with the component.
 		<p class="failed" role="alert">
 			The chart could not be drawn (the chart library did not load or the figure is not valid). The dataset
 			panel shows the data.
+			<button
+				type="button"
+				class="retry"
+				onclick={() => {
+					failed = false;
+					attempt += 1;
+				}}>Retry</button
+			>
 		</p>
 	{/if}
 </div>
@@ -89,5 +116,15 @@ and purges the plot with the component.
 		margin-top: var(--vo-space-2);
 		font-size: var(--vo-fs-label);
 		color: var(--vo-critical);
+	}
+	.retry {
+		margin-left: var(--vo-space-2);
+		padding: 2px 10px;
+		border: 1px solid var(--vo-border-input);
+		border-radius: var(--vo-radius-small);
+		background: var(--vo-surface);
+		color: var(--vo-text);
+		font-size: var(--vo-fs-label);
+		font-weight: 550;
 	}
 </style>

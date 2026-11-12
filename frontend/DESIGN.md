@@ -60,14 +60,17 @@ tabular lining figures in every readout, table and input. Chemical formulas are 
 
 | Size              | px / weight | Use                                         |
 | ----------------- | ----------- | ------------------------------------------- |
-| `--vo-fs-display` | 40 / 650    | Headline readout of the Live Twin           |
-| `--vo-fs-kpi`     | 30 / 650    | Readouts in tiles                           |
-| `--vo-fs-heading` | 26 / 650    | Page title (h1 in the page header)          |
-| `--vo-fs-title`   | 17 / 650    | Panel titles (h2)                           |
-| `--vo-fs-text`    | 15 / 400    | Prose, navigation items, page subtitle      |
-| `--vo-fs-body`    | 14 / 400    | Table cells, controls                       |
-| `--vo-fs-label`   | 13 / 550    | Labels, units, hints, table headers         |
-| `--vo-fs-eyebrow` | 11.5 / 600  | Section labels: upper case, tracked 0.12 em |
+| `--vo-fs-display` | 34 / 650    | Headline readout of the Live Twin           |
+| `--vo-fs-kpi`     | 26 / 650    | Readouts in tiles                           |
+| `--vo-fs-heading` | 22 / 650    | Page title (h1 in the page header)          |
+| `--vo-fs-title`   | 15.5 / 650  | Panel titles (h2)                           |
+| `--vo-fs-text`    | 14 / 400    | Prose, navigation items, page subtitle      |
+| `--vo-fs-body`    | 13.5 / 400  | Table cells, controls                       |
+| `--vo-fs-label`   | 12.5 / 550  | Labels, units, hints, table headers         |
+| `--vo-fs-eyebrow` | 11 / 600    | Section labels: upper case, tracked 0.12 em |
+
+The scale is one notch below the first SV-0.5 scale (user review of 12 Nov 2026: the pages read large and sparse next
+to the Streamlit pages); table cells are 8 × 12 px (dense 4 × 10 px).
 
 Space: 4 px base (`--vo-space-1..7` = 4, 8, 12, 16, 24, 32, 48). Radius by hierarchy: panel 10, control 7, small 5,
 pill 999. Layout: sidebar 260 px (collapsed 68 px), page header 64 px minimum, gutter 32 px (24 px up to 1279 px,
@@ -96,6 +99,16 @@ pill 999. Layout: sidebar 260 px (collapsed 68 px), page header 64 px minimum, g
    and job states.
 6. Copy is plain and specific: sentence case; buttons name the action ("Apply plan", "Run optimiser"); errors state
    what happened and how to correct it; empty states give the next step.
+7. Tables never break a date or a name across lines: cells stay on one line and the table scrolls sideways, with a
+   fade on its right edge while there is more (`DataTable`); only prose columns wrap (`Column.wrap`, or a label such
+   as Statement, Rule, Reason, Message, Source). Two tables side by side only where both fit (stack below 1440 px).
+8. A collapsed section always shows a chevron (`summary::before` in `base.css`), since a flex summary drops the
+   browser's marker. A page that starts a controller in an effect calls it in `untrack(...)` (a self-restarting
+   effect is a request loop: the Furnace Status page did this until 12 Nov 2026).
+9. A result page follows its Streamlit page: inputs on top, an overview strip of tiles in rows, then one tab per
+   section (the Blend Simulator: Blend, Slag balance, Limits and process, Frontier, Commentary, Yard and inputs,
+   Facts and assumptions), never a single scroll of every panel. Side lists become a strip above the content when
+   they would take the content's width (the Shift reports list at every size).
 
 Product-family conventions taken from the reference: tracked upper-case section labels (sidebar sections, eyebrows
 of highlighted panels and of the sign-in page); page header "Group / Title" with a one-line subtitle; highlighted
@@ -152,6 +165,7 @@ mark and the headline.
 | `DataTable`                                                        | Sortable table, units in the header, sticky header, empty and loading states                                                   |
 | `Tabs`                                                             | WAI-ARIA tabs, automatic activation                                                                                            |
 | `Modal`, `Drawer` (`Dialog`)                                       | Native `<dialog>`: focus contained, Escape and backdrop close, focus returned                                                  |
+| `FloatingWindow` | Non-modal window: dragged by its header, resized at the corner, folded or closed; place and size remembered per viewer (`storageKey`); a bottom sheet below 1024 px. Lists beside live content: runs, conversations, artifacts |
 | `Toaster` + `toasts`                                               | Notifications; critical ones stay until closed                                                                                 |
 | `JobButton`                                                        | Background job: queued, running with progress and elapsed time, finished, failed                                               |
 | `NumberInput`                                                      | Entry with unit and bounds; refuses, never clamps                                                                              |

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	/**
 	 * Furnace Status (SV-2.2, #294): the V-Board on the SPA. The schematic with zone callouts and zone status in the
 	 * centre between the uptake and hearth strips, the section panels on either side, the operating state and the
@@ -31,7 +32,8 @@
 
 	const page = new FurnaceStatus();
 
-	$effect(() => page.start());
+	// start() writes state it also reads: untracked, so the effect does not restart itself (a request loop)
+	$effect(() => untrack(() => page.start()));
 
 	const snapshot = $derived(page.snapshot);
 	const settings = $derived(page.settings);

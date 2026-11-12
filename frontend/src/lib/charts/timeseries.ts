@@ -10,7 +10,7 @@
  * bands and the plant band, so the band never fills the plot.
  */
 import { formatNumber, formatQuantity } from '../format/number.ts';
-import type { ChartOption } from './echarts.ts';
+import type { ChartOption, MarkAreaData } from './echarts.ts';
 import {
 	escapeHtml,
 	labelStyle,
@@ -45,6 +45,8 @@ export interface TimeSeries {
 	colour: SeriesColour;
 	points: TimePoint[];
 	dashed?: boolean;
+	/** Mark every point (sparse series such as taps or shifts); lines carry no symbols by default. */
+	symbols?: boolean;
 	band?: TimeBand;
 }
 
@@ -73,6 +75,10 @@ export interface TimeSeriesSpec {
 	endLabels?: boolean;
 	/** Ids of series hidden from the legend. */
 	hidden?: ReadonlySet<string>;
+	/** From this instant (UTC ms) the plot is shaded as the future: forecasts beyond it, history before. */
+	futureFrom?: number | undefined;
+	/** Height of the chart in px (the component's), so the end labels can be kept apart. */
+	plotHeight?: number | undefined;
 }
 
 const BAND_BASE = '__band_base__';
@@ -82,6 +88,33 @@ const LETTER_CLEARANCE = 0.02;
 /** Annotations beyond this share of the range are labelled on the left of their line. */
 const NOTE_FLIP = 0.8;
 const END_LABEL_DISTANCE = 8;
+/** Least vertical distance between two end labels, px (one line of 12 px text). */
+const END_LABEL_GAP = 14;
+const DEFAULT_PLOT_HEIGHT = 280;
+const GRID_TOP = 30;
+const AXIS_BAND = 24;
+
+/** Positions (px, top down) moved apart so that neighbours are at least `gap` apart, kept inside [lo, hi] when the
+ * room allows; the order is preserved. Pure, for the end labels of a chart. */
+export function spreadLabels(ys: readonly number[], gap: number, lo: number, hi: number): number[] {
+	const order = ys.map((y, i) => i).sort((a, b) => ys[a]! - ys[b]!);
+	const out = ys.slice();
+	// top down: push each label below the one above it
+	for (let k = 1; k < order.length; k++) {
+		const prev = out[order[k - 1]!]!;
+		if (out[order[k]!]! - prev < gap) out[order[k]!] = prev + gap;
+	}
+	// the stack may now overshoot the bottom: pull it up, then re-separate bottom up against the top
+	const lastIdx = order.at(-1);
+	if (lastIdx !== undefined && out[lastIdx]! > hi) {
+		out[lastIdx] = hi;
+		for (let k = order.length - 2; k >= 0; k--) {
+			const next = out[order[k + 1]!]!;
+			if (next - out[order[k]!]! < gap) out[order[k]!] = Math.max(lo, next - gap);
+		}
+	}
+	return out;
+}
 
 /** Range of the time axis over all series (UTC ms), or null without points. */
 export function timeRange(series: TimeSeries[]): [number, number] | null {
@@ -157,6 +190,23 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 	const scale = timeSeriesScale(spec);
 	const endLabels = spec.endLabels ?? false;
 	const colourOf = (s: TimeSeries) => theme.token(s.colour);
+	// End labels: the pixel row of each last value, moved apart where two would overlap (different series' end labels
+	// are not laid out against each other by the chart library).
+	const plotHeight = Math.max(40, (spec.plotHeight ?? DEFAULT_PLOT_HEIGHT) - GRID_TOP - AXIS_BAND);
+	const yOf = (v: number) => GRID_TOP + ((scale.max - v) / (scale.max - scale.min || 1)) * plotHeight;
+	const labelled = endLabels
+		? visible.flatMap((s) => {
+				const v = lastValue(s);
+				return v === null ? [] : [{ id: s.id, y: yOf(v) }];
+			})
+		: [];
+	const spread = spreadLabels(
+		labelled.map((l) => l.y),
+		END_LABEL_GAP,
+		GRID_TOP,
+		GRID_TOP + plotHeight
+	);
+	const offsets = new Map(labelled.map((l, i) => [l.id, Math.round(spread[i]! - l.y)]));
 
 	const series: NonNullable<ChartOption['series']> = [];
 	for (const s of visible) {
@@ -202,9 +252,9 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 			name: s.label,
 			type: 'line',
 			data: s.points.map(([t, v]) => [toAxis(t), v]),
-			showSymbol: false,
+			showSymbol: s.symbols ?? false,
 			symbol: 'circle',
-			symbolSize: 8,
+			symbolSize: s.symbols ? 6 : 8,
 			connectNulls: false,
 			lineStyle: {
 				color: colourOf(s),
@@ -227,7 +277,8 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 							color: theme.text,
 							fontFamily: theme.font,
 							fontSize: 12,
-							distance: END_LABEL_DISTANCE
+							distance: END_LABEL_DISTANCE,
+							offset: [0, offsets.get(s.id) ?? 0]
 						},
 						labelLayout: { moveOverlap: 'shiftY' as const }
 					}
@@ -241,6 +292,32 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 	const shiftLines =
 		range && (spec.shifts ?? true) ? shiftBoundaries(toAxis(range[0]), toAxis(range[1])) : [];
 	const notes = (spec.annotations ?? []).filter((a) => !range || (a.t >= range[0] && a.t <= range[1]));
+	const future =
+		range && spec.futureFrom !== undefined && spec.futureFrom < range[1]
+			? Math.max(spec.futureFrom, range[0])
+			: null;
+	const areas: MarkAreaData = [];
+	if (spec.band)
+		areas.push([
+			{ yAxis: spec.band.lo, itemStyle: { color: theme.token('track') } },
+			{ yAxis: spec.band.hi }
+		]);
+	if (future !== null && range)
+		areas.push([
+			{
+				xAxis: toAxis(future),
+				name: 'Forecast',
+				itemStyle: { color: theme.cream, opacity: 0.55 },
+				label: {
+					show: true,
+					formatter: 'Forecast',
+					position: 'insideTop',
+					...labelStyle(theme),
+					fontWeight: 600
+				}
+			},
+			{ xAxis: toAxis(range[1]) }
+		]);
 	series.push({
 		id: '__marks__',
 		type: 'line',
@@ -300,13 +377,13 @@ export function timeSeriesOption(theme: ChartTheme, spec: TimeSeriesSpec): Chart
 					}
 				}
 			: {}),
-		...(spec.band
+		...(areas.length
 			? {
 					markArea: {
 						silent: true,
-						itemStyle: { color: theme.token('track') },
+						animation: false,
 						label: { show: false },
-						data: [[{ yAxis: spec.band.lo }, { yAxis: spec.band.hi }]]
+						data: areas
 					}
 				}
 			: {})

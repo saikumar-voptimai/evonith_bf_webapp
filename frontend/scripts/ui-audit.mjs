@@ -86,7 +86,6 @@ const ROUTES = [
 	{ name: 'status', path: '/status', mocked: false },
 	{ name: 'reports', path: '/reports', mocked: false },
 	{ name: 'furnacemind', path: '/furnacemind', mocked: false },
-	{ name: 'bmo', path: '/bmo' },
 	{ name: 'optimiser', path: '/optimiser', mocked: false },
 	{ name: 'admin-facts', path: '/admin/facts', mocked: false },
 	{ name: 'admin-what-if', path: '/admin/what-if', mocked: false },
@@ -283,9 +282,8 @@ try {
 			body: `retry: 3000\n\nevent: heartbeat\ndata: ${beat}\n\n`
 		});
 	});
-	// Blend Mix Optimiser (SV-7.4, #327): the case report's Step 2 run as the shift's run (scheduled, with a certainty
-	// tier) and as a page run made 1 h later (held shaft efficiency, accepted), the live-inputs sample, no page-9 run,
-	// forecast or snapshot.
+	// Blend & Fuel Optimiser (SV-7.4, #327): the case report's Step 2 run as the shift's run (scheduled, with a certainty
+	// tier) and as a page run made 1 h later (held shaft efficiency, accepted), the live-inputs sample.
 	const bmoShift = Date.now() - 2 * HOUR_MS - Date.parse(OPTIMISER.step2.finished_at);
 	const stepRun = shifted(OPTIMISER.step2, bmoShift);
 	const PAGE_RUN_ID = '7d2e4f60-1c3b-4a5d-9e8f-0a1b2c3d4e5f';
@@ -355,31 +353,6 @@ try {
 		return json(route, id === PAGE_RUN_ID ? pageResult : shiftResult);
 	});
 	await context.route(/\/api\/inputs\/live(\?.*)?$/, (route) => json(route, sampleLiveInputs(new Date())));
-	await context.route(/\/api\/bmo\/runs(\?.*)?$/, (route) => json(route, { runs: [] }));
-	await context.route('**/api/bmo/forecasts/si', (route) =>
-		json(route, {
-			mode: 'forecast',
-			current: false,
-			note: 'No forecast issued in the audit.',
-			issuer: 'worker',
-			worker_active: false,
-			forecast: null
-		})
-	);
-	await context.route('**/api/bmo/forecasts/charged-coke', (route) =>
-		json(route, {
-			current: false,
-			note: null,
-			issuer: 'worker',
-			worker_active: false,
-			last_issued_row: null,
-			reasons: ['No forecast issued in the audit.'],
-			forecast: null
-		})
-	);
-	await context.route(/\/api\/bmo\/snapshots(\?.*)?$/, (route) =>
-		json(route, { snapshots: [], unreadable: [] })
-	);
 	// STRATA page (SV-1.12, #292): its three reads answered with generated values.
 	await context.route(/\/api\/strata\/(omega|summary|live-point)(\?.*)?$/, (route) =>
 		route.fulfill({
@@ -713,7 +686,7 @@ try {
 		await dialog.waitFor({ state: 'hidden' });
 	});
 
-	await check('a user sees the six client pages in the rail and no model view (SV-7.2, #325)', async () => {
+	await check('a user sees the five client pages in the rail and no model view (SV-7.2, #325)', async () => {
 		auth.role = 'user';
 		try {
 			await page.setViewportSize({ width: 1366, height: 768 });
@@ -721,14 +694,7 @@ try {
 			await settle(page);
 			const rail = page.locator('nav[aria-label="Main"] .groups');
 			const labels = (await rail.getByRole('link').allInnerTexts()).map((t) => t.trim());
-			const want = [
-				'Furnace status',
-				'Shift reports',
-				'FurnaceMind',
-				'Blend Mix Optimiser',
-				'Blend Simulator',
-				'Models'
-			];
+			const want = ['Furnace status', 'Shift reports', 'FurnaceMind', 'Blend & Fuel Optimiser', 'Models'];
 			expect(labels.join('|') === want.join('|'), `a user's rail is ${JSON.stringify(labels)}`);
 			// Group labels are upper-cased by CSS: compare the text content, not innerText.
 			const groups = (await rail.locator('.group-label').allTextContents()).map((t) => t.trim());

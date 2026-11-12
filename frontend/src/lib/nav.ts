@@ -23,7 +23,6 @@ import Scale from '@lucide/svelte/icons/scale';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import ServerCog from '@lucide/svelte/icons/server-cog';
 import Shield from '@lucide/svelte/icons/shield';
-import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 import Thermometer from '@lucide/svelte/icons/thermometer';
 import Users from '@lucide/svelte/icons/users';
 import Wind from '@lucide/svelte/icons/wind';
@@ -265,23 +264,13 @@ export const NAV: NavGroup[] = [
 		label: 'Optimisers',
 		items: [
 			{
-				href: '/bmo',
-				label: 'Blend Mix Optimiser',
-				title: 'Blend Mix Optimiser',
-				subtitle: 'Ore and flux blend at a fixed production.',
-				icon: Blend,
-				summary: 'Ore and flux blend at a fixed production with slag and hot-metal chemistry limits.',
-				issue: 303,
-				legacy: 'Blend Mix Optimiser'
-			},
-			{
 				href: '/optimiser',
-				label: 'Blend Simulator',
-				title: 'Blend Simulator',
-				subtitle: 'Production level, maximum production, the frontier and today’s blend against the plan.',
-				icon: SlidersHorizontal,
+				label: 'Blend & Fuel Optimiser',
+				title: 'Blend & Fuel Optimiser',
+				subtitle: 'Ore, flux and fuel: fixed production, cheapest level, maximum, and today’s blend.',
+				icon: Blend,
 				summary:
-					'The cheapest production level for the day, the maximum production the limits allow, the cost frontier between them, and today’s blend priced against the plan.',
+					'One page for both optimisers (user decision 12 Nov 2026): the blend and fuel plans of the two-zone engine, the production frontier, the live model against the furnace and the plan decision.',
 				issue: 300,
 				legacy: 'Burden & Fuel Optimiser'
 			}

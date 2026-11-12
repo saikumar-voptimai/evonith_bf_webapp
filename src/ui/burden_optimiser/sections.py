@@ -15,9 +15,11 @@ from utils.burden_engine.engine import Engine, Limits
 from utils.burden_engine import model_check as mc
 from utils.burden_engine.facts import ENGINE_FACTS, FactRegister
 from utils.coke_energy import transit as tr
-from utils.burden_engine.scenarios import (binding_table, blend_compare_table, cost_table, flux_compare_table,  # noqa: F401
-                                           limit_label, limit_labels, plan_sentence, plan_tiles, process_table,
-                                           slag_table, viu_table)
+from utils.burden_engine.scenarios import (FUEL_LABELS, binding_table, blend_compare_table, cost_table,  # noqa: F401
+                                           dust_table, flux_compare_table, fuel_ash_table, limit_label, limit_labels,
+                                           material_rows, plan_sentence, plan_tiles, process_table, slag_balance_table,
+                                           slag_basis_note, slag_components_table, slag_removals_table,
+                                           slag_rollup_table, slag_table, viu_table)
 from utils.slag_bands import PLANT_SLAG_BANDS, band_note
 
 RS = "Rs/tHM"
@@ -323,6 +325,74 @@ def render_yard_editor(yard: Mapping[str, Any], key: str) -> tuple[list[dict], l
     return edited, fluxes, fuel
 
 
+#: Dust-editor columns: the slag-basis key, the column label, the number format and the saved (operator-inputs) key.
+_DUST_COLS = (("kg_per_charge", "Dust, kg/charge", "%.0f", "quantity_kg_per_charge"),
+              ("CaO_pct", "CaO %", "%.2f", "cao_pct"), ("MgO_pct", "MgO %", "%.2f", "mgo_pct"),
+              ("SiO2_pct", "SiO₂ %", "%.2f", "sio2_pct"), ("Al2O3_pct", "Al₂O₃ %", "%.2f", "al2o3_pct"),
+              ("Fe_pct", "Fe %", "%.2f", "fe_pct"), ("moist_pct", "Moisture %", "%.1f", "moisture_pct"))
+
+
+def render_dust_editor(basis: Mapping[str, Any] | None, key: str) -> tuple[dict[str, Any] | None, pd.DataFrame]:
+    """The top-gas dust streams of the slag basis (page 9's dust editor, the columns the engine uses): which stream
+    is deducted, its kg per charge and analysis. Returns the basis with the edits (applied to this run) and the rows
+    in the form the operator inputs persist (``dust_id``, ``enabled``, ``quantity_kg_per_charge``, ``cao_pct`` …), for
+    *Save as operator inputs*."""
+    if not basis or not basis.get("dust"):
+        st.caption("No dust stream configured: nothing is deducted from the slag side.")
+        return (dict(basis) if basis else None), pd.DataFrame()
+    rows = [d for d in basis["dust"] if d.get("kg_per_charge") is not None]
+    df = pd.DataFrame([dict(id=d["id"], enabled=bool(d.get("enabled", True)), name=d["name"],
+                            **{k: float(d.get(k) or 0.0) for k, *_ in _DUST_COLS}, source=d.get("source", ""))
+                       for d in rows])
+    st.markdown("**Top-gas dust** · deducted from the burden before the slag forms, per charge of the plan's blend")
+    ed = st.data_editor(df.set_index("id"), width="stretch", key=f"{key}_dust", num_rows="fixed", hide_index=True,
+                        column_config={"enabled": st.column_config.CheckboxColumn("Deduct"),
+                                       "name": st.column_config.TextColumn("Stream", disabled=True),
+                                       "source": st.column_config.TextColumn("Source", disabled=True),
+                                       **{k: st.column_config.NumberColumn(lbl, format=fmt, min_value=0.0,
+                                                                           max_value=None if k == "kg_per_charge" else 100.0)
+                                          for k, lbl, fmt, _ in _DUST_COLS}})
+    out, saved = dict(basis), []
+    edited = []
+    for d in basis["dust"]:
+        if d.get("kg_per_charge") is None:
+            edited.append(dict(d))
+            continue
+        row = ed.loc[d["id"]]
+        e = dict(d, enabled=bool(row["enabled"]), **{k: float(row[k]) for k, *_ in _DUST_COLS})
+        edited.append(e)
+        saved.append(dict(dust_id=d["id"], enabled=e["enabled"], rate_basis="kg_per_charge",
+                          **{sk: e[k] for k, _, _, sk in _DUST_COLS}))
+    out["dust"] = edited
+    return out, pd.DataFrame(saved)
+
+
+def render_fuel_ash_inputs(cal_case: Mapping[str, Any] | None, basis: Mapping[str, Any] | None) -> None:
+    """Page 9's fuel-ash inputs as the engine holds them: the calibration's analyses of coke, nut coke and PCI (ash,
+    moisture and the ash's oxides from the plant's fuel chemistry) and the minor elements the Blend Mix Optimiser
+    configures (alkalis, S, P, MnO). Read-only here; the quantities are the plan's."""
+    if not cal_case:
+        st.caption("Fuel analyses come with the calibration; none loaded.")
+        return
+    minor = (basis or {}).get("fuel") or {}
+    rows = []
+    for key, label in FUEL_LABELS:
+        fu = cal_case.get(key) or {}
+        a = fu.get("ash_comp") or {}
+        mn = minor.get({"coke": "coke", "nut": "nut_coke", "pci": "pci"}[key]) or {}
+        rows.append(dict(fuel=label, moist=float(fu.get("moist_pct") or 0.0), ash=float(fu.get("ash") or 0.0),
+                         **{k: float(a.get(k) or 0.0) for k in ("SiO2", "Al2O3", "CaO", "MgO", "Fe2O3", "TiO2")},
+                         alk=float(mn.get("alk_pct") or 0.0), S=float(mn.get("S_pct") or 0.0), P=float(mn.get("P_pct") or 0.0)))
+    st.markdown("**Fuel ash** · the calibration's analyses; alkalis, S and P from the Blend Mix Optimiser's fuel-ash inputs")
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True, column_config={
+        "fuel": st.column_config.TextColumn("Fuel"), "moist": st.column_config.NumberColumn("Moisture %", format="%.2f"),
+        "ash": st.column_config.NumberColumn("Ash %", format="%.2f"),
+        **{k: st.column_config.NumberColumn(f"{lbl} % of ash", format="%.2f") for k, lbl in
+           (("SiO2", "SiO₂"), ("Al2O3", "Al₂O₃"), ("CaO", "CaO"), ("MgO", "MgO"), ("Fe2O3", "Fe₂O₃"), ("TiO2", "TiO₂"),
+            ("alk", "Na₂O + K₂O"))},
+        "S": st.column_config.NumberColumn("S % of fuel", format="%.3f"), "P": st.column_config.NumberColumn("P % of fuel", format="%.3f")})
+
+
 def _pci_input(col: Any, thermal: Mapping[str, Any], key: str) -> float:
     """PCI, kg/tHM as injected: the default (live tag, else the regime median) unless the override is on."""
     default = float(thermal.get("pci_kg_thm", 190.0))
@@ -355,7 +425,10 @@ def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_defau
                             value=float(thermal.get("HMT", 1470.0)), step=5.0, format="%.0f", key=f"{key}_hmt",
                             help="Thermal target the coke rate is solved for (BAND-02)."),
         hm_Si=c2.number_input("Hot metal Si, %", min_value=si_lo, max_value=si_hi, value=float(thermal.get("hm_Si", 0.38)),
-                              step=0.01, format="%.2f", key=f"{key}_si", help="BAND-03"),
+                              step=0.01, format="%.2f", key=f"{key}_si",
+                              help="Thermal Si the coke rate is solved for (BAND-03). The slag balance holds the "
+                                   "Blend Mix Optimiser's Si instead (setting_bmo.yml slag_balance), so both pages "
+                                   "report one slag for one blend."),
         pci_plant=_pci_input(c3, thermal, key),
         nut_plant=c4.number_input("Nut coke, kg/tHM", min_value=0.0, max_value=120.0,
                                   value=float(thermal.get("nut_kg_thm", 70.0)), step=1.0, format="%.0f", key=f"{key}_nut",
@@ -484,7 +557,8 @@ def render_plan_summary(r: Mapping[str, Any], title: str, *, flux_ids: list[str]
                   help="Against today's production (median of the regime window).")
         o4.caption(f"{ov['P_tday'] - today_t_day:+,.0f} t/d ({today_t_day:,.0f} to {ov['P_tday']:,.0f})")
     else:
-        o4.metric("Coke, dry (kg/tHM)", _num(P["fuel"]["coke_dry"], ".1f"))
+        o4.metric("Coke, as charged (kg/tHM)", _num(P["fuel"]["coke_wet"], ".2f"),
+                  help=f"{P['fuel']['coke_dry']:.2f} kg/tHM dry.")
 
     c = P["cost"]
     with st.container(border=True):
@@ -501,12 +575,13 @@ def render_plan_summary(r: Mapping[str, Any], title: str, *, flux_ids: list[str]
     with st.container(border=True):
         st.markdown("###### 🔥 &nbsp;Fuel rates &nbsp;<small>kg / tHM</small>", unsafe_allow_html=True)
         k = st.columns(4)
-        k[0].metric("Coke (dry)", _num(f["coke_dry"], ".1f"), _delta(d("fuel", "coke_dry"), "+.1f"),
-                    delta_color="inverse", help=f"From the two-zone energy balance; {f['coke_wet']:.1f} kg/tHM wet.")
-        k[1].metric("Nut coke", _num(f["nut"], ".0f"), help="Fixed input, as charged.")
-        k[2].metric("PCI", _num(f["pci"], ".0f"), help="Fixed input, as injected.")
-        k[3].metric("**Total fuel**", _num(f["total"], ".0f"), _delta(d("fuel", "total"), "+.0f", tol=0.5),
-                    delta_color="inverse", help="Coke wet + nut coke + PCI (BAND-01: 520–600).")
+        # coke as charged (wet, the client's basis) and two decimals throughout, so the fuels add up as shown
+        k[0].metric("Coke (as charged)", _num(f["coke_wet"], ".2f"), _delta(d("fuel", "coke_wet"), "+.2f", tol=0.005),
+                    delta_color="inverse", help=f"From the two-zone energy balance; {f['coke_dry']:.2f} kg/tHM dry.")
+        k[1].metric("Nut coke", _num(f["nut"], ".2f"), help="Fixed input, as charged.")
+        k[2].metric("PCI", _num(f["pci"], ".2f"), help="Fixed input, as injected.")
+        k[3].metric("**Total fuel**", _num(f["total"], ".2f"), _delta(d("fuel", "total"), "+.2f", tol=0.005),
+                    delta_color="inverse", help="Coke as charged + nut coke + PCI (BAND-01: 520–600).")
 
     s = P["slag"]
     L = r["limits"]
@@ -568,17 +643,35 @@ def render_plan_tabs(eng: Engine, r: Mapping[str, Any], key: str, other: Mapping
         table_col, donut_col = st.columns([3, 2], gap="medium")
         with table_col:
             B = blend_compare_table(r, others, names, prices)
-            cfg = {c: num(c, format="%.1f") for c in B.columns if c.endswith("wet %")}
-            cfg.update({c: num(c, format="%,.1f") for c in B.columns if c.endswith("kg/tHM")})
-            cfg.update({"Plan, t/d": num("Plan, t/d", format="%,.0f"),
-                        "Price, Rs/t": num("Price, Rs/t", format="%,.0f")})
+            M = {m["material"]: m for m in material_rows(r, names, prices)}
+            detail = any(m["fe_kg"] is not None for m in M.values())
+            if detail:   # page 9's blend-table columns: Fe, slag-forming oxides, kg per charge and cost per material
+                at = list(B.columns).index("Plan, t/d") + 1
+                for j, (col, key) in enumerate((("Fe, kg/tHM", "fe_kg"), ("Slag, kg/tHM", "slag_kg"),
+                                                ("Plan, kg/charge", "kg_per_charge"), ("Cost, Rs/tHM", "cost_rs_thm"))):
+                    B.insert(at + j, col, [(M.get(n) or {}).get(key) for n in B["Material"]])
+            cfg = {c: num(c, format="%.2f") for c in B.columns if c.endswith("wet %")}
+            cfg.update({c: num(c, format="%,.2f") for c in B.columns if c.endswith("kg/tHM")})
+            cfg.update({"Plan, t/d": num("Plan, t/d", format="%,.0f"), "Plan, kg/charge": num("Plan, kg/charge", format="%,.0f"),
+                        "Price, Rs/t": num("Price, Rs/t", format="%,.0f"), "Cost, Rs/tHM": num("Cost, Rs/tHM", format="%,.0f")})
             st.dataframe(B, width="stretch", hide_index=True, column_config=cfg)
             F = flux_compare_table(r, others, names, [v.id for v in eng.flux])
             if F.empty:
                 st.caption("No flux needed: the ferrous blend meets the basicity band on its own.")
             else:
+                if detail:
+                    at = len(F.columns)
+                    for j, (col, key) in enumerate((("Slag, kg/tHM", "slag_kg"), ("Plan, kg/charge", "kg_per_charge"),
+                                                    ("Cost, Rs/tHM", "cost_rs_thm"))):
+                        F.insert(at + j, col, [(M.get(n) or {}).get(key) for n in F["Flux"]])
                 st.dataframe(F, width="stretch", hide_index=True,
-                             column_config={c: num(c, format="%.1f") for c in F.columns if c.endswith("kg/tHM")})
+                             column_config={**{c: num(c, format="%.2f") for c in F.columns if c.endswith("kg/tHM")},
+                                            "Plan, kg/charge": num("Plan, kg/charge", format="%,.0f"),
+                                            "Cost, Rs/tHM": num("Cost, Rs/tHM", format="%,.0f")})
+            if detail:
+                st.caption("Fe and slag per material as page 9's blend table: Fe = dry kg × total Fe %, slag = dry kg × "
+                           "slag-forming oxides (SiO₂ + Al₂O₃ + CaO + MgO + TiO₂ + MnO + Na₂O + K₂O); kg per charge "
+                           "at the plan's hot metal per charge.")
         with donut_col:
             colours = material_colours([v.id for v in eng.vars if v.kind != "flux"])
             which = "Plan"
@@ -611,6 +704,65 @@ def render_plan_tabs(eng: Engine, r: Mapping[str, Any], key: str, other: Mapping
         if today is not None:
             S.insert(2, "Today", [_num(v, f) for v, f in zip(slag_table(today)["value"], fmts)])
         st.dataframe(S, width="stretch", hide_index=True)
+        note = slag_basis_note(r)
+        if note:
+            st.caption(note)
+        Cm = slag_components_table(r)
+        if not Cm.empty:   # page 9's Slag Balance Details on the plan
+            c1, c2 = st.columns([2, 3], gap="medium")
+            with c1:
+                st.markdown("###### Composition")
+                Cm = Cm.rename(columns={"component": "Component", "kg_per_thm": "Plan, kg/tHM", "pct": "Plan, %"})
+                if today is not None:
+                    T = slag_components_table(today)
+                    if not T.empty:
+                        Cm["Today, kg/tHM"] = T["kg_per_thm"].values
+                        Cm["Today, %"] = T["pct"].values
+                st.dataframe(Cm, width="stretch", hide_index=True, height=35 * (len(Cm) + 1) + 3, column_config={
+                    **{c: num(c, format="%.2f") for c in Cm.columns if c.endswith("kg/tHM")},
+                    **{c: num(c, format="%.2f") for c in Cm.columns if c.endswith("%")}})
+                st.markdown("###### Per source")
+                Ru = slag_rollup_table(r).rename(columns={"source": "Source", "kg_per_thm": "kg/tHM"})
+                st.dataframe(Ru, width="stretch", hide_index=True, height=35 * (len(Ru) + 1) + 3,
+                             column_config={"kg/tHM": num("kg/tHM", format="%+.2f")})
+            with c2:
+                st.markdown("###### Where each component goes, kg/tHM")
+                Bl = slag_balance_table(r).rename(columns={
+                    "component": "Component", "ore": "Ore", "flux": "Flux", "fuel_ash": "Fuel ash", "dust": "Dust",
+                    "hot_metal_gas": "Hot metal, gas", "slag": "Slag"})
+                st.dataframe(Bl, width="stretch", hide_index=True, height=35 * (len(Bl) + 1) + 3,
+                             column_config={c: num(c, format="%.2f") for c in Bl.columns if c != "Component"})
+                st.caption("Fe, Mn and Ti are charged as the element and leave as FeO, MnO and TiO₂ in the slag; the "
+                           "dust deduction is per component, never below zero.")
+                st.markdown("###### Hot-metal and gas removals")
+                Rm = slag_removals_table(r).rename(columns={"removal": "Removal", "rule": "Rule", "kg_per_thm": "kg/tHM"})
+                st.dataframe(Rm, width="stretch", hide_index=True, height=35 * (len(Rm) + 1) + 3,
+                             column_config={"kg/tHM": num("kg/tHM", format="%.2f")})
+            st.markdown("###### Fuels and ash")
+            Fa = fuel_ash_table(r).rename(columns={
+                "fuel": "Fuel", "wet_kg": "As charged, kg/tHM", "dry_kg": "Dry, kg/tHM", "moist_pct": "Moisture %",
+                "ash_pct": "Ash %", "ash_kg": "Ash, kg/tHM", "sio2_pct": "SiO₂ % of ash", "al2o3_pct": "Al₂O₃ % of ash",
+                "cao_pct": "CaO % of ash", "mgo_pct": "MgO % of ash", "fe2o3_pct": "Fe₂O₃ % of ash", "mno_pct": "MnO % of ash",
+                "tio2_pct": "TiO₂ % of ash", "alk_pct": "Na₂O + K₂O % of ash", "s_pct": "S % of fuel", "p_pct": "P % of fuel",
+                "slag_kg": "Slag-forming oxides, kg/tHM"})
+            st.dataframe(Fa, width="stretch", hide_index=True, height=35 * (len(Fa) + 1) + 3, column_config={
+                **{c: num(c, format="%.2f") for c in Fa.columns if c != "Fuel"},
+                "S % of fuel": num("S % of fuel", format="%.3f"), "P % of fuel": num("P % of fuel", format="%.3f")})
+            st.caption("Page 9's fuel-ash inputs on the plan: ash and its oxides from the calibration's fuel analyses, "
+                       "alkalis, S and P from the Blend Mix Optimiser's configuration; PCI and nut coke are the fixed "
+                       "inputs, coke the plan's.")
+            st.markdown("###### Top-gas dust")
+            Du = dust_table(r).drop(columns=["id"]).rename(columns={
+                "stream": "Stream", "kg_per_charge": "kg/charge", "kg_per_thm": "Wet, kg/tHM", "dry_kg": "Dry, kg/tHM",
+                "moist_pct": "Moisture %", "sio2_pct": "SiO₂ %", "al2o3_pct": "Al₂O₃ %", "cao_pct": "CaO %", "mgo_pct": "MgO %",
+                "fe_pct": "Fe %", "fe_kg": "Fe carried away, kg/tHM", "slag_kg": "Slag-forming oxides carried away, kg/tHM",
+                "source": "Source"})
+            st.dataframe(Du, width="stretch", hide_index=True, height=35 * (len(Du) + 1) + 3, column_config={
+                **{c: num(c, format="%.2f") for c in Du.columns if c not in ("Stream", "Source")},
+                "kg/charge": num("kg/charge", format="%.0f")})
+            st.caption(f"Dust per tHM = kg per charge × the plan's charges per tHM ({r.get('charges_per_h', 0):.2f} charges/h "
+                       f"at {r['P_th']:.1f} t/h); change the kg per charge and the analysis under *Top-gas dust and "
+                       "fuel ash* above.")
     with tabs[3]:
         P = process_table(r).rename(columns={"quantity": "Quantity", "value": "Value", "limit": "Limit"})
         st.dataframe(P, width="stretch", hide_index=True, height=35 * (len(P) + 1) + 3)
@@ -679,8 +831,9 @@ def render_frontier(res: Mapping[str, Any]) -> None:
             "cost_rs_thm": st.column_config.NumberColumn(RS, format="%,.0f"),
             "ore_flux_rs_thm": st.column_config.NumberColumn("Ore + flux", format="%,.0f"),
             "fuel_rs_thm": st.column_config.NumberColumn("Fuel", format="%,.0f"),
-            "coke_dry": st.column_config.NumberColumn("Coke dry", format="%.1f"),
-            "fuel_rate": st.column_config.NumberColumn("Fuel rate", format="%.0f"),
+            "coke_wet": st.column_config.NumberColumn("Coke as charged", format="%.2f"),
+            "coke_dry": st.column_config.NumberColumn("Coke dry", format="%.2f"),
+            "fuel_rate": st.column_config.NumberColumn("Fuel rate", format="%.2f"),
             "slag": st.column_config.NumberColumn("Slag", format="%.0f"),
             "HBT": st.column_config.NumberColumn("HBT", format="%.0f"),
             "enrich_tag": st.column_config.NumberColumn("Enrich %", format="%.2f"),

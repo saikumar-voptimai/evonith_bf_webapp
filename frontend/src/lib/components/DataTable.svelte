@@ -54,11 +54,14 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 	// The wrapper joins the tab order only when it scrolls, so keyboard users can scroll it (WCAG 2.1.1).
 	let wrap = $state<HTMLDivElement>();
 	let scrollable = $state(false);
+	/** Wider than its box: a fade at the right edge says there is more to scroll. */
+	let wide = $state(false);
 	$effect(() => {
 		const el = wrap;
 		if (!el) return;
 		const measure = () => {
-			scrollable = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+			wide = el.scrollWidth > el.clientWidth + 1;
+			scrollable = wide || el.scrollHeight > el.clientHeight + 1;
 		};
 		const observer = new ResizeObserver(measure);
 		observer.observe(el);
@@ -68,6 +71,27 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 	});
 
 	const alignOf = (c: Column<T>): string => c.align ?? (c.numeric ? 'right' : 'left');
+	// Cells stay on one line (dates, names, chips) and the table scrolls sideways; prose columns wrap. A column says
+	// so with `wrap`, else its label does (the long-text columns of the pages).
+	const WRAP_LABELS = new Set([
+		'Statement',
+		'Rule',
+		'Reason',
+		'Message',
+		'Note',
+		'Change',
+		'Removal',
+		'Description',
+		'Error',
+		'Comment',
+		'Details',
+		'Summary',
+		'Source',
+		'Basis',
+		'Why',
+		'Text'
+	]);
+	const wraps = (c: Column<T>): boolean => c.wrap ?? WRAP_LABELS.has(c.label);
 	const ariaSort = (c: Column<T>): 'ascending' | 'descending' | undefined =>
 		sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined;
 </script>
@@ -76,7 +100,7 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	bind:this={wrap}
-	class={['wrap', dense && 'dense']}
+	class={['wrap', dense && 'dense', wide && 'wide']}
 	style:max-height={maxHeight}
 	role={scrollable ? 'region' : undefined}
 	aria-labelledby={scrollable ? `${uid}-caption` : undefined}
@@ -132,7 +156,7 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 				{#each sorted as row, i (rowKey(row, i))}
 					<tr class={rowClass?.(row)}>
 						{#each columns as c (c.key)}
-							<td class={[alignOf(c), c.numeric && 'num']}>
+							<td class={[alignOf(c), c.numeric && 'num', wraps(c) && 'wrap']}>
 								{#if cells?.[c.key]}{@render cells[c.key]?.(row)}{:else}{cellText(row, c)}{/if}
 							</td>
 						{/each}
@@ -157,6 +181,10 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 	}
 	.wrap:focus-visible {
 		outline-offset: -2px;
+	}
+	/* More columns to the right: a soft fade on the edge (the sticky header keeps its own background). */
+	.wrap.wide {
+		mask-image: linear-gradient(to right, black calc(100% - 28px), rgb(0 0 0 / 0.35));
 	}
 	table {
 		width: 100%;
@@ -187,7 +215,7 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 		align-items: baseline;
 		gap: 5px;
 		width: 100%;
-		padding: 10px 14px;
+		padding: 8px 12px;
 	}
 	.right .head {
 		justify-content: flex-end;
@@ -221,20 +249,24 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 		color: var(--vo-accent-ink);
 	}
 	td {
-		padding: 10px 14px;
+		padding: 8px 12px;
 		border-bottom: 1px solid var(--vo-border);
 		vertical-align: middle;
+		white-space: nowrap;
+	}
+	td.wrap {
+		white-space: normal;
+		overflow-wrap: anywhere;
+		min-width: 14rem;
 	}
 	tbody tr:last-child td {
 		border-bottom: 0;
 	}
 	.dense td {
-		padding-top: 5px;
-		padding-bottom: 5px;
+		padding: 4px 10px;
 	}
 	.dense .head {
-		padding-top: 6px;
-		padding-bottom: 6px;
+		padding: 5px 10px;
 	}
 	td.right {
 		text-align: right;

@@ -4,6 +4,12 @@
 the code references are at the end of each section for anyone who wants to
 check them.*
 
+> **Historical record (note of 10 Nov 2026).** This is the state of the data-driven coke-rate work as of
+> September 2026. Since then the Blend Mix Optimiser's fuel anchor moved to `data_driven` (the charged-coke engine,
+> `docs/bmo_charged_coke_phase1_acceptance.md`) and its energy-balance offset was refitted on 15 Oct 2026 after the
+> stave heat-load tags were confirmed to be GJ/h; the physics path became the Coke Energy Model (page 10) and the
+> Burden & Fuel Optimiser (page 11), see CLAUDE.md sections 11–12. Section 7 below describes the earlier state.
+
 ---
 
 ## 1. The short version

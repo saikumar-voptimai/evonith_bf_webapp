@@ -6,7 +6,7 @@ rate, dust, Si / Mn / Ti to hot metal, FeO to slag), the LP's is ``utils.bmo.sla
 
     python scripts/compare_bmo_vs_burden_engine.py                 # reference yard of 16 Oct 2026 (offline)
     python scripts/compare_bmo_vs_burden_engine.py --live          # live yard (Neon) via the BMO context provider
-    python scripts/compare_bmo_vs_burden_engine.py --target 2300 --out docs/bfo_vs_bmo.md
+    python scripts/compare_bmo_vs_burden_engine.py --target 2300 --out tmp/bfo_vs_bmo.md
 
 Writes a Markdown table (stdout, or --out).
 """
@@ -26,7 +26,7 @@ for p in (ROOT / "src", ROOT / "furnace_data"):
 import yaml  # noqa: E402
 
 from data.burden_engine.inputs import (  # noqa: E402
-    build_engine_inputs, catalogue_fluxes, flux_rows, fuel_prices, yard_rows)
+    build_engine_inputs, catalogue_fluxes, flux_rows, fuel_prices, slag_basis, yard_rows)
 from data.bmo.dust_inputs import dust_cfg_with_live  # noqa: E402
 from utils.bmo.lp_solver import run_lp_baseline  # noqa: E402
 from utils.bmo.types import DustInput, FluxInput, FuelAshInput, OreChemistry, OreInput, SlagBalanceSettings  # noqa: E402
@@ -109,18 +109,24 @@ def main() -> None:
     a = ap.parse_args()
     prefs = yaml.safe_load(open(ROOT / "src/config/bmo_operator_inputs.yml", encoding="utf-8"))
     cal = json.load(open(DEFAULT_CAL_PATH, encoding="utf-8"))
+    bmo = yaml.safe_load(open(ROOT / "src/config/setting_bmo.yml", encoding="utf-8"))["bmo"]
+    rates = None
     if a.live:
         from data.bmo.context_provider import EvonithBmoContextProvider
         prov = EvonithBmoContextProvider()
         ores, _ = prov.build_ore_inputs(mode="avg", window_days=30)
-        dust_rows = page9_dust(prefs, prov.get_dpr_dust_rates(window_days=30)[0])
+        rates = prov.get_dpr_dust_rates(window_days=30)[0]
+        dust_rows = page9_dust(prefs, rates)
         fluxes = live_fluxes(prefs)
     else:
         ores, fluxes = reference_records(prefs)
         dust_rows = page9_dust(prefs)
     mats = yard_rows(ores, prefs, k_rules=dict(gomti_clo="gomti", lloyds_oversize_clo="oversize"))
     fl = flux_rows(fluxes, prefs)
-    inputs = build_engine_inputs(mats, fl, fuel_prices(prefs), use_stock=a.live)
+    charge_t = float((prefs.get("model_inputs") or {}).get("charge_mass_mt") or 26.46)
+    # the engine's slag on page 9's basis (user decision 11 Nov 2026), as the pages run it
+    basis = slag_basis(bmo, prefs, dust_rates=rates, charge_t=charge_t)
+    inputs = build_engine_inputs(mats, fl, fuel_prices(prefs), use_stock=a.live, slag_basis=basis)
     eng = Engine(inputs, cal)
     s = Settings()
     L = Limits()
@@ -178,11 +184,11 @@ def main() -> None:
         binds_en = [b for b in r["binding"] if not b.startswith(("min share", "max share"))]
         lines += [f"Binding in the engine: {', '.join(binds_en) or '-'}. Slag-quality limits at their bound in the "
                   f"page-9 LP: {', '.join(binds_lp) or 'none'}.", "",
-                  "Same blend through both slag calculations: see docs/burden_fuel_optimiser.md. Both count TiO2, "
-                  "alkalis and sulphur in the slag total (page 9 from its analyses, the engine as a 1.2 % allowance), "
-                  "and both take the top-gas dust from the DPR with the plant's dust analyses (page 9 per stream, the "
-                  "engine pooled and without MgO). What remains is the Fe sizing and the dust MgO (page 9 removes "
-                  "about 0.2 kg MgO/tHM more, so its MgO/Al2O3 limit binds a little earlier)."]
+                  "Same blend, same slag: the engine computes its slag with page 9's ledger (held hot-metal Si / S / C, "
+                  "the DPR's dust per stream with the measured chemistry, alkalis and sulphur from the analyses, FeO "
+                  "from the Fe not reaching the pig iron; tests/test_burden_engine_slag_basis.py). What can still "
+                  "differ is the optimum each solver finds: page 9's one-shot LP linearises its slag, the engine "
+                  "re-linearises the exact ledger at every step, so it may reach a cheaper blend within the same limits."]
     text = "\n".join(lines) + "\n"
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8")

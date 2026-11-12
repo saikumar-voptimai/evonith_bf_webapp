@@ -159,7 +159,9 @@ total fuel ≈ (13,364 − 70×24)/28 + 70 + PCI×(1 − 18/28)
 ```
 
 i.e. 546–552 kg/THM for any realistic PCI, regardless of what the furnace is doing.
-`bmo.fuel_rate_anchor_basis` is nevertheless set to **`model_cost`**: the reported
+`bmo.fuel_rate_anchor_basis` was set to **`model_cost`** when this was measured (it is `data_driven`
+since the charged-coke engine of 7 Oct 2026, `docs/bmo_charged_coke_phase1_acceptance.md`; the reasoning
+below is unchanged): the reported
 coke rate has to remain a *prediction* of what the blend will need. Anchoring on the
 live coke tag (`observed`, still available) would turn an input into the answer —
 every recommendation would open at today's coke rate and differ from it only by the

@@ -1,6 +1,7 @@
 # BF-02 webapp: deployment handover (Svelte frontend on the Jetson)
 
-30 Oct 2026 · branch `feature/262_svelte_twin` (head `2520552`; not merged into `main` yet) · programme #262
+30 Oct 2026 (routes updated 10 Nov 2026) · programme #262 · the programme branch `feature/262_svelte_twin` was
+merged into `dev` on 9 Nov 2026 (PR #334); release from a tag on `dev` or `main` as the owner decides
 
 This guide is for whoever installs the new operator console on the Jetson AGX Orin. It gives the order of the work, the
 decisions to get from the project owner first, and the checks to record. Step-by-step detail of every script is in
@@ -13,7 +14,7 @@ One HTTPS address (`https://<site>/`) on the Jetson serves everything:
 | Process | systemd unit | Port (127.0.0.1) | Role |
 |---|---|---|---|
 | Caddy | `bf-caddy` | 443, 80 (public) | HTTPS, serves the Svelte build, forwards `/api` and `/legacy` |
-| Svelte app (static files) | (served by Caddy) | | The new operator console (`/`, `/trace`, `/forge`, `/strata`, `/status`, `/reports`, `/furnacemind`, `/optimiser`, `/bmo`, `/admin/...`) |
+| Svelte app (static files) | (served by Caddy) | | The new operator console: `/status` (landing; `/` redirects to it), `/reports`, `/furnacemind`, `/bmo`, `/optimiser`, `/models`; admin views under `/admin/...` including the model views `/admin/live-twin`, `/admin/trace`, `/admin/forge`, `/admin/strata` (SV-7.2) |
 | twin-api | `bf-twin-api` | 8100 | FastAPI backend of the Svelte app, 2 workers |
 | twin-worker | `bf-twin-worker` | | Scheduled and on-demand jobs: twin evaluation, forecasts, optimiser runs, reports, calibration |
 | Redis | `bf-redis` | 6379 | Job queue and live event stream |

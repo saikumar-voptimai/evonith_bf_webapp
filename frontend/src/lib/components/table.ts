@@ -20,6 +20,9 @@ export interface Column<T> {
 	format?: (row: T) => string;
 	/** CSS width, e.g. `8rem`. */
 	width?: string;
+	/** Long text that may wrap onto several lines (statements, rules, messages). Other cells stay on one line and
+	 * the table scrolls sideways instead of breaking dates and names. */
+	wrap?: boolean;
 }
 
 export type SortDir = 'asc' | 'desc';

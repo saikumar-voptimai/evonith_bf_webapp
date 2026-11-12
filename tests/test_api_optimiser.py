@@ -143,14 +143,18 @@ def test_step2_reproduces_cases_1_and_2_of_the_case_report(api) -> None:
     res = run_through_api(api, {"mode": "step2", "production_t_d": 2270, **CASE})
     assert (res["status"], res["mode"], res["omega_mode"], res["yard_source"]) == ("ok", "step2", "fixed", "reference")
     assert res["calibration"]["basis"] == "reference" and res["production_target_t_d"] == 2270.0
+    # On page 9's slag basis (held Si 0.60 %, the plant burden sheet's dust row of 530 kg/charge held constant, minors
+    # from the analyses, FeO rule, TiO2 left out of the slag as on the UAT page; 11 Nov 2026) the case report's plan
+    # moves: sinter 62.5 %, quartz 2.5 kg/tHM, the Al2O3 cap binding (the engine tests without the basis keep the case
+    # report's own figures).
     plan = res["plan"]  # case 2: fuel in the objective
     assert plan["feasible"] and plan["production_t_d"] == pytest.approx(2270.0)
-    assert plan["fuel"]["coke_dry_kg_thm"] == pytest.approx(305.7, abs=0.3)
+    assert plan["fuel"]["coke_dry_kg_thm"] == pytest.approx(302.2, abs=0.3)
     assert plan["slag"]["rate_kg_thm"] == pytest.approx(340.0, abs=0.1)
-    assert plan["fuel"]["fuel_rate_kg_thm"] == pytest.approx(567.0, abs=0.3)
-    assert plan["cost"]["total_rs_thm"] == pytest.approx(30139, abs=5)
-    assert plan["process"]["raft_c"] == pytest.approx(2214, abs=2)
-    assert {b["limit"] for b in plan["binding"]} >= {"slag cap", "basicity min"}
+    assert plan["fuel"]["fuel_rate_kg_thm"] == pytest.approx(563.5, abs=0.3)
+    assert plan["cost"]["total_rs_thm"] == pytest.approx(30092, abs=5)
+    assert plan["process"]["raft_c"] == pytest.approx(2212, abs=2)
+    assert {b["limit"] for b in plan["binding"]} >= {"slag cap", "basicity min", "Al2O3 max"}
     assert plan["warnings"] == [] and plan["shaft_efficiency"]["certainty"] == "Held"
     cost = plan["cost"]
     assert cost["ore_rs_thm"] + cost["flux_rs_thm"] + cost["fuel_rs_thm"] - cost["slag_credit_rs_thm"] == pytest.approx(
@@ -158,25 +162,72 @@ def test_step2_reproduces_cases_1_and_2_of_the_case_report(api) -> None:
     )
     assert cost["total_sigma_rs_thm"] is None and plan["fuel"]["coke_sigma_kg_thm"] is None  # Fixed-ω
     ore = res["ore_flux_plan"]  # case 1: page 9's objective
-    assert ore["cost"]["total_rs_thm"] == pytest.approx(30139, abs=5)
+    assert ore["cost"]["total_rs_thm"] == pytest.approx(30175, abs=5)
     sh = shares(ore)
     assert sh["sinter_sp_02"] == pytest.approx(58.0, abs=0.1) and sh["lloyds_pellet"] == pytest.approx(10.0, abs=0.1)
-    assert sh["geomin_clo"] == pytest.approx(13.4, abs=0.2) and flux(ore)["limestone"] == pytest.approx(13.7, abs=0.3)
+    assert sh["geomin_clo"] == pytest.approx(16.5, abs=0.2) and flux(ore)["dolomite"] == pytest.approx(20.0, abs=0.3)
     assert sum(b["share_wet_pct"] for b in plan["blend"]) == pytest.approx(100.0, abs=0.1)
+    # page 9's blend-table columns and Slag Balance Details on the plan (the breakup of the slag rate)
+    sinter = next(b for b in plan["blend"] if b["id"] == "sinter_sp_02")
+    assert sinter["fe_kg_thm"] == pytest.approx(sinter["dry_kg_thm"] * 0.5446, rel=1e-3)      # dry kg x total Fe %
+    assert sinter["slag_kg_thm"] == pytest.approx(sinter["dry_kg_thm"] * 0.2148, rel=2e-3)    # slag-forming oxides
+    assert sinter["kg_per_charge"] == pytest.approx(sinter["wet_kg_thm"] * plan["charging"]["hm_per_charge_t"], rel=1e-9)
+    assert sinter["cost_rs_thm"] == pytest.approx(sinter["wet_kg_thm"] * sinter["price_rs_t"] / 1000, rel=1e-9)
+    comps = {c["key"]: c for c in plan["slag"]["components"]}
+    assert comps["Al2O3"]["pct"] == pytest.approx(plan["slag"]["al2o3_pct"], rel=1e-9)
+    assert comps["TiO2"]["kg_thm"] == 0.0 and comps["FeO"]["kg_thm"] == pytest.approx(1.2, abs=0.1)  # TiO2 left out
+    assert sum(c["kg_thm"] for k, c in comps.items() if k != "Slag") == pytest.approx(340.0, abs=0.1)
+    rollup = {x["source"]: x["kg_thm"] for x in plan["slag"]["rollup"]}
+    assert rollup["Top-gas dust"] < 0 < rollup["Ore (slag-forming oxides)"] and rollup["Slag"] == pytest.approx(340.0, abs=0.1)
+    assert {x["removal"] for x in plan["slag"]["removals"]} >= {"SiO₂ reduced to hot-metal Si", "Fe to the hot metal",
+                                                               "TiO₂ left out of the slag"}
+    assert "Si 0.60 %" in plan["slag"]["basis"] and plan["slag"]["dust_kg_thm"] == pytest.approx(36.2, abs=0.2)
+    # page 9's fuel-ash inputs and dust rows on the plan: the calibration's analyses, the burden sheet's dust row
+    ash = {x["fuel"]: x for x in plan["slag"]["fuel_ash"]}
+    assert list(ash) == ["Coke", "Nut coke", "PCI"] and ash["PCI"]["wet_kg_thm"] == pytest.approx(plan["fuel"]["pci_kg_thm"])
+    assert ash["Coke"]["wet_kg_thm"] == pytest.approx(plan["fuel"]["coke_wet_kg_thm"], rel=1e-6)
+    assert ash["Coke"]["ash_kg_thm"] == pytest.approx(ash["Coke"]["dry_kg_thm"] * ash["Coke"]["ash_pct"] / 100, rel=1e-9)
+    assert 50 < ash["Coke"]["sio2_pct"] < 60 and ash["Coke"]["slag_kg_thm"] > ash["Nut coke"]["slag_kg_thm"] > 0
+    dust = plan["slag"]["dust"]
+    assert [(x["id"], x["kg_per_charge"], x["cao_pct"]) for x in dust] == [("bf_gas_dust", 530.0, 5.63)]
+    assert dust[0]["kg_thm"] == pytest.approx(plan["slag"]["dust_kg_thm"]) and "burden sheet" in dust[0]["source"]
+    assert [(d["id"], d["enabled"], d["kg_per_charge"]) for d in res["yard"]["dust"]] == [
+        ("bf_gas_dust", True, 530.0), ("dust_catcher", False, 229.0), ("gcp_dust", False, 235.0)]
+    assert res["ore_flux_plan"]["slag"]["components"]  # every plan of the run carries the breakup
     vol = {v["change"]: v["saving_rs_thm"] for v in res["value_of_limits"]}  # the case report's value of limits
-    assert vol["Slag cap +10 kg/tHM"] == pytest.approx(53, abs=3)
-    assert vol["CaO/SiO₂ floor −0.01"] == pytest.approx(27, abs=3)
+    assert vol["Slag cap +10 kg/tHM"] == pytest.approx(43, abs=3)
+    assert vol["CaO/SiO₂ floor −0.01"] == pytest.approx(2.8, abs=1)
     assert res["today_plan"] is None and res["saving_rs_thm"] is None  # the reference yard has no charged blend
     assert res["critical_assumptions"] == [] and res["solves"] is None
+
+
+def test_a_run_can_deduct_its_own_dust(api) -> None:
+    """Page 11's *Top-gas dust and fuel ash* editor applied to the run (not saved): the request's kg per charge and
+    analysis replace the operator inputs in force for the named streams; the case records what was set."""
+    res = run_through_api(api, {"mode": "step2", "production_t_d": 2270, **CASE,
+                                "dust": {"bf_gas_dust": {"kg_per_charge": 400, "cao_pct": 6.0}}})
+    assert res["status"] == "ok" and res["case"]["dust_set"] == ["bf_gas_dust"]
+    yard = {d["id"]: d for d in res["yard"]["dust"]}
+    assert (yard["bf_gas_dust"]["kg_per_charge"], yard["bf_gas_dust"]["cao_pct"], yard["bf_gas_dust"]["mgo_pct"]) == (400.0, 6.0, 3.57)
+    assert "this run" in yard["bf_gas_dust"]["source"] and yard["dust_catcher"]["kg_per_charge"] == 229.0
+    plan = res["plan"]
+    (stream,) = plan["slag"]["dust"]
+    assert stream["kg_per_charge"] == 400.0 and stream["cao_pct"] == 6.0
+    assert plan["slag"]["dust_kg_thm"] == pytest.approx(36.2 * 400 / 530, abs=0.6)   # the blend's charges per tHM move a little
+    # an unknown stream is refused before the engine runs
+    started = call(api, "POST", "sup", "/api/optimiser/runs", json={"mode": "step2", **CASE, "dust": {"nope": {"kg_per_charge": 1}}})
+    assert started.status_code == 202
+    with pytest.raises(Exception, match="unknown dust stream"):
+        work(api, started.json()["job"]["id"])
 
 
 @slow
 def test_step1_reproduces_case_4_of_the_case_report(api) -> None:
     res = run_through_api(api, {"mode": "step1", **CASE})
-    assert res["plan"]["production_t_d"] == pytest.approx(2290, abs=3)
-    assert res["plan"]["cost"]["total_rs_thm"] == pytest.approx(29935, abs=10)
+    assert res["plan"]["production_t_d"] == pytest.approx(2283, abs=3)
+    assert res["plan"]["cost"]["total_rs_thm"] == pytest.approx(29900, abs=10)
     assert res["plan"]["process"]["hbt_c"] == pytest.approx(1230.0)
-    assert res["highest_output_plan"]["production_t_d"] == pytest.approx(2412, abs=3)
+    assert res["highest_output_plan"]["production_t_d"] == pytest.approx(2404, abs=3)
     assert min(p["cost_rs_thm"] for p in res["frontier"]) >= res["plan"]["cost"]["total_rs_thm"] - 1
 
 
@@ -184,10 +235,10 @@ def test_step1_reproduces_case_4_of_the_case_report(api) -> None:
 def test_maximum_production_reproduces_case_3_of_the_case_report(api) -> None:
     res = run_through_api(api, {"mode": "max_production", **CASE})
     plan = res["plan"]
-    assert plan["production_t_d"] == pytest.approx(2412, abs=3)
-    assert plan["cost"]["total_rs_thm"] == pytest.approx(30789, abs=10)
+    assert plan["production_t_d"] == pytest.approx(2404, abs=3)
+    assert plan["cost"]["total_rs_thm"] == pytest.approx(30758, abs=10)
     assert "charging" in {b["limit"] for b in plan["binding"]}
-    assert shares(plan)["lloyds_pellet"] == pytest.approx(19.8, abs=0.3)
+    assert shares(plan)["lloyds_pellet"] == pytest.approx(19.5, abs=0.3)
 
 
 # ------------------------------------------------------------------------------------------------- requests
@@ -201,7 +252,7 @@ def test_settings_and_limits_of_a_request_replace_the_defaults(api) -> None:
     assert limits["fuel_min"] == 520.0 and limits["fuel_max"] == 600.0  # BAND-01 from the register
     summary = case.summary()
     assert summary["overrides"] == {"settings": {"hbt_c": 1201.0}, "limits": {"slag_max_kg_thm": 350.0,
-                                                                            "charges_per_h": 6.35}}  # fmt: skip
+                                                                            "charges_per_h": 6.35}, "dust": {}}  # fmt: skip
     assert summary["calibration"]["source"] == "fallback" and summary["yard"]["fuel"]["coke_price"] > 0
     with pytest.raises(ValueError, match="unknown limit"):
         svc.default_case("step2", calibration_basis="reference", yard_basis="reference", limits={"fuel_max": 650})
@@ -268,8 +319,8 @@ def test_a_failed_run_and_the_critical_assumptions_validate() -> None:
 
 
 UNITS = ("kg/tHM", "t/d", "t/h", "Rs/tHM", "Rs/t", "lakh Rs/d", "°C", "%", "count", "dimensionless", "charges/h",
-         "t", "s", "bar g", "bar", "Nm³/h", "g/Nm³", "Nm³ O₂ per Nm³ air", "in the limit's unit", "in the band's unit",
-         "in the fact's unit")  # fmt: skip
+         "t", "kg", "s", "bar g", "bar", "Nm³/h", "g/Nm³", "Nm³ O₂ per Nm³ air", "in the limit's unit",
+         "in the band's unit", "in the fact's unit")  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -397,6 +448,30 @@ def test_the_recorded_result_equals_page_11() -> None:
     for (group, key), value in pairs.items():
         _close(value, tiles[group][key])
     _close(res["saving_lakh_rs_d"], exp["saving_lakh_rs_d"])
+    # page 9's per-material columns and the slag breakup (the Blend Mix Optimiser's basis) travel with the plan
+    rows = {m["id"]: m for m in exp["material_rows"]}
+    for b in [*plan["blend"], *plan["flux"]]:
+        m = rows[b["id"]]
+        for key, mine in (("fe_kg", "fe_kg_thm"), ("slag_kg", "slag_kg_thm"), ("kg_per_charge", "kg_per_charge"),
+                          ("cost_rs_thm", "cost_rs_thm")):
+            if mine in b:
+                _close(b[mine], m[key])
+    comps = plan["slag"]["components"]
+    assert [c["label"] for c in comps] == [c["component"] for c in exp["slag_components"]]
+    for c, e in zip(comps, exp["slag_components"]):
+        _close(c["kg_thm"], e["kg_per_thm"])
+        _close(c["pct"], e["pct"])
+    assert comps[-1]["key"] == "Slag" and _close(comps[-1]["kg_thm"], plan["slag"]["rate_kg_thm"]) is None
+    assert sum(c["kg_thm"] for c in comps[:-1]) == pytest.approx(plan["slag"]["rate_kg_thm"], rel=1e-9)
+    for x, e in zip(plan["slag"]["balance"], exp["slag_balance"]):
+        assert x["component"] == e["component"]
+        for key in ("ore", "flux", "fuel_ash", "dust", "hot_metal_gas", "slag"):
+            _close(x[f"{key}_kg_thm"], e[key])
+    for x, e in zip(plan["slag"]["rollup"], exp["slag_rollup"]):
+        assert x["source"] == e["source"] and _close(x["kg_thm"], e["kg_per_thm"]) is None
+    assert sum(x["kg_thm"] for x in plan["slag"]["rollup"][:-1]) == pytest.approx(plan["slag"]["rate_kg_thm"], rel=1e-9)
+    assert [x["removal"] for x in plan["slag"]["removals"]] == [x["removal"] for x in exp["slag_removals"]]
+    assert plan["slag"]["basis"].startswith("Slag on the Blend Mix Optimiser's basis") and plan["slag"]["dust_kg_thm"] > 0
     assert [res["lead"]["kind"], res["lead"]["text"]] == exp["lead"]
     bands = {b["key"]: b for b in data["reference"]["slag_bands"]}
     assert {k: (b["lo"], b["hi"]) for k, b in bands.items()} == {k: tuple(v) for k, v in PLANT_SLAG_BANDS.items()}

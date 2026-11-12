@@ -130,8 +130,9 @@ describe('OptimiserPage', () => {
 		const page = new OptimiserPage({ api, stream });
 		const stop = page.start(step1.run_id);
 		await vi.waitFor(() => expect(page.result.data?.run_id).toBe(step1.run_id));
-		expect(page.form.mode).toBe('step1');
-		page.form.mode = 'step2';
+		// the form keeps Fixed production whatever run is shown (user decision 12 Nov 2026)
+		expect(page.form.mode).toBe('step2');
+		expect(page.form.omega_mode).toBe('fixed');
 		page.form.production_t_d = 2300;
 		page.form.settings['hmt_c'] = 1480;
 		await page.run();

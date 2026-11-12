@@ -24,17 +24,15 @@ Load one complete 8-hour shift from the static ML dataset and set it as active `
 
 | Shift | Start | End |
 |---|---|---|
-| A | 00:00 | 08:00 |
-| B | 08:00 | 16:00 |
-| C | 16:00 | 00:00 (next day) |
+| A | 06:00 | 14:00 |
+| B | 14:00 | 22:00 |
+| C | 22:00 | 06:00 (next day) |
 
 ## Runtime Behavior
 
 - Validates shift against static dataset coverage.
 - Returns `dataset_id`, shape, columns, and preview.
-- Stores active data in:
-  - `st.session_state.fm_df`
-  - `st.session_state.fm_df_meta`
+- Stores active data as the session's `fm_df` and `fm_df_meta` (the tool state; `st.session_state` inside Streamlit).
 - Does not require or write `current_furnace_data.csv`.
 
 ## Mandatory Checks Before Plotting

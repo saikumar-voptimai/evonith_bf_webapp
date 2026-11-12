@@ -323,7 +323,19 @@ def _page11(
 ) -> dict[str, Any]:
     """What page 11 renders for a plan (``render_plan_summary``, ``plan_sentence``, the Blend tab) from the engine's
     result."""
-    from utils.burden_engine.scenarios import blend_compare_table, flux_compare_table, plan_sentence, plan_tiles
+    from utils.burden_engine.scenarios import (
+        blend_compare_table,
+        dust_table,
+        flux_compare_table,
+        fuel_ash_table,
+        material_rows,
+        plan_sentence,
+        plan_tiles,
+        slag_balance_table,
+        slag_components_table,
+        slag_removals_table,
+        slag_rollup_table,
+    )
     from utils.slag_bands import PLANT_SLAG_BANDS, band_note
 
     tiles = plan_tiles(r, flux_ids)
@@ -346,6 +358,15 @@ def _page11(
     out["lead"] = list(plan_sentence(r, names, flux_ids, today))
     out["blend_table"] = _records(blend_compare_table(r, others, names, prices))
     out["flux_table"] = _records(flux_compare_table(r, others, names, flux_ids))
+    # page 9's per-material columns and the slag breakup of the Slag tab (the Blend Mix Optimiser's basis)
+    out["material_rows"] = material_rows(r, names, prices)
+    out["slag_components"] = _records(slag_components_table(r))
+    out["slag_components_today"] = _records(slag_components_table(today)) if today is not None else []
+    out["slag_balance"] = _records(slag_balance_table(r))
+    out["slag_rollup"] = _records(slag_rollup_table(r))
+    out["slag_removals"] = _records(slag_removals_table(r))
+    out["fuel_ash"] = _records(fuel_ash_table(r))
+    out["dust"] = _records(dust_table(r))
     out["donut"] = {
         "segments": [[i, float(sh), float(r["t_day"].get(i, 0.0))] for i, sh in r["share_wet"].items() if sh > 0],
         "ferrous_t_d": r["ferrous_wet"] * r["P_tday"] / 1000.0,

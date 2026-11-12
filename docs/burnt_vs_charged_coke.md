@@ -25,9 +25,12 @@ and each gives a number:
 Pearson's r alone is not enough: two series can correlate perfectly and differ by 10 kg/tHM. CCC is 1 only when the
 series are identical; C_b (≤ 1) is the level-and-scale part, r the scatter part.
 
-## Update 24 Oct 2026: recomputed on the current pipeline (RH-scaled blast moisture)
+## Update 24 Oct 2026: recomputed on the pipeline of that day (RH-scaled blast moisture)
 
-The pipeline now takes blast moisture from the RH-scaled weather record (DATA-11), which enters the oxygen balance.
+The pipeline of 24 Oct took blast moisture from the RH-scaled weather record (DATA-11), which enters the oxygen
+balance; since 25 Oct the default source is the Open-Meteo daily RH (STRATA 1.5), and the live figures are the ones
+on the admin page `/admin/burnt-vs-charged` (`services/burnt_vs_charged.py`, rebuilt by the `twin.trace` job). The
+table below is kept as the record of that recomputation.
 Recomputed on 568 stable shifts, 2025-09-13 – 2026-10-07 (production-weighted, non-overlapping windows; a
 window needs two thirds of its shifts):
 

@@ -1,7 +1,7 @@
 """One Blend Mix Optimiser run's inputs and its LP plan, composed without Streamlit (SV-3.5, #302).
 
 Page 9 derives a run's inputs from its widgets, its editor tables and plant data; every derived quantity of that
-derivation is a function here, called by the page and by the twin-api's runs (``bmo.run`` in the worker) alike:
+derivation is a function here, called by the page and by ``services.bmo_views.run_case`` (page 9's parity tests) alike:
 
     plant reads           ``read_recent_fuel_rates_static`` / ``read_recent_fuel_rates_live`` (coke, nut coke, PCI
                           kg/tHM), ``read_live_process_snapshot`` (1-h blast, top-gas and stave tags),

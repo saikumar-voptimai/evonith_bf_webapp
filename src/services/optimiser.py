@@ -28,7 +28,7 @@ from typing import Any
 
 from config.config_loader import load_config
 from data.burden_engine.calibration import CalibrationInfo, fallback_calibration, live_calibration
-from data.burden_engine.inputs import build_engine_inputs, load_charged_blend
+from data.burden_engine.inputs import build_engine_inputs, load_charged_blend, reference_slag_basis
 from services import coke_energy as ce
 from services import live_inputs, operator_inputs
 from services.live_inputs import load_yard  # the yard on the shared live-input reads (SV-7.3)
@@ -122,6 +122,7 @@ def reference_yard(cfg: Mapping[str, Any] | None = None) -> dict[str, Any]:
         charging_saved=dict(
             charge_t=ref["charging"]["uat_charge_t"], charges_per_h=ref["charging"]["uat_charges_per_h"]
         ),
+        slag_basis=reference_slag_basis(charge_t=float(ref["charging"]["uat_charge_t"])),
         warnings=[],
     )
 
@@ -434,6 +435,48 @@ LIMITS_FIELDS = {
 }
 
 
+#: ``OptimiserDustStream`` field -> key of a slag-basis dust row (``data.burden_engine.inputs.slag_basis``).
+DUST_FIELDS = {
+    "enabled": "enabled",
+    "kg_per_charge": "kg_per_charge",
+    "moisture_pct": "moist_pct",
+    "sio2_pct": "SiO2_pct",
+    "al2o3_pct": "Al2O3_pct",
+    "cao_pct": "CaO_pct",
+    "mgo_pct": "MgO_pct",
+    "fe_pct": "Fe_pct",
+}
+
+
+def dust_overrides(
+    slag_basis: Mapping[str, Any] | None, dust: Mapping[str, Mapping[str, Any]] | None
+) -> tuple[dict[str, Any] | None, dict[str, dict[str, Any]]]:
+    """The slag basis with the request's dust streams laid over (``dust``: stream id -> ``OptimiserDustStream``
+    fields, None values ignored) and what was set by stream, for the record. A stream the basis does not carry is
+    refused (``ValueError``); without a basis nothing is applied."""
+    given = {
+        str(sid): {k: v for k, v in dict(row or {}).items() if v is not None and k in DUST_FIELDS}
+        for sid, row in dict(dust or {}).items()
+    }
+    given = {sid: row for sid, row in given.items() if row}
+    if not slag_basis or not given:
+        return (dict(slag_basis) if slag_basis else None), {}
+    rows = [dict(d) for d in slag_basis.get("dust") or []]
+    known = {str(d.get("id")) for d in rows}
+    unknown = sorted(set(given) - known)
+    if unknown:
+        raise ValueError(f"unknown dust stream(s): {', '.join(unknown)}; the basis carries {', '.join(sorted(known))}")
+    for d in rows:
+        row = given.get(str(d.get("id")))
+        if not row:
+            continue
+        for api, key in DUST_FIELDS.items():
+            if api in row:
+                d[key] = bool(row[api]) if api == "enabled" else float(row[api])
+        d["source"] = "this run (page 11's dust editor)"
+    return {**dict(slag_basis), "dust": rows}, given
+
+
 def engine_overrides(values: Mapping[str, Any] | None, fields: Mapping[str, str], what: str) -> dict[str, float]:
     """A request's settings or limits (API names, None = keep the default) as engine field values."""
     out: dict[str, float] = {}
@@ -477,7 +520,7 @@ def case_calibration(
 def default_case(
     mode: str,
     *,
-    omega_mode: str = "strata",
+    omega_mode: str = "fixed",
     production_t_d: float | None = None,
     production_source: str | None = None,
     certainty: str = "low",
@@ -487,6 +530,7 @@ def default_case(
     yard_basis: str = "live",
     settings: Mapping[str, Any] | None = None,
     limits: Mapping[str, Any] | None = None,
+    dust: Mapping[str, Mapping[str, Any]] | None = None,
     nonce: int = 0,
     cfg: Mapping[str, Any] | None = None,
     plan_day: Any = None,
@@ -495,13 +539,16 @@ def default_case(
     """The run page 11 would start for ``mode`` with its defaults: live yard (else the reference yard) and
     calibration (else the shipped one), today's controls, PCI (the live tag's 1-h mean, else the regime median) and
     nut coke (config), today's Open-Meteo blast moisture, the register's limits with the saved slag limits and the
-    plant charging; Step 2 at today's production (``production_t_d`` overrides it; ``production_source`` says where it
-    came from) with the controls held
-    as page 11 starts them, against today's charged blend; Step 1 and maximum production searching oxygen.
-    ``omega_mode`` strata (default, certainty filter and risk aversion as given) or fixed. ``calibration_basis`` live
+    plant charging; Step 2 at the configured target (2,270 t/d; ``production_t_d`` overrides it, ``production_source``
+    says where it came from; user decision 11 Nov 2026: no implicit production from the regime or the twin) with the
+    controls held as page 11 starts them, against today's charged blend; Step 1 and maximum production searching
+    oxygen. ``omega_mode`` fixed (default, user decision 11 Nov 2026) or strata (certainty filter and risk aversion as
+    given). ``calibration_basis`` live
     (page 11's), day (the calibration of 02:30) or reference (the shipped one, ``case_calibration``); ``yard_basis``
     live (else the reference yard) or reference. ``settings`` and ``limits`` (``SETTINGS_FIELDS``,
-    ``LIMITS_FIELDS``: the API's names) replace the defaults last, so a request's controls are held as given.
+    ``LIMITS_FIELDS``: the API's names) replace the defaults last, so a request's controls are held as given; ``dust``
+    (stream id -> ``OptimiserDustStream`` fields) replaces the named streams' kg per charge and analysis in the yard's
+    slag basis for this run (page 11's dust editor applied to the run, not saved).
     ``plan_day`` (default today, IST) is the day whose Open-Meteo blast moisture the plan takes; ``calibration_info``
     (a ``case_calibration`` result) replaces the calibration of ``calibration_basis`` (the what-if days, SV-4.3)."""
     if mode not in MODES:
@@ -532,12 +579,8 @@ def default_case(
     prod_cfg = dict(cfg.get("production", {}))
     target = float(prod_cfg.get("default_target_t_day", 2270.0))
     source = "configured default"
-    if engine_mode == "fixed":
-        if production_t_d is not None:
-            target, source = float(production_t_d), production_source or "requested"
-        elif (regime or {}).get("prod_th"):
-            target = float(round(float(regime["prod_th"]) * 24, -1))
-            source = "median of the regime window (page 11's default)"
+    if engine_mode == "fixed" and production_t_d is not None:   # else the configured target (user decision 11 Nov 2026)
+        target, source = float(production_t_d), production_source or "requested"
     humidity_g, _, _ = plan_blast_moisture(plan_day)
     thermal_cfg = cfg.get("thermal", {})
     # PCI: the live tag for a plan of today on the live yard (page 11's default), else the regime median
@@ -568,11 +611,13 @@ def default_case(
         pci_price=float(fu["pci_price"]),
         slag_price=float(fu.get("slag_price", 0.0) or 0.0),
     )
+    slag_basis, dust_set = dust_overrides(yard_rows.get("slag_basis"), dust)
     inputs = build_engine_inputs(
         materials,
         yard_rows["fluxes"],
         fuel,
         stock_horizon_days=float(cfg.get("yard", {}).get("stock_horizon_days", 1.0)),
+        slag_basis=slag_basis,
     )
     names = {m["id"]: m.get("name", m["id"]) for m in inputs["materials"]} | {
         f["id"]: f.get("name", f["id"]) for f in inputs["fluxes"]
@@ -618,13 +663,14 @@ def default_case(
         production_source=source,
         operator_inputs=dict(yard_rows.get("operator_inputs") or {}),
         regime=dict(regime) if regime else None,
-        yard=dict(materials=yard_rows["materials"], fluxes=yard_rows["fluxes"], fuel=fuel),
+        yard=dict(materials=yard_rows["materials"], fluxes=yard_rows["fluxes"], fuel=fuel, slag_basis=slag_basis),
         today_window=(
             "from {} to {} IST".format(*today["window"]) if shares and len(today.get("window") or ()) == 2 else ""
         ),
         overrides=dict(
             settings={k: v for k, v in dict(settings or {}).items() if v is not None},
             limits={k: v for k, v in dict(limits or {}).items() if v is not None},
+            dust=dust_set,
         ),
         live_inputs=live_ref.model_dump(mode="json") if live_ref is not None and yard_source == "live" else None,
     )
@@ -739,7 +785,7 @@ def run_values(
                 if today is not None and today.get("cost") and cost.get("total") is not None
                 else None
             ),
-            coke_kg_thm=_num(out.get("K")),
+            coke_kg_thm=_num(out.get("K_wet", out.get("K"))),   # as charged (wet), the client's basis
             coke_sd_kg_thm=_num(om.get("sigma_K")),
             fuel_rate_kg_thm=_num(out.get("fuel_rate")),
             certainty=om.get("certainty") if om.get("mode") == "blend" else None,

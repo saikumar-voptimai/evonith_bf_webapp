@@ -57,6 +57,38 @@ button {
 	cursor: pointer;
 }
 
+/*
+ * Disclosure sections: every <summary> carries a chevron that turns when the section is open, so a collapsed
+ * section reads as one (components style the summary as a flex row, which drops the browser's marker).
+ */
+summary {
+	list-style: none;
+	cursor: pointer;
+}
+summary::-webkit-details-marker {
+	display: none;
+}
+summary::before {
+	content: '';
+	flex: none;
+	display: inline-block;
+	width: 0.5em;
+	height: 0.5em;
+	margin-right: 0.55em;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(-45deg);
+	transition: transform 120ms ease;
+}
+details[open] > summary::before {
+	transform: rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+	summary::before {
+		transition: none;
+	}
+}
+
 ::placeholder {
 	color: var(--vo-text-placeholder);
 	opacity: 1;

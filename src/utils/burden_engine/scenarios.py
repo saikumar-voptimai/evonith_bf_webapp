@@ -22,6 +22,7 @@ import pandas as pd
 
 from utils.burden_engine.engine import Engine, Limits, Settings, value_in_use
 from utils.burden_engine.facts import FactRegister
+from utils.coke_energy.slag_basis import SLAG_KEYS
 
 MODES = ("cheapest", "fixed", "max")
 #: Largest PCI a plan takes, kg/tHM as injected (the page's and the API's input bound).
@@ -177,7 +178,8 @@ def frontier_table(rows: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
     for key in sorted(best):
         r = best[key]
         recs.append(dict(prod_t_day=r["P_tday"], cost_rs_thm=r["cost"]["total"], ore_flux_rs_thm=r["cost"]["ore"] + r["cost"]["flux"],
-                         fuel_rs_thm=r["cost"]["fuel"], coke_dry=r["out"]["K"], fuel_rate=r["out"]["fuel_rate"],
+                         fuel_rs_thm=r["cost"]["fuel"], coke_dry=r["out"]["K"],
+                         coke_wet=r["out"].get("K_wet", r["out"]["K"]), fuel_rate=r["out"]["fuel_rate"],
                          slag=r["out"]["slag"], HBT=r["settings"]["HBT"], enrich_tag=r["enrich_tag"], blast_nm3h=r["blast_nm3h"],
                          O2_nm3h=r["O2_nm3h"], Pb_needed=r["Pb_needed"], charges_per_h=r["charges_per_h"],
                          binding=", ".join(b for b in r.get("binding", []) if not b.startswith(("min share", "max share")))))
@@ -301,18 +303,19 @@ def plan_sentence(r: Mapping[str, Any], names: Mapping[str, str], flux_ids: list
     today's blend. kind is "saving", "dearer" or "plain" (no comparison)."""
     fer = sorted(((names.get(i, i), sh) for i, sh in r["share_wet"].items() if sh > 0.05), key=lambda t: -t[1])
     flux = [(names.get(i, i), r["wet_kg"].get(i, 0.0)) for i in flux_ids if r["wet_kg"].get(i, 0.0) >= 0.5]
-    text = "**Charge** " + ", ".join(f"{n} {sh:.1f} %" for n, sh in fer)
-    text += (" with " + ", ".join(f"{n.lower()} {kg:.0f} kg/tHM" for n, kg in flux)) if flux else ", no flux"
-    text += f": Rs {r['cost']['total']:,.0f}/tHM, coke {r['out']['K']:.1f} kg/tHM dry."
+    # two decimals on the shares, flux and coke (user decision 11 Nov 2026); coke as charged (wet), the client's basis
+    text = "**Charge** " + ", ".join(f"{n} {sh:.2f} %" for n, sh in fer)
+    text += (" with " + ", ".join(f"{n.lower()} {kg:.2f} kg/tHM" for n, kg in flux)) if flux else ", no flux"
+    text += f": Rs {r['cost']['total']:,.0f}/tHM, coke {r['out'].get('K_wet', r['out']['K']):.2f} kg/tHM as charged."
     if today is None:
         return "plain", text
     d = today["cost"]["total"] - r["cost"]["total"]
     if abs(d) < 0.5:
         return "plain", text + " Same cost as today's blend."
     lakh = abs(d) * r["P_tday"] / 1e5
-    dk = r["out"]["K"] - today["out"]["K"]
+    dk = r["out"].get("K_wet", r["out"]["K"]) - today["out"].get("K_wet", today["out"]["K"])
     text += (f" **Rs {abs(d):,.0f}/tHM {'less' if d > 0 else 'more'} than today's blend** (Rs {lakh:,.1f} lakh/day at "
-             f"this output; coke {dk:+.1f} kg/tHM).")
+             f"this output; coke {dk:+.2f} kg/tHM).")
     return ("saving" if d > 0 else "dearer"), text
 
 
@@ -335,6 +338,185 @@ def slag_table(r: Mapping[str, Any]) -> pd.DataFrame:
             ("MgO, %", o["MgO_pct"], f"≥ {L['MgO_min']:.1f}"),
             ("MgO/Al₂O₃", o["MgO"] / o["Al2O3"] if o["Al2O3"] else math.nan, f"≥ {L['MgO_Al2O3_min']:.3f}")]
     return pd.DataFrame(rows, columns=["quantity", "value", "limit"])
+
+
+def slag_detail_of(r: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The slag breakup of a plan (``utils.coke_energy.slag_basis.slag_detail``), None on the calibration's own
+    slag rule (a plan without the Blend Mix Optimiser's basis)."""
+    d = (r.get("out") or {}).get("slag_detail")
+    return dict(d) if d else None
+
+
+def material_rows(r: Mapping[str, Any], names: Mapping[str, str] | None = None,
+                  prices: Mapping[str, float] | None = None, kinds: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
+    """Each material of the plan (ferrous and flux, >= 0.05 kg/tHM) with page 9's blend-table columns per tHM: wet
+    share, wet and dry kg/tHM, Fe and slag-forming oxides kg/tHM (its ``Fe (MT)`` and ``Slag (MT)``), kg per charge
+    (wet kg/tHM x hot metal per charge), t/d, price and cost Rs/tHM. Fe and slag come from the plan's slag breakup and
+    are None without it."""
+    d = slag_detail_of(r) or {}
+    by = d.get("by_material") or {}
+    cph = float(r.get("charges_per_h") or 0.0)
+    hm_per_charge = float(r["P_th"]) / cph if cph else None
+    rows = []
+    for i, wet in r["wet_kg"].items():
+        wet = float(wet)
+        if wet < 0.05:
+            continue
+        m = by.get(i)
+        price = float((prices or {}).get(i, float("nan")))
+        rows.append(dict(id=i, material=(names or {}).get(i, i), kind=(kinds or {}).get(i) or (m or {}).get("kind"),
+                         share_wet_pct=(float(r["share_wet"][i]) if i in r["share_wet"] else None), wet_kg=wet,
+                         dry_kg=float(r["dry_kg"].get(i, 0.0)), fe_kg=(float(m["fe_kg"]) if m else None),
+                         slag_kg=(float(m["slag_kg"]) if m else None),
+                         kg_per_charge=(wet * hm_per_charge if hm_per_charge else None), t_day=float(r["t_day"].get(i, 0.0)),
+                         price_rs_t=price, cost_rs_thm=(wet * price / 1000.0 if math.isfinite(price) else None)))
+    return rows
+
+
+def slag_components_table(r: Mapping[str, Any]) -> pd.DataFrame:
+    """The slag's components (kg/tHM and % of the slag) on the Blend Mix Optimiser's basis, page 9's order, with a
+    total row; empty without the breakup."""
+    d = slag_detail_of(r)
+    if not d:
+        return pd.DataFrame(columns=["component", "kg_per_thm", "pct"])
+    slag = d["slag"]
+    total = float(d["rollup"]["slag"]) or float(sum(slag.values()))
+    rows = [(label, float(slag[k]), 100 * float(slag[k]) / total if total else math.nan) for k, label in SLAG_KEYS]
+    rows.append(("Slag", total, 100.0 if total else math.nan))
+    return pd.DataFrame(rows, columns=["component", "kg_per_thm", "pct"])
+
+
+#: The rows of ``slag_balance_table``: component label, the key of its inputs (elements for Fe, Mn, Ti), the key of its
+#: slag form, the removals that take it to the hot metal or the gas.
+_BALANCE_ROWS = (("SiO₂", "sio2", "SiO2", ("SiO2_to_Si",)), ("Al₂O₃", "al2o3", "Al2O3", ()),
+                 ("CaO", "cao", "CaO", ()), ("MgO", "mgo", "MgO", ()),
+                 ("Na₂O + K₂O", "alkali", "alk", ("alkali_to_gas",)), ("S", "s", "S", ("S_to_hot_metal", "S_to_gas")),
+                 ("CaF₂", "caf2", "CaF2", ()), ("Fe → FeO", "fe", "FeO", ("Fe_to_hot_metal",)),
+                 ("Mn → MnO", "mn", "MnO", ("MnO_to_hot_metal",)), ("Ti → TiO₂", "ti", "TiO2", ("TiO2_to_hot_metal", "TiO2_left_out")))
+
+
+def slag_balance_table(r: Mapping[str, Any]) -> pd.DataFrame:
+    """Where each component goes (page 9's per-oxide balance, kg/tHM): charged by the ore, the flux and the fuel ash,
+    carried away by the dust, taken by the hot metal or the gas, left in the slag. Fe, Mn and Ti are charged as the
+    element and leave as FeO, MnO, TiO₂; ``hot_metal_gas`` of those rows is in the slag's form (FeO's Fe as the
+    element). Empty without the breakup."""
+    d = slag_detail_of(r)
+    cols = ["component", "ore", "flux", "fuel_ash", "dust", "hot_metal_gas", "slag"]
+    if not d:
+        return pd.DataFrame(columns=cols)
+    src, rem, slag = d["sources"], d["removals"], d["slag"]
+    rows = []
+    for label, key, out_key, removals in _BALANCE_ROWS:
+        charged = {k: float(src[k][key]) for k in ("ore", "flux", "fuel_ash")}
+        dust = float(src["dust"][key])
+        net = float(d["net"][key])
+        dust_taken = sum(charged.values()) - net                      # the dust deduction is clamped at zero per component
+        out = float(slag[out_key])
+        rows.append(dict(component=label, **charged, dust=-dust_taken,
+                         hot_metal_gas=-sum(float(rem[k]) for k in removals) if removals else 0.0, slag=out))
+    return pd.DataFrame(rows, columns=cols)
+
+
+def slag_rollup_table(r: Mapping[str, Any]) -> pd.DataFrame:
+    """Page 9's per-source rollup (kg/tHM): the slag-forming oxides charged by the ore, the flux and the fuel ash,
+    less the dust, less what the hot metal and the gas take, plus the FeO, S and CaF₂ of the slag, equal to the slag
+    rate. Empty without the breakup."""
+    d = slag_detail_of(r)
+    if not d:
+        return pd.DataFrame(columns=["source", "kg_per_thm"])
+    ru = d["rollup"]
+    rows = [("Ore (slag-forming oxides)", ru["ore"]), ("Flux", ru["flux"]), ("Fuel ash", ru["fuel_ash"]),
+            ("Top-gas dust", ru["dust"]), ("To hot metal and gas", ru["hot_metal_gas"]),
+            ("FeO, S and CaF₂ of the slag", ru["other"]), ("Slag", ru["slag"])]
+    return pd.DataFrame(rows, columns=["source", "kg_per_thm"])
+
+
+def slag_removals_table(r: Mapping[str, Any]) -> pd.DataFrame:
+    """Page 9's worked hot-metal removals (kg/tHM) with the rule each follows."""
+    d = slag_detail_of(r)
+    cols = ["removal", "rule", "kg_per_thm"]
+    if not d:
+        return pd.DataFrame(columns=cols)
+    pi, rem, ru = d["pig_iron"], d["removals"], d["rules"]
+    rows = [("SiO₂ reduced to hot-metal Si", f"theoretical pig iron {pi['theoretical_kg']:,.0f} kg x Si {ru['Si_pct']:.2f} % x 2.14",
+             rem["SiO2_to_Si"]),
+            ("Fe to the hot metal", f"{100 * ru['fe_to_pig_iron_fraction']:.1f} % of the Fe charged less the dust's; the rest FeO",
+             rem["Fe_to_hot_metal"]),
+            ("MnO reduced to hot-metal Mn", "the hot metal's Mn, the rest MnO", rem["MnO_to_hot_metal"]),
+            ("TiO₂ reduced to hot-metal Ti", "the hot metal's Ti" + (", the rest TiO₂ in the slag" if ru["tio2_to_slag"]
+                                                                      else "; the rest left out (workbook basis)"),
+             rem["TiO2_to_hot_metal"]),
+            ("S to the hot metal", f"theoretical pig iron x S {ru['S_pct']:.3f} %", rem["S_to_hot_metal"]),
+            ("S to the gas", f"{ru['sulphur_gas_loss_pct']:.0f} % of the S charged less the dust's", rem["S_to_gas"]),
+            ("Alkalis to the gas", f"{100 * (1 - ru['alkali_to_slag_fraction']):.0f} % of Na₂O + K₂O charged less the dust's",
+             rem["alkali_to_gas"]),
+            ("P and Zn to the hot metal", "all", rem["P_to_hot_metal"] + rem["Zn_to_hot_metal"])]
+    if not ru["tio2_to_slag"]:
+        rows.append(("TiO₂ left out of the slag", "workbook basis", rem["TiO2_left_out"]))
+    return pd.DataFrame(rows, columns=cols)
+
+
+FUEL_LABELS = (("coke", "Coke"), ("nut", "Nut coke"), ("pci", "PCI"))
+
+
+def fuel_ash_table(r: Mapping[str, Any]) -> pd.DataFrame:
+    """Page 9's fuel-ash inputs on the plan (coke, nut coke, PCI): the fuel as charged and dry (kg/tHM), its moisture
+    and ash %, the ash kg/tHM, the ash analysis (% of the ash: SiO₂, Al₂O₃, CaO, MgO, Fe₂O₃, MnO, TiO₂, alkalis), the
+    S and P of the dry fuel and the slag-forming oxides it brings (kg/tHM). Empty without the breakup."""
+    d = slag_detail_of(r)
+    cols = ["fuel", "wet_kg", "dry_kg", "moist_pct", "ash_pct", "ash_kg", "sio2_pct", "al2o3_pct", "cao_pct", "mgo_pct",
+            "fe2o3_pct", "mno_pct", "tio2_pct", "alk_pct", "s_pct", "p_pct", "slag_kg"]
+    if not d:
+        return pd.DataFrame(columns=cols)
+    rows = []
+    for key, label in FUEL_LABELS:
+        f = (d.get("by_fuel") or {}).get(key)
+        if not f:
+            continue
+        a = f.get("ash_comp") or {}
+        rows.append(dict(fuel=label, wet_kg=float(f.get("wet_kg", f["dry_kg"])), dry_kg=float(f["dry_kg"]),
+                         moist_pct=float(f.get("moist_pct", 0.0)), ash_pct=float(f.get("ash_pct", 0.0)), ash_kg=float(f["ash_kg"]),
+                         sio2_pct=float(a.get("SiO2", 0.0)), al2o3_pct=float(a.get("Al2O3", 0.0)), cao_pct=float(a.get("CaO", 0.0)),
+                         mgo_pct=float(a.get("MgO", 0.0)), fe2o3_pct=float(a.get("Fe2O3", 0.0)), mno_pct=float(a.get("MnO", 0.0)),
+                         tio2_pct=float(a.get("TiO2", 0.0)), alk_pct=float(a.get("alk", 0.0)), s_pct=float(f.get("S_pct", 0.0)),
+                         p_pct=float(f.get("P_pct", 0.0)), slag_kg=float(f["slag_kg"])))
+    return pd.DataFrame(rows, columns=cols)
+
+
+def dust_table(r: Mapping[str, Any]) -> pd.DataFrame:
+    """Page 9's top-gas dust rows on the plan, per enabled stream: kg per charge (the configured or saved figure),
+    kg/tHM wet at the plan's charges per tHM, dry kg/tHM, the analysis (% of the dry dust: SiO₂, Al₂O₃, CaO, MgO, Fe),
+    the Fe and the slag-forming oxides it carries away (kg/tHM) and where the figure came from. Empty without the
+    breakup."""
+    d = slag_detail_of(r)
+    cols = ["id", "stream", "kg_per_charge", "kg_per_thm", "dry_kg", "moist_pct", "sio2_pct", "al2o3_pct", "cao_pct", "mgo_pct",
+            "fe_pct", "fe_kg", "slag_kg", "source"]
+    if not d:
+        return pd.DataFrame(columns=cols)
+    rows = []
+    for i, s in (d.get("dust") or {}).items():
+        p = s.get("pct") or {}
+        rows.append(dict(id=i, stream=s["name"], kg_per_charge=s.get("kg_per_charge"), kg_per_thm=float(s["kg"]),
+                         dry_kg=float(s["dry_kg"]), moist_pct=float(s.get("moist_pct", 0.0)), sio2_pct=float(p.get("SiO2", 0.0)),
+                         al2o3_pct=float(p.get("Al2O3", 0.0)), cao_pct=float(p.get("CaO", 0.0)), mgo_pct=float(p.get("MgO", 0.0)),
+                         fe_pct=float(p.get("Fe", 0.0)), fe_kg=float(s["fe_kg"]), slag_kg=float(s["slag_kg"]),
+                         source=str(s.get("source", "") or "")))
+    return pd.DataFrame(rows, columns=cols)
+
+
+def slag_basis_note(r: Mapping[str, Any]) -> str | None:
+    """One line on the slag basis of a plan (its held hot-metal chemistry, dust and minor-oxide rules), None on the
+    calibration's rule."""
+    d = slag_detail_of(r)
+    if not d:
+        return None
+    ru = d["rules"]
+    dust = ", ".join(f"{v['name']} {v['kg']:.1f}" for v in d["dust"].values())
+    return (f"Slag on the Blend Mix Optimiser's basis: hot-metal Si {ru['Si_pct']:.2f} %, S {ru['S_pct']:.3f} %, "
+            f"C {ru['C_pct']:.1f} % held for the slag side (the coke balance keeps Si {r['settings']['hm_Si']:.2f} %); "
+            f"top-gas dust {dust} kg/tHM deducted; TiO₂ {'in' if ru['tio2_to_slag'] else 'left out of'} the slag; "
+            f"alkalis {100 * ru['alkali_to_slag_fraction']:.0f} % to slag; FeO from {100 * (1 - ru['fe_to_pig_iron_fraction']):.1f} % "
+            "of the Fe charged.")
 
 
 def process_table(r: Mapping[str, Any]) -> pd.DataFrame:

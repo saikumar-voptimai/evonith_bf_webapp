@@ -2543,15 +2543,20 @@ fuel_analysis, fuel_analysis_warnings = _cached_fuel_analysis_snapshot(
     provider, chemistry_mode, chemistry_window_days, source_cache_version
 )
 ore_diagnostics["warnings"].extend(fuel_analysis_warnings)
-# Top-gas dust for the slag balance: DPR quantity and the plant's dust analyses.
+# Top-gas dust for the slag balance: the configured kg per charge held constant (the plant's burden sheet, user
+# decision 11 Nov 2026), or the DPR quantity when data_sources.dust_quantity_source is "dpr".
 _ds_cfg = bmo_cfg.get("data_sources", {})
-dpr_dust_rates, _dpr_dust_warnings = _cached_dpr_dust_rates(
-    provider,
-    int(_ds_cfg.get("dust_window_days", 30)),
-    int(_ds_cfg.get("dust_min_charges_per_day", 100)),
-    source_cache_version,
-)
-ore_diagnostics["warnings"].extend(_dpr_dust_warnings)
+_dust_from_dpr = str(_ds_cfg.get("dust_quantity_source", "configured")).lower() == "dpr"
+if _dust_from_dpr:
+    dpr_dust_rates, _dpr_dust_warnings = _cached_dpr_dust_rates(
+        provider,
+        int(_ds_cfg.get("dust_window_days", 30)),
+        int(_ds_cfg.get("dust_min_charges_per_day", 100)),
+        source_cache_version,
+    )
+    ore_diagnostics["warnings"].extend(_dpr_dust_warnings)
+else:
+    dpr_dust_rates = {}
 # Dust chemistry is the configured values unless the config opts in to the
 # dataset's DUST_1 / DUST_2 analyses (sparse: see setting_bmo.yml).
 dust_analysis = (
@@ -2829,7 +2834,16 @@ elif dust_inputs_applied or dust_inputs_saved:
 else:
     edited_dust_df = dust_editor_source_df
 if dust_status_slot is not None:
-    _dust_status = dust_caption(dpr_dust_rates, dust_analysis, _dust_saved_ids)
+    if _dust_from_dpr:
+        _dust_status = dust_caption(dpr_dust_rates, dust_analysis, _dust_saved_ids)
+    else:
+        _rows = [r for r in bmo_cfg.get("dust_inputs", []) if r.get("enabled", True)]
+        _dust_status = "Top-gas dust held constant as the plant's burden sheet: " + "; ".join(
+            f"{r.get('display_name', r.get('dust_id'))} {float(r.get('quantity_kg_per_charge', 0) or 0):.0f} kg/charge, "
+            f"CaO {float(r.get('cao_pct', 0) or 0):.2f} %, MgO {float(r.get('mgo_pct', 0) or 0):.2f} %" for r in _rows
+        ) + " (data_sources.dust_quantity_source: configured; the DPR is not read)."
+        if _dust_saved_ids:
+            _dust_status += " Saved values override the configured rows."
     if not dust_inputs_reset and isinstance(
         st.session_state.get("bmo_applied_dust_editor_df"), pd.DataFrame
     ):

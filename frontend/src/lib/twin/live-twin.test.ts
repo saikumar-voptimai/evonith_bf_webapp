@@ -216,7 +216,7 @@ describe('zone 6: plan card', () => {
 			[348.2, 5.6, 532.0, 21456.7, 312.4, 2300]
 		);
 		expect([v.mode, v.omegaMode, v.trigger, v.certainty, v.certaintyKind]).toEqual([
-			'Step 2, fixed production',
+			'Fixed production',
 			'STRATA-ω',
 			'Scheduled',
 			'Medium',

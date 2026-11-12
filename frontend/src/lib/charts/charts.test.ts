@@ -5,7 +5,13 @@ import shift from './fixtures/rist_shift.json';
 import { idealEnd, RIST_LABEL_SIDE, ristMarks, ristOption, ristPoints, type RistShift } from './rist.ts';
 import { decimalsOf, formatTick, niceScale, textWidth, themeFrom } from './theme.ts';
 import { axisTimeLabel, axisTimeTitle, fromAxis, shiftBoundaries, toAxis } from './time.ts';
-import { timeSeriesOption, timeSeriesScale, timeSeriesSummary, type TimeSeries } from './timeseries.ts';
+import {
+	timeSeriesOption,
+	timeSeriesScale,
+	timeSeriesSummary,
+	type TimeSeries,
+	spreadLabels
+} from './timeseries.ts';
 import { barOption, donutSlices, scatterOption } from './xy.ts';
 
 const tokens = parseTokens(readFileSync(new URL('../theme/tokens.css', import.meta.url), 'utf8'));
@@ -188,7 +194,8 @@ describe('time series option', () => {
 			band: { lo: 1440, hi: 1520, label: 'Band 1,440–1,520' }
 		});
 		expect(seriesOf(option).map((s) => s.id)).toEqual(['trace', 'charged', '__marks__']);
-		expect(seriesOf(option).at(-1)?.markArea?.data).toEqual([[{ yAxis: 1440 }, { yAxis: 1520 }]]);
+		const area = seriesOf(option).at(-1)?.markArea?.data?.[0] as { yAxis: number }[];
+		expect(area.map((p) => p.yAxis)).toEqual([1440, 1520]);
 	});
 
 	it('summarises the span and the last value of each series', () => {
@@ -349,5 +356,16 @@ describe('value axis scale', () => {
 		const w = textWidth('TRACE, burnt  370.7');
 		expect(w).toBeGreaterThanOrEqual(135);
 		expect(w).toBeLessThanOrEqual(150);
+	});
+});
+
+describe('spreadLabels', () => {
+	it('keeps neighbouring end labels a line apart, in their order, inside the plot', () => {
+		expect(spreadLabels([100, 104, 150], 14, 30, 250)).toEqual([100, 114, 150]);
+		expect(spreadLabels([104, 100], 14, 30, 250)).toEqual([114, 100]);
+		// a stack at the bottom is pulled up instead of running out of the plot
+		expect(spreadLabels([245, 248, 250], 14, 30, 250)).toEqual([222, 236, 250]);
+		expect(spreadLabels([], 14, 30, 250)).toEqual([]);
+		expect(spreadLabels([60], 14, 30, 250)).toEqual([60]);
 	});
 });

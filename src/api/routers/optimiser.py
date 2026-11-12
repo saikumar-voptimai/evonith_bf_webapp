@@ -25,9 +25,10 @@ from api.errors import ApiError
 from api.live import job_store, live_state
 from api.store import twin_store
 from data.twin.repositories import Actor, NotFound, TwinStore
-from services import optimiser_commentary, twin_reads, twin_views
+from services import live_model, optimiser_commentary, twin_reads, twin_views
 from services.auth import Principal
 from services.jobs import JobRecord, JobStore, OptimiserRunParams
+from services.live_model import LiveModelView
 from services.optimiser_reference import OptimiserReference, reference_view
 from services.optimiser_results import OptimiserResult, result_view
 
@@ -60,7 +61,7 @@ class OptimiserRunSummary(BaseModel):
     saving_rs_thm: float | None = Field(
         None, description="Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)"
     )
-    coke_kg_thm: float | None = Field(None, description="Coke rate of the plan, kg/tHM dry")
+    coke_kg_thm: float | None = Field(None, description="Coke rate of the plan as charged (wet), kg/tHM")
     coke_sd_kg_thm: float | None = Field(None, description="1 sigma of the coke rate, kg/tHM dry (STRATA-ω)")
     fuel_rate_kg_thm: float | None = Field(None, description="Coke (wet) + nut coke + PCI of the plan, kg/tHM")
     certainty: str | None = Field(None, description="High, Medium, Low or Investigate (STRATA-ω)")
@@ -283,3 +284,21 @@ def decide(
     except NotFound as exc:
         raise ApiError(404, "No optimiser run with this id.") from exc
     return PlanDecisionView.model_validate(twin_views.decision_data(row))
+
+
+@router.get("/live-model", response_model=LiveModelView, summary="The energy model against the furnace, live")
+async def live_model_view(
+    store: Annotated[TwinStore, Depends(twin_store)],
+    hours: Annotated[
+        int, Query(ge=8, le=live_model.MAX_HOURS, description="Hourly twin windows shown, h (default 48)")
+    ] = live_model.DEFAULT_HOURS,
+    days: Annotated[
+        int, Query(ge=1, le=92, description="Shift record of the model check, days (7, 14 or 30 on the page)")
+    ] = live_model.SCORE_DAYS,
+) -> LiveModelView:
+    """The Blend & Fuel Optimiser's live model tab (user decision 12 Nov 2026): the twin's hourly windows of the last
+    ``hours`` (burnt, energy-balance, STRATA-ω and charged coke; HMT, ηCO and top-gas temperature measured and of
+    the balance; the HMT forecast one descent time ahead with its gate and its live score against persistence), the
+    measured HMT per tap, and page 11's model check per shift over ``days`` on the FORGE view. Reads only what the
+    worker stored (``services.live_model``)."""
+    return LiveModelView.model_validate(await asyncio.to_thread(live_model.view, store, hours=hours, days=days))

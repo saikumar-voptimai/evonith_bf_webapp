@@ -135,7 +135,7 @@ export class OptimiserPage {
 		void this.reloadInputs();
 		void this.loadRuns().then(() => {
 			const id = initialRun(this.runs.data ?? [], requested);
-			if (id && id !== this.selected) void this.select(id, { adoptMode: true });
+			if (id && id !== this.selected) void this.select(id);
 		});
 		return () => this.stop();
 	}
@@ -159,7 +159,8 @@ export class OptimiserPage {
 		return this.selected ? this.select(this.selected) : this.loadRuns();
 	}
 
-	/** Show a run: its result and commentary. `adoptMode` sets the form's mode and shaft efficiency to the run's. */
+	/** Show a run: its result and commentary. `adoptMode` sets the form's mode and shaft efficiency to the run's; the
+	 * page never asks for it (user decision 12 Nov 2026: the form opens on Fixed production and Fixed-ω). */
 	async select(id: string, options: { adoptMode?: boolean } = {}): Promise<void> {
 		this.selected = id;
 		this.notice = null;

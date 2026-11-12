@@ -3,7 +3,8 @@
 # The model code in src/utils/coke_energy/ is the Claude-web model (BF02_model_code.zip, 15 Oct 2026) kept almost
 # unchanged. These settings only drive WHERE the data comes from and the rolling-window choices the web scripts
 # hard-coded; the defaults are the web values, so the page reproduces the validated figures.
-# Plan and status: docs/coke_energy_model_plan.md
+# Decision record of the page (15 Oct 2026): docs/coke_energy_model_plan.md; the twin and optimiser that grew out of
+# it: CLAUDE.md sections 11-12.
 
 coke_energy:
   # First shift date the shift table is built from, and the first date predictions are shown for. Before Dec 2025 the

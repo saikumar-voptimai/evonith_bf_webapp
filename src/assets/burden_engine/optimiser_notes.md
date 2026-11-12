@@ -18,7 +18,10 @@ any coefficient.
     objective) and, with the live yard, next to **today's charged blend** (last 24 h of `charge_data`) priced at the
     same output, HMT / Si target and controls.
   * Maximum production: the ceiling, the blend and controls that reach it, and what binds.
-* **Fixed inputs.** PCI and nut coke rates are inputs, not choices. HMT and Si are targets the coke is solved for.
+* **Fixed inputs.** PCI and nut coke rates are inputs, not choices. Unless the operator overrides them, PCI is the
+  live tag's 1-h mean (else the regime median) and nut coke 70 kg/tHM (decision of 7 Nov 2026). HMT and Si are
+  targets the coke is solved for. Raw-material chemistry is each material's latest valid lab sample, not a window
+  average (`yard.chemistry_mode: latest`).
 
 ## 2. How coke is computed
 
@@ -157,15 +160,19 @@ The page opens with the model against the furnace, before any plan.
 
 ## 5. Slag, dust and flux
 
-* Slag oxides follow page 9's basis: TiO₂ counts in the slag total; alkalis 80 % to slag; sulphur from ore, flux and
-  fuel; MnO and FeO from the analyses; phosphorus to the hot metal.
+* The slag is the Blend Mix Optimiser's own ledger on the plan's burden (one slag for one blend on both pages): hot
+  metal Si, S and C held for the slag side (page 9's values, Si 0.60 %; the coke balance keeps its thermal Si);
+  TiO₂ left out of the slag total (user decision 11 Nov 2026, as the UAT page 9; `tio2_to_slag`); alkalis 80 % to slag; sulphur from ore, flux and fuel less the pig iron's and 10 %
+  to gas; MnO from what is not reduced; FeO from 0.1 % of the Fe charged less the dust's; phosphorus to the hot metal.
 * **Against the lab** (284 days, Sep 2025 – Oct 2026, each day's actual charge, model minus lab): engine Al₂O₃ +0.02
   pt, MgO +0.00, TiO₂ −0.10, CaO/SiO₂ −0.015; page 9 +0.01 / −0.06 / −0.13 / −0.017. MAE Al₂O₃ 0.54 pt, MgO 0.35 pt,
   CaO/SiO₂ 0.041. Slag rate 338 kg/tHM, equal to the Al₂O₃-tracer estimate.
-* **Top-gas dust** (page 9): quantities from the DPR (dust catcher `flue_dust_mt`, GCP `gcp_dust_mt`) over the charges
-  counted on the same days, about 219 and 237 kg per charge; chemistry configured from the plant's dust analyses
-  (CaO about 2 %, MgO 0.5–0.8 %). The old workbook row (530 kg/charge, CaO 5.63 %, MgO 3.57 %) read slag MgO 0.36 pt
-  and CaO/SiO₂ 0.037 low against the lab.
+* **Top-gas dust** (page 9's row, used by the plan as well): the plant burden sheet's one stream, 530 kg per charge
+  with CaO 5.63 % and MgO 3.57 %, held constant and spread over the blend's own charges per tHM (about 36 kg/tHM;
+  user decision 11 Nov 2026, to match the client's burden sheets; the kg per charge and the analysis are editable on
+  page 11 and in the SPA as operator inputs, shared with page 9). The DPR's measured streams (dust catcher and GCP,
+  about 219 and 237 kg per charge, CaO about 2 %, MgO 0.5–0.8 %) remain configured but off; against the lab the sheet's
+  row reads slag MgO 0.36 pt and CaO/SiO₂ 0.037 low (docs/slag_replay_vs_lab.md).
 * **Flux** is page 9's catalogue with its saved prices (quartz, limestone, dolomite), chosen by the LP within its
   limits. Limestone brings CO₂ that the coke must calcine; the balance includes it.
 

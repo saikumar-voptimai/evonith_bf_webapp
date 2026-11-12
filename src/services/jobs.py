@@ -104,9 +104,25 @@ class OptimiserLimits(BaseModel):
     raft_max_c: float | None = Field(None, ge=1800, le=2600, description="RAFT, upper limit, °C")
 
 
+class OptimiserDustStream(BaseModel):
+    """One top-gas dust stream of the slag basis as the run deducts it, instead of the operator inputs in force
+    (page 11's *Top-gas dust and fuel ash* editor, applied to the run). Unset fields keep the value in force."""
+
+    model_config = {"extra": "forbid"}
+
+    enabled: bool | None = Field(None, description="Deducted from the burden before the slag forms")
+    kg_per_charge: float | None = Field(None, ge=0, le=5000, description="Wet dust per charge, kg")
+    moisture_pct: float | None = Field(None, ge=0, le=100, description="Moisture of the dust, %")
+    sio2_pct: float | None = Field(None, ge=0, le=100, description="SiO₂ of the dry dust, %")
+    al2o3_pct: float | None = Field(None, ge=0, le=100, description="Al₂O₃ of the dry dust, %")
+    cao_pct: float | None = Field(None, ge=0, le=100, description="CaO of the dry dust, %")
+    mgo_pct: float | None = Field(None, ge=0, le=100, description="MgO of the dry dust, %")
+    fe_pct: float | None = Field(None, ge=0, le=100, description="Fe of the dry dust, %")
+
+
 class OptimiserRunParams(BaseModel):
     """One Burden & Fuel Optimiser run (``services.optimiser.default_case``): page 11's defaults, with the yard, the
-    calibration, the controls and the limits that a request names instead."""
+    calibration, the controls, the limits and the top-gas dust that a request names instead."""
 
     model_config = {"extra": "forbid"}
 
@@ -118,10 +134,13 @@ class OptimiserRunParams(BaseModel):
         ),
     )
     omega_mode: Literal["strata", "fixed"] = Field(
-        "strata", description="Shaft efficiency: STRATA-ω (blend-dependent, ASM-18) or Fixed-ω (calibration, ASM-01)"
+        "fixed",
+        description="Shaft efficiency: Fixed-ω (calibration, ASM-01; the default, user decision 11 Nov 2026) or "
+        "STRATA-ω (blend-dependent, ASM-18)",
     )
     production_t_d: float | None = Field(
-        None, ge=1500, le=3000, description="Step 2 hot-metal target, t/d (default: today's production)"
+        None, ge=1500, le=3000,
+        description="Step 2 hot-metal target, t/d (default: the configured target, 2,270 t/d)",
     )
     certainty: Literal["low", "any", "medium", "high"] = Field(
         "low", description="STRATA-ω certainty filter: low excludes Investigate plans (page 11's default)"
@@ -147,6 +166,11 @@ class OptimiserRunParams(BaseModel):
     )
     settings: OptimiserSettings | None = Field(None, description="Controls and thermal targets instead of the defaults")
     limits: OptimiserLimits | None = Field(None, description="Limits instead of the register's and the saved ones")
+    dust: dict[str, OptimiserDustStream] | None = Field(
+        None,
+        description="Top-gas dust streams by id (bf_gas_dust, dust_catcher, gcp_dust) deducted as given for this run "
+        "instead of the operator inputs in force; the streams not named keep their values",
+    )
 
 
 class OptimiserCommentaryParams(BaseModel):
@@ -278,7 +302,8 @@ class BmoFuelPrices(BaseModel):
 
 
 class BmoRunParams(BaseModel):
-    """One Balanced Optimizer (LP) run of the Blend Mix Optimiser at a fixed production (``bmo.run``, SV-3.5).
+    """One Balanced Optimizer (LP) run of the Blend Mix Optimiser at a fixed production (SV-3.5,
+    ``services.bmo_views.run_case``; its ``bmo.run`` job left the Svelte app on 12 Nov 2026).
 
     Every field left out takes page 9's default: the configured target and slag window, the hourly dataset's window,
     the operator's saved inputs, the live yard, chemistry and fuel rates."""
@@ -745,22 +770,6 @@ register(
     )
 )
 
-register(
-    JobKind(
-        name="bmo.run",
-        title="Blend Mix Optimiser run",
-        role="user",
-        # reads the yard and chemistry (Neon), the live tags (InfluxDB), the hourly dataset (fetched when stale) and
-        # the forecast ledgers, then one LP: about 10 s with the data at hand
-        timeout_s=300,
-        max_tries=1,
-        params=BmoRunParams,
-        description=(
-            "Page 9's Balanced Optimizer (LP) at a fixed production with page 9's inputs and the requested changes; "
-            "the plan is the job result (POST /api/bmo/runs, SV-3.5)."
-        ),
-    )
-)
 register(
     JobKind(
         name="whatif.forge",

@@ -1,12 +1,10 @@
-"""Blend Mix Optimiser API (SV-3.5, #302): LP runs queued as ``bmo.run`` jobs and read back with their plan, the Si
-and charged-coke forecasts read from the worker's ledgers, page 9's snapshots, roles, and units in the schemas.
-
-The plan of a run equals page 9's on the five recorded days: ``tests/test_services_bmo_case.py`` (the run result is
-``services.bmo_views.run_result`` of ``services.bmo_case.run_lp``)."""
+"""Blend Mix Optimiser API (SV-3.5, #302): the Si and charged-coke forecasts read from the worker's ledgers, page 9's
+snapshots, roles, and units in the schemas. The LP runs of the Svelte app (``POST /api/bmo/runs``, job ``bmo.run``)
+were removed on 12 Nov 2026 (user decision); ``services.bmo_views.run_case`` stays for page 9's parity
+(``tests/test_services_bmo_case.py``)."""
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -17,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from services import bmo_views
 from services import forecasts as forecast_service
-from services.jobs import CATALOG, BmoRunParams, JobStore
+from services.jobs import BmoRunParams, JobStore
 from tests.test_api_auth import PASSWORDS, build
 from tests.test_api_live import session_cookie
 from tests.test_api_reports import MemoryRedis, call
@@ -137,114 +135,6 @@ def _result(**changes: Any) -> dict[str, Any]:
         seconds=9.4,
     )
     return result.model_copy(update=changes).model_dump(mode="json")
-
-
-def test_a_run_is_queued_as_a_bmo_job_and_read_back_with_its_plan(client) -> None:
-    body = {
-        "target_production_mt": 2250,
-        "coke_model": "data_driven",
-        "ore_overrides": {"lump": {"price_rs_per_mt": 4500}},
-    }
-    r = call(client, "POST", "op", "/api/bmo/runs", json=body)
-    assert r.status_code == 202, r.text
-    job = r.json()["job"]
-    assert job["kind"] == "bmo.run" and job["status"] == "queued" and job["submitted_by"] == "op"
-    assert (
-        job["params"]["target_production_mt"] == 2250
-        and job["params"]["ore_overrides"]["lump"]["price_rs_per_mt"] == 4500
-    )
-    assert job["params"] == BmoRunParams.model_validate(body).model_dump(mode="json")
-    again = call(client, "POST", "sup", "/api/bmo/runs", json=body).json()
-    assert again["duplicate"] and again["job"]["id"] == job["id"]  # an identical run is not queued twice
-    defaults = call(client, "POST", "op", "/api/bmo/runs")
-    assert defaults.status_code == 202 and defaults.json()["job"]["params"] == BmoRunParams().model_dump()
-
-    pending = call(client, "GET", "op", f"/api/bmo/runs/{job['id']}").json()
-    assert pending["job"]["status"] == "queued" and pending["result"] is None
-    jobs = client.app.state.live.store  # type: ignore[attr-defined]
-    asyncio.run(jobs.finish(job["id"], "done", result=_result()))  # the in-memory queue has no loop
-    done = call(client, "GET", "op", f"/api/bmo/runs/{job['id']}").json()
-    assert done["result"]["status"] == "ok" and done["result"]["plan"]["ores"][0]["share_pct"] == 57.5
-    assert done["result"]["anchor"] == {"basis": "data_driven", "rate_kg_thm": 392.4}
-
-    missing = call(client, "GET", "op", "/api/bmo/runs/no-such-job")
-    assert missing.status_code == 404 and missing.headers["content-type"].startswith("application/problem+json")
-    other, _ = asyncio.run(jobs.submit("report.live", {"narrative": False}, "op"))
-    assert call(client, "GET", "op", f"/api/bmo/runs/{other.id}").status_code == 404  # not a BMO run
-
-
-class IndexedRedis(MemoryRedis):
-    """``MemoryRedis`` with the reads of the job index (``JobStore.list``, ``list_kind``)."""
-
-    async def zrevrange(self, key: str, start: int, stop: int) -> list[str]:
-        ranked = sorted(self.sorted.get(key, {}).items(), key=lambda kv: kv[1], reverse=True)
-        return [member for member, _ in ranked[start : stop + 1]]
-
-    async def mget(self, keys: list[str]) -> list[Any]:
-        return [self.values.get(k) for k in keys]
-
-
-def test_the_latest_runs_are_listed_newest_first_with_their_plans(client) -> None:
-    """The /bmo page (SV-3.6) opens on the newest run, of any user; other job kinds between runs are skipped."""
-    from datetime import UTC, datetime, timedelta
-
-    t0 = datetime(2026, 10, 29, 4, 0, tzinfo=UTC)
-    times = iter(t0 + timedelta(minutes=i) for i in range(100))
-    jobs = JobStore(IndexedRedis(), clock=lambda: next(times))
-    client.app.state.live.store = jobs  # type: ignore[attr-defined]
-    first, _ = asyncio.run(jobs.submit("bmo.run", {"target_production_mt": 2250}, "op"))
-    asyncio.run(jobs.finish(first.id, "done", result=_result()))
-    for _ in range(3):
-        asyncio.run(jobs.submit("report.live", {"narrative": False}, "op"))
-    second, _ = asyncio.run(jobs.submit("bmo.run", {"target_production_mt": 2300}, "sup"))
-
-    runs = call(client, "GET", "op", "/api/bmo/runs").json()["runs"]
-    assert [r["job"]["id"] for r in runs] == [second.id, first.id]
-    assert (
-        runs[0]["job"]["status"] == "queued" and runs[0]["result"] is None and runs[0]["job"]["submitted_by"] == "sup"
-    )
-    assert runs[1]["result"]["status"] == "ok" and runs[1]["result"]["plan"]["ores"][0]["share_pct"] == 57.5
-    assert [b["quantity"] for b in runs[1]["result"]["slag_bands"]] == ["b2", "t_basicity", "ib4"]
-    assert asyncio.run(jobs.list_kind("bmo.run", 5, batch=2)) == asyncio.run(jobs.list_kind("bmo.run", 5))
-    assert [r["job"]["id"] for r in call(client, "GET", "op", "/api/bmo/runs", params={"limit": 1}).json()["runs"]] == [
-        second.id
-    ]
-    assert call(client, "GET", "op", "/api/bmo/runs", params={"limit": 0}).status_code == 422
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        {"target_production_mt": 500},  # below 1000 t/day
-        {"coke_model": "xgboost"},
-        {"unknown": 1},
-        {"ore_overrides": {"lump": {"price_rs_per_mt": -1}}},
-        {"hm_chemistry": {"silicon_pct": 9}},
-    ],
-)
-def test_a_run_request_out_of_range_is_refused(client, body) -> None:
-    r = call(client, "POST", "op", "/api/bmo/runs", json=body)
-    assert r.status_code == 422 and r.headers["content-type"].startswith("application/problem+json")
-
-
-def test_the_run_kind_is_open_to_users_and_unscheduled() -> None:
-    kind = CATALOG["bmo.run"]
-    assert kind.role == "user" and kind.schedule is None and kind.params is BmoRunParams and kind.max_tries == 1
-
-
-def test_the_worker_runs_the_case_and_returns_its_result(monkeypatch) -> None:
-    from services.events import MemoryEventBus
-    from worker.kinds import bmo as bmo_kind
-    from worker.runtime import HANDLERS, JobContext
-
-    calls: list[dict[str, Any]] = []
-    monkeypatch.setattr(bmo_views, "run_case", lambda params: calls.append(params) or _result())
-    bus = MemoryEventBus()
-    job = JobContext(job_id="j1", kind=CATALOG["bmo.run"], attempt=1, store=JobStore(MemoryRedis()), bus=bus, pool=None)
-    out = asyncio.run(HANDLERS["bmo.run"](job, BmoRunParams(target_production_mt=2250)))
-    assert HANDLERS["bmo.run"] is bmo_kind.run and calls == [BmoRunParams(target_production_mt=2250).model_dump()]
-    assert bmo_views.BmoRunResult.model_validate(out).status == "ok"
-    assert [e.type for e in asyncio.run(bus.recent(5))] == ["job.progress"]
 
 
 def test_the_params_reach_the_case_inputs() -> None:
@@ -376,8 +266,8 @@ def test_the_snapshots_of_page_9_are_listed_and_read(client) -> None:
 # ---------------------------------------------------------------------------------------------- roles, units
 def test_every_bmo_route_needs_a_session(client) -> None:
     for method, url in (
-        ("POST", "/api/bmo/runs"),
-        ("GET", "/api/bmo/runs/x"),
+        ("GET", "/api/bmo/plan"),
+        ("POST", "/api/bmo/plan/runs"),
         ("GET", "/api/bmo/forecasts/si"),
         ("GET", "/api/bmo/forecasts/charged-coke"),
         ("GET", "/api/bmo/snapshots"),
@@ -389,7 +279,8 @@ def test_every_bmo_route_needs_a_session(client) -> None:
 def test_every_numeric_field_of_the_bmo_schemas_states_its_unit(client) -> None:
     schemas = client.get("/api/openapi.json").json()["components"]["schemas"]
     names = [n for n in schemas if n.startswith("Bmo")]
-    assert {"BmoRunParams", "BmoRunResult", "BmoPlanView", "BmoSiForecastView", "BmoSnapshotDetail"} <= set(names)
+    assert {"BmoPlanView", "BmoSiForecastView", "BmoSnapshotDetail", "BmoPlanBoard"} <= set(names)
+    assert "/api/bmo/runs" not in client.get("/api/openapi.json").json()["paths"]  # the LP left the Svelte app
     missing = []
     for name in names:
         for field, spec in schemas[name].get("properties", {}).items():
@@ -398,7 +289,7 @@ def test_every_numeric_field_of_the_bmo_schemas_states_its_unit(client) -> None:
                 missing.append(f"{name}.{field}")
     assert not missing, missing
     paths = client.get("/api/openapi.json").json()["paths"]
-    assert "202" in paths["/api/bmo/runs"]["post"]["responses"]
+    assert "202" in paths["/api/bmo/plan/runs"]["post"]["responses"]
 
 
 def test_a_saved_plan_with_few_fields_still_reads() -> None:

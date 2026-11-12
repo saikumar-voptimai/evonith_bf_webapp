@@ -1,5 +1,9 @@
 # Charged-coke engine: acceptance record
 
+*Acceptance record of 7 Oct 2026. Since SV-1.5 (27 Oct 2026) the twin-worker issues this forecast
+(`forecast.charged_coke` at HH:07 IST, `services/forecasts.py`) into the same ledger; page 9 reads the ledger while
+the worker's attempt is fresh (`setting_bmo.yml → bmo.forecast_issuer: auto`) and issues itself otherwise.*
+
 Branch `feature/235_condition_aware_coke_model`, 7 October 2026. Data-Driven
 now means the charged-coke engine only. The robust 24-h engine is no longer
 selectable or executed by the BMO page; its old artifacts remain only as an

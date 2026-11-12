@@ -13,7 +13,7 @@ It is the source of truth for tool routing and plotting behavior.
 ## Non-Negotiable Runtime Rules
 
 - There is no runtime dependency on `current_furnace_data.csv`.
-- The active dataset always lives in `st.session_state.fm_df`.
+- The active dataset always lives in the session's `fm_df` (the tool state; `st.session_state` inside Streamlit).
 - `execute_python_plot` runs against preloaded variables:
   `df`, `pd`, `px`, `go`, `np`, `make_subplots`.
 - Never use `import`, `__import__`, `open`, `os`, `subprocess`, `sys`, `eval`, `exec`, or `fig.show()`.

@@ -1,6 +1,7 @@
 """Blend Mix Optimiser API views (SV-3.5, #302): LP runs, the forecast ledgers and the run snapshots.
 
-    runs        ``run_case`` (the ``bmo.run`` worker job): ``BmoRunParams`` -> ``services.bmo_case`` (page 9's
+    runs        ``run_case`` (page 9's LP as a function; its ``bmo.run`` job and route left the Svelte app on 12 Nov
+                2026): ``BmoRunParams`` -> ``services.bmo_case`` (page 9's
                 composition and LP step) -> ``BmoRunResult``; ``run_result`` maps an ``LpRun`` with page 9's own
                 figures (``services.bmo.blend_table``, ``display_total`` ...), so the plan equals the page's
     forecasts   ``si_forecast`` and ``charged_coke_forecast`` read the worker's ledgers (``services.forecasts``,
@@ -157,7 +158,7 @@ class BmoAnchor(BaseModel):
 
 
 class BmoRunResult(BaseModel):
-    """The result of a ``bmo.run`` job: the LP plan at a fixed production, or why there is none."""
+    """The result of ``run_case``: the LP plan at a fixed production, or why there is none."""
 
     status: Literal["ok", "infeasible", "refused"] = Field(
         ..., description="ok: a feasible plan; infeasible: the LP found none or broke a limit; refused: see refusal"
@@ -532,8 +533,8 @@ def run_result(run: bmo_case.LpRun, *, computed_at: datetime, seconds: float) ->
 
 
 def run_case(params: Mapping[str, Any], *, sources: bmo_case.CaseSources | None = None) -> dict[str, Any]:
-    """One ``bmo.run``: compose page 9's case from the live sources (or ``sources``), run the LP, return the result
-    as JSON."""
+    """One LP run as a function: compose page 9's case from the live sources (or ``sources``), run the LP, return the
+    result as JSON."""
     from services import bmo_case
 
     started = time.perf_counter()

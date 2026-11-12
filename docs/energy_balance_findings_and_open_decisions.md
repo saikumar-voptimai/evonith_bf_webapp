@@ -482,7 +482,11 @@ molar volume. A test asserts none can ever appear there.
 
 ## 11. Next phase — BMO integration
 
-Planned by the user, not yet started:
+*Note of 10 Nov 2026: this phase was done (the energy-balance coke correction in the Blend Mix Optimiser) and then
+overtaken by the Coke Energy Model (page 10) and the Burden & Fuel Optimiser (page 11); see CLAUDE.md sections
+11–12. The list below is the plan as written in August 2026.*
+
+Planned by the user at the time:
 
 1. Integrate the energy balance into BMO
 2. Support fuel requirement estimation from it

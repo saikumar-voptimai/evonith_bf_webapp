@@ -150,6 +150,34 @@ def test_put_needs_a_supervisor_and_is_audited(twin, client) -> None:
     assert len(twin.audit.query(object_type="operator_inputs")) == 2
 
 
+def test_an_ores_composition_is_an_administrators_entry(twin, client) -> None:
+    """User decision 12 Nov 2026: every non-admin role sets an ore's price, share bounds and selection; only an
+    administrator replaces its composition, which then stands for every optimiser until cleared."""
+    section = ore_rows(8784.0)
+    section["rows"][SINTER].update({"fe_t_pct": 55.2, "sio2_pct": 5.1, "chemistry_source": "manual"})
+    edit = {"inputs": {"ore_editor": section}, "base_version": 0, "note": "lab re-check"}
+    r = call(client, "PUT", "sup", json=edit)
+    assert r.status_code == 403 and "administrator" in r.json()["detail"] and SINTER in r.json()["detail"]
+    r = call(client, "PUT", "adm", json=edit)
+    assert r.status_code == 200, r.text
+    row = call(client, "GET", "op").json()["inputs"]["ore_editor"]["rows"][SINTER]
+    assert (row["fe_t_pct"], row["sio2_pct"], row["chemistry_source"]) == (55.2, 5.1, "manual")
+    # the yard reads the saved composition over the laboratory's, and says so
+    from data.burden_engine.inputs import yard_rows
+
+    mats = {m["id"]: m for m in yard_rows([_ore(m) for m in REF["materials"]], {"ore_editor": section})}
+    assert mats[SINTER]["chem"]["Fe"] == 55.2 and mats[SINTER]["chem"]["SiO2"] == 5.1
+    assert mats[SINTER]["chem_source"] == "operator inputs"
+    other = next(i for i in mats if i != SINTER)
+    assert mats[other]["chem_source"] == "lab"
+    # a supervisor's later save of prices keeps the administrator's composition (page 9's merge does the same)
+    from data.bmo.ore_editor_preferences import merge_ore_editor
+
+    df = pd.DataFrame([{"ore_id": SINTER, "selected": True, "price_rs_per_mt": 9000.0}])
+    merged = merge_ore_editor({"ore_editor": section}, df)["ore_editor"]["rows"][SINTER]
+    assert (merged["price_rs_per_mt"], merged["fe_t_pct"], merged["chemistry_source"]) == (9000.0, 55.2, "manual")
+
+
 def test_put_conflicts_invalid_values_and_section_removal(twin, client) -> None:
     hm = {"hot_metal_chemistry": {"carbon_pct": 4.7, "silicon_pct": 0.45}}
     assert call(client, "PUT", "sup", json={"inputs": hm, "base_version": 0}).json()["version"] == 2

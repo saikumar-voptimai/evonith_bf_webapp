@@ -38,6 +38,16 @@ src/storage/forge/
 # Local integration packages, replays, browser logs and test output.
 tmp/
 
+# Runtime files: FurnaceMind's tool-error log (recreated by furnace_tools.py), the Feedback page's
+# SQLite database and screenshot uploads, the furnace-data-service dataset cache and task results.
+src/agents/tool_errors.md
+src/storage/feedback/tickets.db
+src/storage/feedback/images/
+furnace-data-service/data/results/*
+furnace-data-service/data/static/*
+!furnace-data-service/data/results/.gitkeep
+!furnace-data-service/data/static/.gitkeep
+
 # Unreferenced local backup retained outside the production bundle path.
 src/assets/models/old_bmo_16_09_26/
 src/storage/strata_flow/

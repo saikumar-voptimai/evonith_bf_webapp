@@ -23,6 +23,8 @@ share bounds, stock), fluxes and fuel prices the run read. "Operator inputs in f
 	import InputEditDrawer from './InputEditDrawer.svelte';
 	import type { OptimiserPage } from './optimiser.svelte.ts';
 	import {
+		dustInputRows,
+		dustSection,
 		fluxInputRows,
 		fluxSection,
 		FUEL_IDS,
@@ -30,6 +32,7 @@ share bounds, stock), fluxes and fuel prices the run read. "Operator inputs in f
 		fuelSection,
 		oreInputRows,
 		oreSection,
+		type DustRow,
 		type InputEdit,
 		type InputRow,
 		type OptimiserResult
@@ -49,6 +52,7 @@ share bounds, stock), fluxes and fuel prices the run read. "Operator inputs in f
 	const doc = $derived(inputs?.inputs ?? null);
 	const oreRows = $derived(oreInputRows(doc, result));
 	const fluxRows = $derived(fluxInputRows(doc, result));
+	const dustRows = $derived(dustInputRows(doc, result));
 	const fuel = $derived(fuelPrices(doc));
 	const version = $derived(
 		!inputs
@@ -71,14 +75,21 @@ share bounds, stock), fluxes and fuel prices the run read. "Operator inputs in f
 		open = true;
 	}
 
+	function editDust(row: DustRow): void {
+		edit = { kind: 'dust', row };
+		open = true;
+	}
+
 	async function save(change: InputEdit, note: string | null): Promise<void> {
 		const current = page.inputs.data?.inputs ?? {};
 		const sections =
 			change.kind === 'fuel'
 				? { fuel_ash_editor: fuelSection(current, change.prices) }
-				: change.kind === 'ore'
-					? { ore_editor: oreSection(current, change.row) }
-					: { flux_editor: fluxSection(current, change.row) };
+				: change.kind === 'dust'
+					? { dust_editor: dustSection(current, change.row) }
+					: change.kind === 'ore'
+						? { ore_editor: oreSection(current, change.row) }
+						: { flux_editor: fluxSection(current, change.row) };
 		await page.saveInputs(sections, note);
 		toasts.ok('Operator inputs saved', `Version ${page.inputs.data?.version ?? ''}: the next run reads it.`);
 	}
@@ -125,6 +136,31 @@ share bounds, stock), fluxes and fuel prices the run read. "Operator inputs in f
 		{ key: 'stock', label: 'Stock', unit: 't', numeric: true, digits: 0 },
 		{ key: 'min', label: 'Min', unit: 't/d', numeric: true, digits: 0 },
 		{ key: 'max', label: 'Max', unit: 't/d', numeric: true, digits: 0 },
+		{ key: 'edit', label: '', sortable: false, width: '6rem' }
+	];
+	type YardDust = Schemas['YardDust'];
+	const dustColumns: Column<YardDust>[] = [
+		{ key: 'name', label: 'Stream' },
+		{ key: 'deducted', label: 'Deducted', sortable: false },
+		{ key: 'kg_per_charge', label: 'Dust', unit: 'kg/charge', numeric: true, digits: 0 },
+		{ key: 'cao_pct', label: 'CaO', unit: '%', numeric: true, digits: 2 },
+		{ key: 'mgo_pct', label: 'MgO', unit: '%', numeric: true, digits: 2 },
+		{ key: 'sio2_pct', label: 'SiO₂', unit: '%', numeric: true, digits: 2 },
+		{ key: 'al2o3_pct', label: 'Al₂O₃', unit: '%', numeric: true, digits: 2 },
+		{ key: 'fe_pct', label: 'Fe', unit: '%', numeric: true, digits: 2 },
+		{ key: 'moisture_pct', label: 'Moisture', unit: '%', numeric: true, digits: 1 },
+		{ key: 'source', label: 'Source', sortable: false }
+	];
+	const dustInputColumns: Column<DustRow>[] = [
+		{ key: 'name', label: 'Stream' },
+		{ key: 'enabled', label: 'Deducted', sortable: false, format: (r) => (r.enabled ? 'Yes' : 'No') },
+		{ key: 'kgPerCharge', label: 'Dust', unit: 'kg/charge', numeric: true, digits: 0 },
+		{ key: 'cao', label: 'CaO', unit: '%', numeric: true, digits: 2 },
+		{ key: 'mgo', label: 'MgO', unit: '%', numeric: true, digits: 2 },
+		{ key: 'sio2', label: 'SiO₂', unit: '%', numeric: true, digits: 2 },
+		{ key: 'al2o3', label: 'Al₂O₃', unit: '%', numeric: true, digits: 2 },
+		{ key: 'fe', label: 'Fe', unit: '%', numeric: true, digits: 2 },
+		{ key: 'source', label: 'Source', sortable: false },
 		{ key: 'edit', label: '', sortable: false, width: '6rem' }
 	];
 </script>
@@ -177,6 +213,16 @@ share bounds, stock), fluxes and fuel prices the run read. "Operator inputs in f
 							'Rs/t'
 						)} (ASM-20).
 					</p>
+					{#if (yard.dust ?? []).length}
+						<DataTable
+							caption="Top-gas dust of the run: deducted per charge of the blend before the slag forms"
+							rows={yard.dust ?? []}
+							columns={dustColumns}
+							rowKey={(r) => r.id}
+							dense
+							cells={{ deducted }}
+						/>
+					{/if}
 				{/if}
 			{:else if page.inputs.error && !inputs}
 				<ErrorState
@@ -224,6 +270,16 @@ share bounds, stock), fluxes and fuel prices the run read. "Operator inputs in f
 					>
 					{#if canEdit}<Button size="sm" icon={Pencil} onclick={editFuel}>Edit fuel prices</Button>{/if}
 				</div>
+				<DataTable
+					caption="Top-gas dust: kg per charge and analysis in force (the plant burden sheet's row unless saved here or on the Blend Mix Optimiser)"
+					rows={dustRows}
+					columns={dustInputColumns}
+					rowKey={(r) => r.id}
+					dense
+					cells={{ edit: editDustCell }}
+					emptyTitle="No dust stream"
+					emptyMessage="The shown run carries no slag basis; run the optimiser to list the streams."
+				/>
 				{#if !canEdit}<p class="note">Changing the operator inputs needs the supervisor role.</p>{/if}
 			{/if}
 		{/snippet}
@@ -247,6 +303,16 @@ share bounds, stock), fluxes and fuel prices the run read. "Operator inputs in f
 {/snippet}
 {#snippet editFlux(r: InputRow)}
 	{#if canEdit}<Button size="sm" icon={Pencil} onclick={() => editRow('flux', r)}>Edit</Button>{/if}
+{/snippet}
+{#snippet editDustCell(r: DustRow)}
+	{#if canEdit}<Button size="sm" icon={Pencil} onclick={() => editDust(r)}>Edit</Button>{/if}
+{/snippet}
+{#snippet deducted(d: YardDust)}
+	{#if d.enabled}
+		<StatusChip kind="ok" label="Deducted" size="sm" />
+	{:else}
+		<StatusChip kind="stale" label="Off" size="sm" />
+	{/if}
 {/snippet}
 
 <InputEditDrawer bind:open {edit} onsave={save} />

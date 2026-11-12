@@ -1,1177 +1,309 @@
 # Evonith BF2 — Blast Furnace Intelligence Platform
 
-A production-grade Streamlit web application for real-time monitoring, AI-powered analysis, and optimisation of **Blast Furnace 2 (BF2)** at Evonith Steel. The platform integrates live telemetry from InfluxDB, operational memory via Qdrant, relational data in PostgreSQL, and multiple LLM backends to provide operators and engineers with actionable furnace intelligence.
+Monitoring, modelling and optimisation of **Blast Furnace 2 (BF2)** at Evonith Steel: live telemetry from InfluxDB,
+manual plant reports from Neon PostgreSQL, a two-zone energy model of the furnace, blend and fuel optimisers, a
+conversational assistant (FurnaceMind) and a live digital twin evaluated every hour.
 
----
+The platform has three deployable parts that share one Python service layer, plus the shared data library:
 
-## Table of Contents
-
-1. [System Overview](#1-system-overview)
-2. [Architecture](#2-architecture)
-3. [Repository Structure](#3-repository-structure)
-4. [Pages](#4-pages)
-5. [Data Layer](#5-data-layer)
-6. [Core Analysis Engine](#6-core-analysis-engine)
-7. [AI Systems](#7-ai-systems)
-8. [Supporting Packages](#8-supporting-packages)
-9. [Configuration](#9-configuration)
-10. [Environment Variables](#10-environment-variables)
-11. [Setup and Running](#11-setup-and-running)
-12. [ML Dataset API Sidecar](#12-ml-dataset-api-sidecar)
-13. [Testing](#13-testing)
-14. [Key Domain Concepts](#14-key-domain-concepts)
-15. [Svelte Frontend and twin-api](#15-svelte-frontend-and-twin-api)
-
----
-
-## 1. System Overview
-
-The platform has two deployable components:
-
-| Component | Purpose | Tech |
+| Part | Path | What it is |
 |---|---|---|
-| **Streamlit App** (`evonith_webapp/`) | Multi-page dashboard for operators and engineers | Python, Streamlit, LangChain |
-| **ML Dataset API** (`ml-dataset-api/`) | Raspberry Pi sidecar for ML dataset caching and delivery | Python, FastAPI, Uvicorn |
+| **Streamlit app** (legacy) | `src/app.py`, `src/custom_pages/` | The original 11-page dashboard; still the home of the model pages. Served under `/legacy` in production |
+| **twin-api** | `src/api/` | FastAPI behind the SPA: sign-in, jobs, event stream, twin, optimiser, reports, FurnaceMind, admin |
+| **twin-worker** | `src/worker/` | arq worker on Redis: scheduled and on-demand model runs (twin evaluation, optimiser, calibration, forecasts, reports) |
+| **SPA** | `frontend/` | SvelteKit 3 / Svelte 5 / TypeScript single-page app that is replacing the Streamlit pages one by one |
+| **Service layer** | `src/services/` | Streamlit-free data assembly and model orchestration shared by the API, the worker and the Streamlit pages |
+| `furnace_data/` | editable package | Shared data access: InfluxDB fetchers, Neon offline tables, relational models, dataset pipeline |
+| `furnace-data-service/` | FastAPI sidecar | Publishes the hourly ML dataset and offline reports over REST (port 8000 on the plant host) |
 
-The Streamlit app serves 8 pages, each tackling a distinct operational concern:
-
-- **Live monitoring** — temperature profiles, heat loads, cooling water
-- **Data exploration** — raw InfluxDB browsing and ML dataset management
-- **AI optimisation** — blast parameter recommendations against 3 objectives
-- **Channeling detection** — propensity scoring for gas-flow asymmetry
-- **Material balance** — per-element daily mass balance with Sankey, bars, and closure table
-- **FurnaceMind** — conversational AI co-operator with structured shift memory and reports
-- **Feedback** — ticket board for bug reports, feature requests, and issue tracking
+`CLAUDE.md` is the detailed reference (furnace basics, data schema, every model and page, the API and worker, the
+conventions); this README is the orientation.
 
 ---
 
-## 2. Architecture
+## Contents
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Streamlit App (src/)                        │
-│                                                                  │
-│  custom_pages/         ← 8 page entry points                    │
-│  │                                                               │
-│  ├── agents/           ← FurnaceMind subsystem (all AI code)      │
-│  │   ├── furnacemind/  ← Agent loop, skills, context, prompts    │
-│  │   ├── llm/          ← OpenRouter + OpenAI client wrappers     │
-│  │   ├── memory/       ← Qdrant vector stores, structured JSON   │
-│  │   ├── embeddings/   ← Sentence-transformer + cloud embeddings │
-│  │   └── multimodal/   ← File ingestion (PDF, DOCX, XLSX…)       │
-│  │                                                               │
-│  ├── data/             ← InfluxDB fetchers, ML pipeline,         │
-│  │   ├── fetchers/     ← specialised time-series fetchers        │
-│  │   └── ml/           ← ML dataset service, cleaning, caching   │
-│  │                                                               │
-│  ├── utils/            ← Logger, session, settings, prompts,     │
-│  │   ├── copilot/      ← AI Copilot page helpers                 │
-│  │   └── recommendations/ ← V-OptimAIse helpers                  │
-│  │                                                               │
-│  ├── ui/               ← Shared Streamlit components             │
-│  ├── plotters/         ← Contour chart builders                  │
-│  ├── domain/           ← Auth service (PostgreSQL)               │
-│  └── geometries/       ← Furnace shape geometry                  │
-└─────────────────────────────────────────────────────────────────┘
-          │                         │                    │
-          ▼                         ▼                    ▼
-   InfluxDB (AWS)            Qdrant (cloud)       PostgreSQL (Neon)
-   bf2_evonith_raw         shift_summaries,       users, hoppers,
-   bf2_evonith_offline_utc knowledge_docs         materials, history
-
-                 ▲
-                 │  REST
-   ┌─────────────────────────────┐
-   │  ML Dataset API (Pi/local)  │
-   │  FastAPI on :8080           │
-   │  lag-aware CSV caching      │
-   └─────────────────────────────┘
-```
+1. [Architecture](#1-architecture)
+2. [Quick start](#2-quick-start)
+3. [Repository layout](#3-repository-layout)
+4. [Pages](#4-pages)
+5. [Models](#5-models)
+6. [Data sources](#6-data-sources)
+7. [Configuration](#7-configuration)
+8. [Environment variables](#8-environment-variables)
+9. [Tests and checks](#9-tests-and-checks)
+10. [Deployment](#10-deployment)
+11. [Documentation](#11-documentation)
+12. [Domain notes](#12-domain-notes)
 
 ---
 
-## 3. Repository Structure
+## 1. Architecture
+
+```
+ Browser ──HTTPS──▶ Caddy (one origin)
+                     ├── /            SPA build (frontend/build, 200.html fallback)
+                     ├── /api/*       twin-api  (uvicorn, :8100)  ──┐
+                     └── /legacy/*    Streamlit (:8501)            │   src/services/  (shared, no Streamlit)
+                                                                   │        │
+                     twin-worker (python -m worker) ◀── Redis ─────┘        │
+                       scheduled jobs, SSE events (stream twin:events)      │
+                                                                            ▼
+        InfluxDB (AWS)          Neon PostgreSQL                 Qdrant            Open-Meteo
+        bf2_evonith_raw         offline_feed, plant_master,     FurnaceMind       blast moisture
+        online telemetry        ops_config, identity, twin      memory            (Wardha RH)
+```
+
+- Every Python process runs with `src/` on the path and `src/` as the working directory: imports are
+  `from services.x`, `from utils.x`, never `from src.x`.
+- Routers in `src/api/` and job handlers in `src/worker/kinds/` call `services.*` only. Streamlit pages wrap the
+  same service building blocks in `st.cache_data` through `src/ui/*/loaders.py`
+  (`tests/test_services_architecture.py` fails on a Streamlit import under `services/`).
+- The worker publishes job progress and model events to the Redis stream `twin:events`; the API forwards them to the
+  browser as server-sent events on `GET /api/stream`.
+- Persistent results of the API and worker live in the Neon schema `twin` (`src/data/twin/`, migrations
+  `alembic/twin/`).
+
+## 2. Quick start
+
+Prerequisites: Python 3.12 (uv installs it), [uv](https://docs.astral.sh/uv/) 0.7.x, Node.js ≥ 20 with pnpm, a
+`.env` at the repo root (section 8). Redis is optional in development: without it the worker is not started and the
+job routes answer 503.
+
+```bash
+uv sync                          # Python environment, furnace_data/ installed editable
+pnpm --dir frontend install      # SPA
+
+python scripts/dev.py            # SPA :5173 + twin-api :8100 + worker (if Redis answers) + Streamlit /legacy :8501
+python scripts/dev.py api web    # a subset: api | web | worker | legacy
+
+python run_streamlit.py          # Streamlit alone (options pass through, e.g. --server.baseUrlPath legacy)
+```
+
+Open http://localhost:5173 (the dev server proxies `/api` and `/legacy`, so the browser sees one origin as in
+production). Sign in with an account from Neon `identity.users`; roles are `user` < `supervisor` < `admin`.
+
+**Never run `streamlit run` directly.** `run_streamlit.py` imports torch first on Windows (DLL load order), runs
+`src/app.py` from the repository root whatever the current directory, and passes its arguments to Streamlit.
+
+Other everyday commands (`make help` lists them; on Windows run the recipes by hand):
+
+```bash
+make lint          # Prettier + ESLint; Ruff 0.17.2 on the programme's Python (make lint-py)
+make check         # svelte-check
+make test          # Vitest + pytest with BURDEN_ENGINE_FAST=1
+make client        # regenerate the typed API client after changing a route (commit openapi.json + schema.d.ts)
+make fixtures      # chart and legacy-page fixtures from the Python models (commit the JSON)
+make db-upgrade    # alembic -n twin upgrade head  (BF_TWIN_DB_URL, else DATABASE_URL)
+make lock-check    # uv lock --check + resolution for the Jetson (aarch64, CPython 3.12)
+```
+
+Lock changes: `uvx --from "uv==0.7.13" uv lock`, then `uv sync --frozen` (uv 0.11 rewrites the lock format).
+
+## 3. Repository layout
 
 ```
 evonith_webapp/
-├── run_streamlit.py            Entry point — any directory; imports torch first on Windows (DLL fix)
-├── pyproject.toml
-├── CLAUDE.md                   AI-assistant domain knowledge
-├── README.md                   This file
-│
-├── src/                        All application code; CWD at runtime
-│   ├── app.py                  Streamlit navigation + auth gate
-│   ├── __init__.py
-│   │
-│   ├── custom_pages/           Page modules (named for Streamlit ordering)
-│   │   ├── 1_Welcome.py
-│   │   ├── 2_Data_Explorer.py
-│   │   ├── 3_Data_Visualisation.py
-│   │   ├── 4_Recommendations.py
-│   │   ├── 5_AI_Copilot.py
-│   │   ├── 6_Material_Balance.py
-│   │   ├── 7_FurnaceMind.py
-│   │   └── 8_Feedback.py
-│   │
-│   ├── agents/                 LLM agent machinery
-│   │   ├── furnace_tools.py    9 tool functions (fetch, merge, plot, search)
-│   │   ├── tool_errors.md      Log of recent tool call failures (fed to LLM context)
-│   │   └── furnacemind/         Agent orchestration sub-package
-│   │       ├── agent.py        Tool-calling loop + reasoning-model cleanup
-│   │       ├── artifacts.py    Plot/Data artifact panel renderer
-│   │       ├── context.py      SystemPromptContext: assembles system prompt
-│   │       ├── page.py         render_ai_cooperate() — top-level tab renderer
-│   │       ├── prompts.py      Static prompt strings (TOOL_POLICY, heatload, etc.)
-│   │       └── skills.py       SkillEngine: pre-computes analysis, builds skill prompts
-│   │
-│   ├── data/                   Data access layer
-│   │   ├── retrieval.py        Low-level InfluxDB fetch helpers (online + offline)
-│   │   ├── db.py               PostgreSQL SQLAlchemy session
-│   │   ├── tickets/            Feedback ticket persistence (SQLAlchemy 2.0)
-│   │   │   ├── models.py       ORM models: Ticket, TicketEvent, TicketImage
-│   │   │   ├── engine.py       Engine/session factory (SQLite default)
-│   │   │   ├── repository.py   Low-level CRUD
-│   │   │   └── service.py      Business logic + Pydantic view models
-│   │   ├── fetchers/           Specialised InfluxDB fetcher classes
-│   │   │   ├── base_data_fetcher.py
-│   │   │   ├── ts_data_fetcher.py
-│   │   │   ├── ts_heatload_data_fetcher.py
-│   │   │   ├── temp_data_fetcher.py
-│   │   │   ├── average_heatload_data_fetcher.py
-│   │   │   ├── circular_temperature_contour_data_fetcher.py
-│   │   │   └── longitudinal_temperature_contour_data_fetcher.py
-│   │   └── ml/                 ML dataset pipeline
-│   │       ├── main.py         MlDatasetFetcher — multi-source range fetch
-│   │       ├── ml_dataset_service.py  MlDatasetService — orchestrates full pipeline
-│   │       ├── static_dataset_manager.py  StaticDatasetManager — lag-aware CSV caching
-│   │       └── data_cleaning.py  DataCleaner — 16-stage configurable pipeline
-│   │
-│   ├── agents/                 FurnaceMind agent subsystem
-│   │   ├── furnacemind/         Agent orchestration (page, agent loop, context, skills)
-│   │   ├── llm/                LLM clients (OpenRouter, OpenAI)
-│   │   ├── memory/             Operational memory (schemas, stores, fm_memory, aggregation)
-│   │   ├── embeddings/         Embedding clients (local sentence-transformers, cloud)
-│   │   ├── multimodal/         Document ingestion + parsers
-│   │   └── furnace_tools.py    9 tool functions (fetch, merge, search, plot)
-│   │
-│   ├── ui/                     Streamlit UI components
-│   │   ├── layout.py           Page header, sidebar layout helpers
-│   │   ├── styles.py           CSS injection
-│   │   ├── components.py       Reusable widgets
-│   │   ├── furnacemind_sections.py  Constants + nav tab selector (shared across FM tabs)
-│   │   ├── live_ops.py         render_live_operations() + render_furnace_intelligence()
-│   │   ├── reports.py          render_reports() — shift/day/week/biweek report viewer
-│   │   ├── login_page.py       Cookie-based login form
-│   │   ├── user_management.py  Admin: create/edit users
-│   │   ├── burden_admin_page.py  Admin: burden distribution config
-│   │   └── hopper_admin_page.py  Admin: hopper/material config
-│   │
-│   ├── utils/                  Cross-cutting utilities
-│   │   ├── feedback_page.py    Feedback page UI helpers (board, KPIs, management)
-│   │   ├── logger.py           setup_logger() (YAML config) + get_logger(name)
-│   │   ├── session.py          is_logged_in(), is_admin(), is_supervisor()
-│   │   ├── settings.py         Pydantic Settings singleton (LLM, Qdrant, embeddings)
-│   │   ├── prompts.py          PromptTemplates: shift/daily/weekly/biweekly report prompts
-│   │   ├── anomaly_propensity.py  Channeling propensity z-score suite
-│   │   ├── payload_helpers.py  Payload construction helpers
-│   │   ├── rag_methods.py      RAG helper utilities
-│   │   ├── validators.py       Input validation helpers
-│   │   ├── window_helpers.py   Time-window construction
-│   │   ├── copilot/            AI Copilot page helpers
-│   │   │   ├── data.py         fetch_recent_online() + df_packet
-│   │   │   ├── llm.py          call_llm(), OPENAI_MODEL
-│   │   │   └── prompts.py      AI Copilot tab-specific prompt builders
-│   │   ├── material_balance/   Material Balance Visualiser package
-│   │   │   ├── __init__.py
-│   │   │   ├── constants.py    Atomic weights, oxide→element, MaterialSpec registry
-│   │   │   ├── data_sources.py Day-window fetchers (RM, HM/Slag, DPR, online)
-│   │   │   ├── dpr_mapping.py  DPR field mapping persistence + discovery
-│   │   │   └── compute.py      Element-balance math + run_full_balance(day)
-│   │   └── recommendations/    V-OptimAIse helpers
-│   │       ├── data.py         DataframesProcessor — merges CSV + live InfluxDB
-│   │       ├── optimiser.py    run_optimiser() — differential_evolution wrapper
-│   │       ├── optimiser_subprc.py  Subprocess-safe optimiser variant
-│   │       ├── bounds.py       Control parameter bounds (JSON-backed)
-│   │       ├── features.py     Feature engineering for model input
-│   │       ├── dependencies.py build_bf_dependency_graph()
-│   │       ├── llm.py          LLM review after optimisation
-│   │       └── prompts.py      Recommendations LLM prompt templates
-│   │
-│   ├── plotters/               Plotly chart builders
-│   │   ├── base_contour.py     Base class + furnace outline
-│   │   ├── circumferential_contour.py  CircumferentialPlotter
-│   │   ├── longitudinal_temp_contour.py  LongitudinalTemperaturePlotter
-│   │   ├── heatload_contour.py HeatloadContourPlotter
-│   │   └── material_balance_plots.py   Sankey, per-element bars, closure styler, furnace diagram
-│   │
-│   ├── llm/                    LLM client wrappers
-│   │   └── llm_client.py       OpenRouterClient + OpenAIClient + get_llm_client()
-│   │
-│   ├── embeddings/             Embedding clients
-│   │   ├── sentence_embedding.py  SentenceEmbedding (local, 384-dim)
-│   │   └── cloud_embedding.py  CloudEmbeddingClient (Voyage multimodal, 1024-dim)
-│   │
-│   ├── multimodal/             Document ingestion
-│   │   ├── ingestion.py        process_file() — builds DocumentPart records + indexes MRAG
-│   │   └── parsers.py          PDF, DOCX, PPTX, XLS/XLSX, TXT/image extractors
-│   │
-│   ├── domain/                 Business domain services
-│   │   └── auth_service.py     AuthService — PostgreSQL user auth + session cookies
-│   │
-│   ├── geometries/             Furnace physical geometry
-│   │   └── furnace_gen.py      Furnace class — profile coordinates, zone lookup
-│   │
-│   ├── config/                 Static configuration
-│   │   ├── config_loader.py    load_config(filename) → dict
-│   │   ├── page_registry.py    Central page navigation registry (PAGE_REGISTRY)
-│   │   ├── logger_setting.yml  Logging configuration (YAML-based)
-│   │   ├── setting_ds_dv.yml   InfluxDB mappings, data_mapping, furnace geometry
-│   │   ├── setting_vsense.yml  V-OptimAIse: models, control/input/output params
-│   │   ├── materials.yml       Hopper + raw material definitions
-│   │   ├── material_balance.yml Element list, ash assumptions, DPR mapping, closure thresholds
-│   │   └── schemas/            JSON payload schemas for shift/day/week/biweek reports
-│   │
-│   ├── assets/                 Static non-code assets
-│   │   ├── data/               CSVs, JSON, copilot analysis Markdown
-│   │   │   ├── ml_dataset_filtered.csv   Latest ML dataset (used by FurnaceMind)
-│   │   │   ├── control_bounds.json       V-OptimAIse parameter bounds
-│   │   │   └── copilot_analysis/         Static LLM context docs
-│   │   ├── models/             Pre-trained joblib models + scalers (3 objectives)
-│   │   ├── css/                Custom CSS for pages (incl. feedback_style.css)
-│   │   └── templates/          Jinja/HTML templates
-│   │
-│   ├── storage/                Runtime-generated storage
-│   │   ├── shift_summaries.json
-│   │   ├── daily_summaries.json
-│   │   ├── weekly_summaries.json
-│   │   ├── biweekly_summaries.json
-│   │   └── furnacemind/         FurnaceMind storage
-│   │       ├── ai_cooperate_memory.json  Persistent conversation memory
-│   │       ├── skill_params.yml          SkillEngine calibration (recalibrate without code changes)
-│   │       ├── TOOLS1.md / TOOLS2.md     Tool routing rules (injected into system prompt)
-│   │       ├── SKILLS_BESTSHIFT.md       Best-shift parameter bands
-│   │       ├── SKILLS_HEATLOAD.md        Heatload skill reference
-│   │       ├── SKILLS_OPTIMISE.md        Optimise skill reference
-│   │       └── SKILLS_SHIFTREPORT.md    Shift report skill reference
-│   │
-│
-└── ml-dataset-api/             FastAPI sidecar (see §12)
-    ├── app/
-    ├── config/
-    ├── data/
-    └── CODEBASE.md
+├── run_streamlit.py         Streamlit entry point (use this, not `streamlit run`)
+├── pyproject.toml, uv.lock  Python project (uv); furnace_data/ as an editable path dependency
+├── Makefile                 dev, lint, test, client, fixtures, db-*, audit-ui, lock-check
+├── CLAUDE.md                Detailed reference of the system
+├── alembic/                 twin/ = the `twin` schema migrations (-n twin); versions/ = the relational tables
+├── deploy/jetson/           Provisioning, systemd units, Caddyfile, release and rollback scripts
+├── docs/                    Model notes, decision records, benchmarks (section 11)
+├── frontend/                SvelteKit SPA (DESIGN.md: design system and chart rules)
+├── furnace_data/            Shared data-access package
+├── furnace-data-service/    Dataset REST sidecar (own pyproject and tests)
+├── scripts/                 dev.py, CI step wrapper, exporters, audits, model studies
+├── tests/                   pytest suite (174 files) and fixtures
+└── src/
+    ├── app.py               Streamlit navigation and login gate
+    ├── api/                 twin-api: main, auth, settings, routers/ (24 routers), security/
+    ├── worker/              twin-worker: runtime, settings, kinds/ (job handlers)
+    ├── services/            Service layer (45 modules): twin, optimiser, bmo, reports, status, facts, ...
+    ├── custom_pages/        The 11 Streamlit pages
+    ├── ui/                  Streamlit UI: per-page packages (bmo, burden_optimiser, coke_energy, furnace_status, furnacemind), admin pages, login
+    ├── utils/               Models and helpers: burden_engine, coke_energy, bmo, energy_balance, strata_flow (vendored), material_balance, recommendations, settings, memo
+    ├── data/                Adapters: fetchers (InfluxDB), ml (static dataset), bmo, burden_engine, coke_energy, furnace_status, tickets, twin
+    ├── domain/              Pure domain logic: auth, plant config, bmo, furnace_status, optimization_runtime
+    ├── agents/              FurnaceMind: agent loop, tools, skills, memory, embeddings, LLM clients, multimodal ingestion
+    ├── reports/             Shift report builder (furnace_report/)
+    ├── plotters/            Plotly contour and material-balance figures
+    ├── geometries/          Furnace profile and sensor masks
+    ├── config/              YAML configuration, page_registry.py, facts_register.json, schemas/
+    ├── assets/              Models, calibrations, CSS, static data and notes
+    └── storage/             Runtime data (mostly git-ignored): ledgers, caches, snapshots, tickets
 ```
-
----
 
 ## 4. Pages
 
-### Page 1 — Welcome (`1_🏭_Welcome.py`)
+### Streamlit (`src/custom_pages/`, registry `src/config/page_registry.py`)
 
-Landing dashboard showing plant branding and navigation overview. Loads logos from `assets/data/`.
-
----
-
-### Page 2 — Data Explorer (`2_📓_Data_Explorer.py`)
-
-Interactive browser for all InfluxDB data and the ML dataset pipeline.
-
-**Key features:**
-- Select any of the 6 online measurements or 4 offline report types
-- Configurable time range, aggregation interval, resampling frequency
-- ML Dataset tab: trigger a full pipeline rebuild, preview the cleaned dataset, download CSV
-- Raw data download as CSV
-
-**Dependencies:** `data/fetchers/`, `data/ml/`, `data/retrieval.py`, `config/setting_ds_dv.yml`
-
----
-
-### Page 3 — Data Visualisation (`3_📈_Data_Visualisation.py`)
-
-Interactive contour visualisations of the physical furnace.
-
-**Chart types:**
-- **Circumferential temperature** — ring-by-ring sensor heatmap at each elevation level
-- **Longitudinal temperature** — axial temperature profile (elevation vs time)
-- **Heatload contours** — stave-level heat loads across R6–R10
-
-**Dependencies:** `plotters/`, `data/fetchers/`, `geometries/furnace_gen.py`
-
----
-
-### Page 4 — V-OptimAIse Recommendations (`4_💡_Recommendations.py`)
-
-ML-driven blast parameter optimiser. Answers: *"Given current raw material quality and burden, what blast settings best achieve my target?"*
-
-**Three optimisation objectives:**
-
-| Objective | Model file | Direction |
+| Title | File | What it does |
 |---|---|---|
-| Maximise ETA CO | `assets/models/etaco_opt_dec.pkl` | Maximise |
-| Maximise Production Rate | `assets/models/prodrate_opt_dec.pkl` | Maximise |
-| Minimise Unit Cost | `assets/models/unitcost_opt_dec.pkl` | Minimise |
+| Welcome | `1_Welcome.py` | Landing tiles to every page; admin tools (users, hoppers, burden) |
+| Data Explorer | `2_Data_Explorer.py` | Browse InfluxDB measurements and Neon offline tables; build and download the ML dataset |
+| V-Board | `3_Data_Visualisation.py` | Circumferential and longitudinal temperature contours, stave heat loads |
+| V-Sense | `4_Recommendations.py` | Blast-parameter optimiser: differential evolution on pre-trained models for ηCO, production and unit cost |
+| CoPilot | `5_AI_Copilot.py` | Unit-cost drivers, burden-distribution findings, channeling propensity and anomaly review with an LLM |
+| Material Balance | `6_Material_Balance.py` | Per-element daily mass balance (Sankey, bars, closure table) |
+| FurnaceMind | `7_FurnaceMind.py` | Tool-calling assistant over live, offline and twin data; skills; shift reports tab |
+| Blend Mix Optimiser | `9_Blend_Optimizer.py` | Ore + flux LP blend at a fixed production with the energy-balance coke rate, Si and charged-coke forecasts |
+| Coke Energy Model | `10_Coke_Energy.py` | Two-zone (Rist) energy balance per shift: coke burnt vs charged vs modelled; calibration |
+| Burden & Fuel Optimiser | `11_Burden_Fuel_Optimiser.py` | Ore + flux + fuel blend and production level on the energy model, Fixed-ω or STRATA-ω |
+| Feedback | `8_Feedback.py` | Ticket board (SQLite by default) |
 
-**Algorithm:** `scipy.optimize.differential_evolution` (strategy `best1bin`, polish=True, λ_reg regularisation penalty against large jumps from current operating point).
+### SPA (`frontend/src/routes/`, navigation `frontend/src/lib/nav.ts`)
 
-**7 control parameters** (user can fix/lock any):
-Hot Blast Pressure, Top Pressure, Hot Blast Temperature, Steam, Hot Blast Volume, O₂ Enrichment, PCI Rate.
-
-**9 read-only input groups:** Coke, Nut Coke, PCI, Ore, Sinter, Pellet, Flux, Burden distribution, Other.
-
-After optimisation, results are sent to OpenAI for a concise numeric review.
-
-**Dependencies:** `utils/recommendations/`, `assets/models/`, `assets/data/control_bounds.json`, `config/setting_vsense.yml`
-
----
-
-### Page 5 — AI Copilot (`5_🤖_AI_Copilot.py`)
-
-**Three independent analysis tabs using OpenAI Responses API + code_interpreter.**
-
-#### Tab 1: Unit Cost Drivers
-Static LLM analysis of fuel cost drivers vs the best historical period (Apr–Jun 2024). Sections: high-confidence drivers, counter-moving levers, action checklist.
-
-#### Tab 2: Burden Distribution Impact
-Empirical findings from an OLS model (~5,900 rows, R²≈0.43):
-- More NON-COKE portions → lower cost
-- More COKE portions → higher cost  
-- NON-COKE weighted angle outward → lower cost
-- Best pattern: ~10–11 coke portions, ~8 non-coke portions, NON-COKE angle ~28° with ≥25% outer share
-
-#### Tab 3: Channeling Analysis
-Channeling = asymmetric gas flow through the burden, detected via temperature spread at the 18660mm (Stack) sensors.
-
-`compute_propensity_suite()` fetches the last 8 hours of live data (15-min average) and returns 4 propensity scores (0–100):
-
-| Metric | Signal |
-|---|---|
-| Channeling | Std-dev of `temp_18660_a/b/c/d` |
-| ΔP instability | `body_dp_total` anomaly |
-| Permeability instability | `body_perm` anomaly |
-| Top pressure instability | `top_press_avg` variability |
-
-Score formula: `100 × (0.6 × magnitude + 0.4 × variability)` — alarm when z_abs_max ≥ 2.5 AND z_std ≥ 1.0.
-
-**Dependencies:** `utils/copilot/`, `utils/anomaly_propensity.py`, `data/retrieval.py`
-
----
-
-### Page 6a — Material Balance Visualiser (`6_⚖️_Material_Balance.py`)
-
-Single-date element balance: for each of 12 elements (Fe, C, Si, Ca, Mg, Al, Mn, S, P, O, N, H), how many tonnes entered the furnace via raw materials + blast + steam, and how many left via hot metal + slag + top gas.
-
-**Key features:**
-- Date picker (default yesterday IST, max yesterday); Refresh button
-- Overall mass closure KPI tile (colour-coded green/yellow/red)
-- Three tabs: Sankey diagram (total mass or element-focused), per-element stacked bars (4×3 grid), closure table (traffic-light row colours)
-- Lightweight furnace cross-section diagram with labelled inflow/outflow arrows
-- DPR field mapping expander (one-time configuration; persisted to `material_balance.yml`)
-- Assumptions & limitations expander
-
-**Element conversion pipeline:**
-1. Fetch RM (3-shift avg), HM/Slag (day avg), DPR, online `process_params` for the picked day
-2. Resolve material masses from DPR (with RM-sum fallback)
-3. For each material, apply `direct/oxide/H2O/ASH/LOI` rules via `MaterialSpec` to compute element tonnes
-4. Add gas-phase inputs: blast O+N, O₂ enrichment O, steam H+O
-5. Compute outputs: HM elements (direct wt%), slag elements (oxide split), top-gas C+O+H+N
-6. Build closure table: In_t / Out_t / Closure% per element
-
-**Math layer (`utils/material_balance/`)** is fully decoupled from Streamlit — `compute.py` and `constants.py` have zero Streamlit imports and are unit-testable.
-
-**Dependencies:** `utils/material_balance/`, `plotters/material_balance_plots.py`, `data/retrieval.py`, `utils/recommendations/dependencies.py` (bosh-vol formula), `config/material_balance.yml`
-
----
-
-### Page 7 — FurnaceMind (`7_🧠_FurnaceMind.py`)
-
-**Two-tab AI assistant for operators.**
-
-#### Tab: AI Co-Operate
-
-Conversational AI backed by OpenRouter with a full tool-calling loop. Supports reasoning models (DeepSeek-R1, MiniMax M2.5) — `<think>` blocks are stripped before display.
-
-**System prompt assembly** (`agents/furnacemind/context.py`):
-1. `AI_COOPERATE_SYSTEM` base prompt
-2. `CLAUDE.md` domain knowledge (up to 24,000 chars)
-3. `TOOLS*.md` — tool routing rules
-4. `SKILLS*.md` — skill benchmark data
-5. Persistent conversation memory (summary + do-not-repeat rules + preferences)
-6. Recent tool errors (last 2,500 chars of `tool_errors.md`)
-
-**Skills** (pre-computed before LLM is called — model receives numbers, not code):
-
-| Skill | Trigger phrase | What happens |
+| Route | Role | Page |
 |---|---|---|
-| Optimise Unit Cost | "optimise" / "unit cost" | 30-day ML data → Tier1/Tier2/Tier3 gap analysis → prompt with pre-computed numbers |
-| Shift to Best | "shift to best" + date + label | Static shift data → Tier1 gap vs best-shift bands → bar chart |
-| Check Heatloads | "heatload" / "check heat" | LLM fetches live data + executes plot code → report template |
+| `/status` (landing) | user | Furnace status: V-Board snapshot every 10 s from the worker, zone status, trends |
+| `/reports` | user | Shift reports with KPI checks, handover record, print layout |
+| `/furnacemind` | user | FurnaceMind chat over the API (SSE, Plotly artifacts, skills, feedback) |
+| `/bmo` | user | Blend Mix Optimiser: plan board, constraints, Step 2 Fixed-ω runs, accept plan |
+| `/optimiser` | user (runs: supervisor) | Blend Simulator — the Burden & Fuel Optimiser through `POST /api/optimiser/runs` |
+| `/models` | user | Digital twin models (placeholder until SV-7.6) |
+| `/admin/*` | admin | Fact register, what-if, burnt vs charged, validation (STRATA-Learn), calibration, users & hoppers, jobs & health, audit log; model views Live Twin, TRACE, FORGE, STRATA |
+| `/dev/components` | — | Component catalogue |
 
-**Tools available to the LLM:**
+Streamlit pages are linked from the SPA by title (`legacyHref`, generated from the page registry). Retirement of a
+Streamlit page follows `docs/retirement.md`.
 
-| Tool | Function |
-|---|---|
-| `fetch_online_data` | InfluxDB live telemetry (up to 90 days, auto-windowed) |
-| `fetch_offline_data` | Manual/shift report data (HM_SLAG, CHARGE, RAW_MATERIAL, DPR) |
-| `merge_furnace_data` | Align + merge online + offline datasets |
-| `fetch_ml_data` | Load static ML dataset into session |
-| `load_static_shift_data` | Load a specific shift's data slice |
-| `search_shift_history` | Semantic search on Qdrant shift summaries (384-dim) |
-| `search_knowledge_docs` | Semantic search on uploaded operator docs (1024-dim) |
-| `execute_python_plot` | Execute sandboxed Plotly code; result in `st.session_state["fm_fig"]` |
-| `concat_datasets` | Concatenate two datasets |
+## 5. Models
 
-**Persistent memory** (`agents/memory/fm_memory.py`):
-- `conversation_summary` — compressed summary of past sessions
-- `do_not_repeat` — rules learned from operator corrections (max 12)
-- `preferences` — operator preferences
-- `recent_turns` — last 8 turn pairs
-
-#### Tab: Reports
-
-Renders `ui/reports.py` — shift/daily/weekly/bi-weekly report viewer embedded in the FurnaceMind layout.
-
----
-
-### Page 8 — Feedback (`8_Feedback.py`)
-
-A shared ticket board for operators and engineers to report bugs, suggest improvements, and track resolution.
-
-**Key features:**
-- New Feedback form: page selector, criticality, description, ideal closure, screenshot uploads
-- Board view: filterable/sortable ticket cards with status badges and criticality indicators
-- Overview KPIs: open/in-progress/resolved counts
-- Management panel (admin/supervisor only): status updates, comments, deletion
-
-**Data layer:** `data/tickets/` — SQLAlchemy 2.0 ORM with service/repository pattern. Three tables: `tickets`, `ticket_events` (audit trail), `ticket_images` (screenshot metadata). SQLite by default (`src/storage/feedback/tickets.db`); override via `TICKETS_DB_URL` env var.
-
-**Dependencies:** `data/tickets/`, `utils/feedback_page.py`, `config/page_registry.py`, `assets/css/feedback_style.css`
-
----
-
-## 5. Data Layer
-
-### InfluxDB Buckets
-
-**Online:** `bf2_evonith_raw` (30-second resolution, AWS eu-central-1)
-
-| Measurement | Content |
-|---|---|
-| `process_params` | ~30 primary operational fields (blast, gas, KPIs) |
-| `temperature_profile` | 110 circumferential wall sensors across 11 elevations |
-| `heatload_delta_t` | Cooling stave heat loads R6–R10 + quadrant aggregates |
-| `delta_t` | Cooling water ΔT per stave and row average |
-| `cooling_water` | Flow, pressure, temperature per cooling circuit zone |
-| `miscellaneous` | Stock levels, flare stack, PCI switches, charging rate |
-
-**Offline:** `bf2_evonith_offline_utc` (manual entry)
-
-| Report | Measurement | Cadence |
+| Model | Where | One line |
 |---|---|---|
-| Hot Metal & Slag | `hotmetal_slag_updated_data` | Hourly |
-| Charge | `latest_charge_data` | Hourly |
-| Raw Material Composition | `rm_updated_data` | 8-hourly |
-| Daily Production Report | `dpr_data` | Daily |
+| Coke Energy Model | `utils/coke_energy/`, page 10, `services/coke_energy.py` | Two-zone (Rist) energy and oxygen balance per 8-h shift; burnt coke from the blast, charged coke from the charge record; calibration on the last 14 days of stable shifts; blast moisture from Open-Meteo |
+| Burden engine | `utils/burden_engine/`, page 11, `services/optimiser.py` | Sequential LP (HiGHS) on the two-zone balance: cheapest production level, fixed production, maximum production; prices and slag credit; fact register `config/facts_register.json` |
+| STRATA-ω | `utils/burden_engine/omega_model.py`, `assets/burden_engine/omega_model.json` | Blend-dependent shaft efficiency from the STRATA-Flow network (`utils/strata_flow/`, vendored); solver processes; STRATA-Learn shadow mode in `learn/` |
+| Live twin | `services/twin.py`, `utils/coke_energy/twin.py` | Window [t − 8 h, t) every hour: K_TRACE, K_FORGE, K_STRATA, ω_imp, ω_STRATA; drift alarm; burden transit; gated HMT forecast |
+| Blend Mix Optimiser | `utils/bmo/`, `services/bmo*.py`, page 9 | Ore + flux LP at fixed production; energy-balance coke correction; charged-coke and HM Si forecasts (ledgers in `src/storage/bmo_*`) |
+| V-Sense | `utils/recommendations/`, page 4 | Differential evolution over 7 blast controls on XGBoost/sklearn models (`assets/models/`) |
+| Material balance | `utils/material_balance/`, page 6 | 12-element daily balance from raw materials, blast, steam, hot metal, slag and top gas |
+| FurnaceMind | `agents/`, `services/furnacemind.py`, page 7 | OpenRouter tool-calling loop with 13 tools (data fetch, merge, plot, Qdrant search, twin reads) and pre-computed skills |
+| Shift reports | `reports/furnace_report/`, `services/reports.py` | KPI checks against `config/shift_report.yml`, LLM narrative, stored in `twin.shift_report` |
 
-### Fetcher Class Hierarchy
+Details, formulas and decisions: `CLAUDE.md` sections 4–7 and 11–12, and the documents in section 11 below.
 
-```
-BaseDataFetcher (data/fetchers/base_data_fetcher.py)
-├── TimeSeriesDataFetcher     — generic time-series
-├── TimeSeriesHeatLoadDataFetcher — heatload rows + quadrants
-├── TempDataFetcher           — temperature_profile fields
-├── AverageHeatLoadDataFetcher — per-row averages
-├── CircumferentialTemperatureDataFetcher — elevation ring data
-└── LongitudinalTemperatureDataFetcher    — axial profile
-```
+## 6. Data sources
 
-All fetchers read their field lists from `config/setting_ds_dv.yml → data_mapping`.
-
-### ML Dataset Pipeline (`data/ml/`)
-
-`MlDatasetService` orchestrates a 4-step multi-source fetch:
-1. Fetch all 6 online InfluxDB measurements over the requested range
-2. Fetch offline data (charge, raw material) and align on timestamp
-3. Apply `DataCleaner` (16-stage configurable pipeline: outlier removal, interpolation, lag features, derived columns)
-4. Write versioned CSVs to `storage/` (max 3 kept by `StaticDatasetManager`)
-
-The static dataset at `assets/data/ml_dataset_filtered.csv` is the latest committed snapshot used by FurnaceMind's ML skills.
-
-### PostgreSQL
-
-Used for authentication and admin data (users, hoppers, materials, burden config). Accessed via SQLAlchemy through `data/db.py`. Schema uses **SCD Type-2** pattern (`valid_upto IS NULL` = current row).
-
-### Tickets Database
-
-SQLite-first, PostgreSQL-ready persistence for the Feedback page. Default location: `src/storage/feedback/tickets.db`. Override via `TICKETS_DB_URL` env var.
-
-Three tables: `tickets`, `ticket_events`, `ticket_images`. Schema auto-created via `Base.metadata.create_all()`. Follows service → repository → models pattern in `data/tickets/`.
-
-### Qdrant Vector Store
-
-Two collections:
-
-| Collection | Embeddings | Dim | Content |
-|---|---|---|---|
-| `furnace_shift_summaries` (env: `SHIFT_QDRANT_COLLECTION`) | Local sentence-transformers | 384 | Shift/day/week/biweek report summaries |
-| `furnacemind_knowledge` (env: `KNOWLEDGE_QDRANT_COLLECTION`) | Voyage multimodal | 1024 | Uploaded operator documents |
-
----
-
-## 6. Core Analysis Engine
-
-All core logic in `core/` has zero Streamlit dependencies — fully testable in isolation.
-
-### Shift Building (`core/shift_builder.py`)
-
-`ShiftBuilder.build_shifts(df)` partitions a time-indexed DataFrame into fixed 8-hour windows:
-
-```
-Shift A: 06:00–14:00 IST
-Shift B: 14:00–22:00 IST
-Shift C: 22:00–06:00 IST
-```
-
-Returns `Dict[shift_id, ShiftData]` where `shift_id` = `YYYY-MM-DD_Shift_A/B/C`.
-
-### Shift Analysis (`core/shift_analyzer.py`)
-
-`ShiftAnalyzer.analyze()` performs z-score analysis on each numeric column:
-- z_warn threshold ≈ 2.5, z_critical ≈ 3.5
-- 0 anomalies → stable | 1–3 → warning | >3 → unstable
-- Calls LLM with structured prompts from `utils/prompts.py` (7-section report format)
-- Returns `(llm_summary, structured_summary)` which feeds `memory/structured_store.py`
-
-### Stability Index (`core/stability_index.py`)
-
-`FurnaceStabilityIndex.compute()` — three penalty components (each capped at sub-100):
-- **Variability penalty** (max 40) — avg coefficient of variation across critical parameters
-- **Anomaly penalty** (max 40) — 5 points per anomalous parameter
-- **Trend penalty** (max 20) — slope of ETA CO linear fit
-
-Final score: `100 - sum(penalties)`, clamped to [0, 100].
-
-### Contextual Analysis (`core/contextual_analyzer.py`)
-
-Compares the current shift against the N most recent shifts from `StructuredStore`, identifying parameter deltas, trend direction, and persistent anomalies. Uses `PromptTemplates.CONTEXTUAL_ANALYSIS_TASK` for the LLM report.
-
-### Aggregation (`memory/aggregation.py`)
-
-`aggregate_daily()`, `aggregate_weekly()`, `aggregate_biweekly()` — roll up shift summaries using LLM synthesis. Results saved to `StructuredStore`.
-
----
-
-## 7. AI Systems
-
-### FurnaceMind AI Co-Operate
-
-**LLM:** OpenRouter (any model — tested with GPT-4o, DeepSeek-R1, MiniMax M2.5)  
-**Architecture:** Custom tool-calling loop (`agents/furnacemind/agent.py`) — NOT LangChain AgentExecutor  
-**Max iterations:** 8 tool calls per turn  
-**Thinking models:** `<think>…</think>` blocks stripped from output
-
-The `SkillEngine` (`agents/furnacemind/skills.py`) pre-computes all numerical analysis before calling the LLM. The model receives only numbers and a report template — never generates or runs code for analysis.
-
-Calibration lives entirely in `storage/furnacemind/skill_params.yml` — recalibrate regression coefficients, benchmark percentiles, and parameter bands without touching Python.
-
-### V-OptimAIse
-
-**LLM:** OpenAI Responses API (for post-optimisation review)  
-**Optimiser:** `scipy.optimize.differential_evolution`
-
-Objective function:
-```
-f(x) = maxmin × ŷ_scaled(x) + λ_reg × ‖x_scaled − x_prev_scaled‖²
-```
-where `maxmin = -1` for maximise objectives. The regularisation term prevents impractical step-changes from the current operating point.
-
-### AI Copilot
-
-**LLM:** OpenAI Responses API with `code_interpreter`  
-**Static analysis:** Pre-built context docs in `assets/data/copilot_analysis/`
-
----
-
-## 8. Supporting Packages
-
-### `llm/llm_client.py`
-
-Two clients behind `get_llm_client(prefer)`:
-
-| Client | Use case | API |
+| Source | Content | Access |
 |---|---|---|
-| `OpenRouterClient` | FurnaceMind agent | OpenRouter (OpenAI-compatible) |
-| `OpenAIClient` | AI Copilot, Recommendations review | OpenAI Responses API |
+| InfluxDB `bf2_evonith_raw` (AWS eu-central-1) | Online telemetry: `process_params`, `temperature_profile` (110 wall sensors), `heatload_delta_t`, `delta_t`, `cooling_water`, `miscellaneous` | `furnace_data.influx`, field map `src/config/setting_ds_dv.yml → data_mapping` |
+| Neon PostgreSQL `offline_feed` | Charge, DPR, hot metal and slag analysis, raw-material chemistry and strength, the historical ML dataset | `furnace_data.offline` (`fetch_offline_data`, `fetch_offline_report`; whitelist `offline_tables.yml`) |
+| Neon `plant_master`, `ops_config`, `identity` | Materials, hoppers, units; burden and hopper history (SCD-2); users and roles | `furnace_data.relational` |
+| Neon `twin` | Jobs, snapshots, optimiser runs, decisions, shift records and reports, alarms, fact versions, audit log, operator inputs, FurnaceMind conversations | `src/data/twin/` (`TwinStore`), `alembic/twin/` |
+| Hourly ML dataset | Merged online + offline hourly rows (IST) | Published by `furnace-data-service`; local rotating cache `src/data/ml/static_dataset_manager.py` |
+| Qdrant | FurnaceMind shift summaries (384-dim local embeddings), knowledge documents and skills (1024-dim Voyage) | `agents/memory/`, `agents/embeddings/` |
+| Redis | Job queue, event stream `twin:events`, worker heartbeat, live status copies, session revocations | `BF_REDIS_URL` |
+| Open-Meteo | Daily relative humidity at Wardha → blast moisture | `utils/coke_energy/weather.py`; shipped record in `assets/coke_energy/` |
+| SQLite | Feedback tickets (`src/storage/feedback/tickets.db`, git-ignored); twin-store outbox | `TICKETS_DB_URL`, `BF_TWIN_OUTBOX` |
 
-`OpenRouterClient.chat_completions()` sends `HTTP-Referer` and `X-Title` headers for OpenRouter tracking.
+## 7. Configuration
 
-### `embeddings/`
+All in `src/config/`:
 
-| Client | Model | Dim | Use |
-|---|---|---|---|
-| `SentenceEmbedding` | `all-MiniLM-L6-v2` (local) | 384 | Shift summary search |
-| `CloudEmbeddingClient` | Voyage `voyage-multimodal-3.5` | 1024 | Knowledge doc and image search |
-
-### `multimodal/`
-
-`process_file(file, knowledge_store, embedding_client)` — normalizes uploads into `DocumentPart` records, embeds text/table/image/page parts with `CloudEmbeddingClient`, upserts deterministic Qdrant points, and records document metadata in PostgreSQL when a user-scoped repository is available.
-
-Supported formats: PDF (text + rendered page images), DOCX, PPTX (text + embedded images), XLS/XLSX, CSV, TXT/Markdown, and image files.
-
-### `plotters/`
-
-Contour plotters extend `base_contour.py` which loads `Furnace` geometry from `geometries/furnace_gen.py`. The material balance plotter is standalone.
-
-| Plotter | Chart |
+| File | Purpose |
 |---|---|
-| `CircumferentialPlotter` | Polar heatmap of ring sensors |
-| `LongitudinalTemperaturePlotter` | Contour plot (elevation × time) |
-| `HeatloadContourPlotter` | Stave heat load grid |
-| `material_balance_plots` | Sankey, per-element bars, closure table styler, furnace diagram |
+| `setting_ds_dv.yml` | InfluxDB measurement and field mappings, furnace geometry, sensor layout, dataset URL and cleaning |
+| `setting_vsense.yml` | V-Sense models, control and input parameters, regularisation |
+| `setting_bmo.yml`, `bmo_operator_inputs.yml`, `bmo_ore_mapping.yml` | Blend Mix Optimiser: models, limits, prices, ore mapping; operator inputs are versioned in `twin.operator_inputs` |
+| `coke_energy.yml`, `energy_balance.yml` | Coke Energy Model, twin settings (freshness, alarms, drift, transit), blast moisture source |
+| `burden_optimiser.yml`, `facts_register.json` | Burden & Fuel Optimiser limits and prices; the fact register (every coefficient outside the balance, plausibility bands) |
+| `furnace_status.yml`, `shift_report.yml`, `live_inputs.yml` | Furnace status display rules, report KPI thresholds, live-input groups |
+| `material_balance.yml`, `materials.yml`, `materials_map.yml` | Material balance constants and DPR mapping; hoppers and materials |
+| `furnacemind.yml`, `anomaly.yml`, `logger_setting.yml` | FurnaceMind, channeling propensity, logging |
+| `page_registry.py` | The Streamlit pages, their titles, sections and retirement state |
 
-### `memory/structured_store.py`
+## 8. Environment variables
 
-Atomic JSON writes (write to `.tmp`, then rename) for shift/daily/weekly/biweekly summaries. Provides idempotent save, range queries, and a unified `get_report(level, window_id)` API used by the Reports UI.
+Read from the environment or `.env` at the repo root (`scripts/dev.py` passes it to every process).
 
-### `domain/auth_service.py`
+| Group | Variables |
+|---|---|
+| Databases | `DATABASE_URL` (Neon; `NEON_DATABASE_URL` / `NEON_STR` fallbacks), `BF_TWIN_DB_URL` (default `DATABASE_URL`; `off` disables the twin store), `BF_TWIN_OUTBOX`, `TICKETS_DB_URL` |
+| InfluxDB | `INFLUX_ONLINE_TOKEN`, `INFLUX_OFFLINE_TOKEN` (sidecar) |
+| Redis and worker | `BF_REDIS_URL`, `BF_WORKER_POOL`, `BF_WORKER_MAX_JOBS`, `BF_WORKER_JOB_TIMEOUT`, `BF_WORKER_SKIP_SCHEDULES`, `BF_WORKER_CATCH_UP`, `BF_WORKER_LIVE_STATUS`, `BF_STRATA_SOLVERS` |
+| twin-api | `BF_API_JWT_SECRET` (≥ 32 characters, required in prod), `BF_API_COOKIE_SECURE`, `BF_API_COOKIE_NAME`, `BF_API_TRUSTED_PROXIES`, `BF_API_SESSION_HOURS`, `BF_API_LOGIN_MAX_FAILURES`, `BF_API_LOGIN_WINDOW_S`, `BF_API_STREAM_HEARTBEAT_S`, `BF_API_ENVIRONMENT`, `BF_API_STATIC_DIR`, `BF_API_FM_WARM_UP`, `BF_API_IDENTITY_DB_URL` |
+| LLM | `LLM_PROVIDER`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (+ `_LOW_`/`_MEDIUM_`/`_HIGH_MODEL` and reasoning efforts), `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_API_MODE`, `LLM_MAX_TOKENS`, `MEMORY_*`, `SEMANTIC_MEMORY_*` |
+| Embeddings | `LOCAL_EMBEDDING_{PROVIDER,MODEL,DEVICE,DIM}`, `CLOUD_EMBEDDING_{PROVIDER,MODEL,API_KEY,DIM}` (`VOYAGE_API_KEY` fallback) |
+| Qdrant | `QDRANT_ENDPOINT` + `QDRANT_API_KEY` (cloud) or `QDRANT_URL` (local), `SHIFT_QDRANT_COLLECTION`, `KNOWLEDGE_QDRANT_COLLECTION`, `SKILL_QDRANT_COLLECTION`, `SEMANTIC_MEMORY_QDRANT_COLLECTION`, `FEEDBACK_QDRANT_COLLECTION` |
+| Models | `COKE_ENERGY_WEATHER_LIVE` (`0`: no Open-Meteo request), `COKE_ENERGY_TODAY` (fix the plan day), `BF_LIVE_PCI` (`0`: no live PCI default) |
+| Caddy (production) | `BF_SITE`, `BF_TLS`, `BF_HSTS`, `BF_SPA_ROOT`, `BF_API_UPSTREAM`, `BF_LEGACY_UPSTREAM`, `BF_HTTP_PORT`, `BF_HTTPS_PORT` |
+| Tests | `BURDEN_ENGINE_FAST`, `BF_TEST_REQUIRE_SERVICES`, `BF_TEST_DATABASE_URL` |
 
-Cookie-based session management via `streamlit-cookies-manager` (prefix `bf_dashboard_`). Three roles: `admin`, `supervisor`, `user`. Checked via `utils/session.py`: `is_logged_in()`, `is_admin()`, `is_supervisor()`.
+Defaults and the file that reads each variable: `CLAUDE.md` section 12 and the tail of that file.
 
----
-
-## 9. Configuration
-
-### `config/setting_ds_dv.yml`
-
-Master data mapping config:
-- `influx_online` / `influx_offline` — connection details
-- `data_mapping` — `{measurement: {human_label: influx_field}}` — used everywhere for label↔field translation
-- `furnace_geometry` — sensor elevations, counts, zone boundaries
-- `DATA` — path to the historical ML dataset CSV (`src/assets/data/V13_df_filtered.csv`)
-
-### `config/setting_vsense.yml`
-
-V-OptimAIse configuration:
-- `Optimisation.models` — 3 model entries with `{file, scaler, target, direction}`
-- `Optimisation.control_parameters` — 7 control params with display names
-- `Optimisation.input_parameters` — 9 groups of read-only features
-- `LAMBDA_REG`, `OPTIM_STEPS`, `TIMESTEPS`
-
-### `config/material_balance.yml`
-
-Material Balance Visualiser configuration:
-- `elements` — 12 tracked elements (Fe, C, Si, Ca, Mg, Al, Mn, S, P, O, N, H)
-- `constants` — gas-phase constants (air density, O₂/N₂ fractions, molar volume)
-- `coke_ash_assumption_pct` / `pci_ash_assumption_pct` — constant oxide split for coke and PCI ash (used when shift-level ash chemistry is unavailable)
-- `dpr_field_mapping` — user-configured mapping from canonical mass fields to raw DPR column names (persisted via the in-page expander)
-- `future_streams` — placeholder fields for dust catcher, sludge, granulation loss (all null in v1)
-- `closure_thresholds` — `good: [95, 105]`, `warning: [85, 115]` for traffic-light row colours
-
-### `storage/furnacemind/skill_params.yml`
-
-SkillEngine calibration — recalibrate after a new regression run without touching Python:
-- `tier1` — `{col: {best_mid, abs_coeff, lag_hours, unit, adverse: {type, threshold}}}`
-- `tier2` — `{col: {band_lo, band_hi, adverse_threshold}}`
-- `tier3_guardrail_cols`
-- `unit_cost_col`, `benchmark_percentile`
-
----
-
-## 10. Environment Variables
+## 9. Tests and checks
 
 ```bash
-# LLM
-LLM_PROVIDER=openrouter          # or openai
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_API_MODE=responses        # or chat
-OPENROUTER_API_KEY=sk-or-...
-
-# Embeddings
-LOCAL_EMBEDDING_MODEL=all-MiniLM-L6-v2
-CLOUD_EMBEDDING_PROVIDER=voyage
-CLOUD_EMBEDDING_MODEL=voyage-multimodal-3.5
-CLOUD_EMBEDDING_API_KEY=<voyage-api-key>   # or VOYAGE_API_KEY
-CLOUD_EMBEDDING_DIM=1024
-
-# Qdrant
-QDRANT_ENDPOINT=https://...      # or QDRANT_URL
-QDRANT_API_KEY=...
-SHIFT_QDRANT_COLLECTION=furnace_shift_summaries
-KNOWLEDGE_QDRANT_COLLECTION=furnacemind_knowledge
-
-# PostgreSQL
-DATABASE_URL=postgresql+psycopg2://user:pass@host/db
-
-# Tickets (optional — SQLite default if unset)
-TICKETS_DB_URL=sqlite:///src/storage/feedback/tickets.db
-
-# InfluxDB
-INFLUX_ONLINE_TOKEN=...
-INFLUX_OFFLINE_TOKEN=...
+pytest tests/                              # full suite
+BURDEN_ENGINE_FAST=1 pytest tests/         # skips the 10–50 s production cases of the burden engine (make test-py)
+pytest tests/test_burden_engine*.py        # one area
+cd furnace-data-service && uv run pytest test/
+pnpm --dir frontend test                   # Vitest
+make audit-ui                              # axe-core, overflow, keyboard checks on the built SPA (Playwright)
 ```
 
----
-
-## 11. Setup and Running
-
-### Prerequisites
-
-- Python 3.12 (`requires-python >= 3.12`; `uv` installs it when absent)
-- `uv` package manager (lock changes with uv 0.7.13, see CLAUDE.md)
-- Access to InfluxDB, Qdrant, PostgreSQL instances
-- `.env` file at repo root with variables from §10
-
-### Install and Run
-
-```bash
-# Install dependencies
-uv sync
-
-# Run the app (always use this — imports torch first on Windows for the DLL fix; works from any directory)
-python run_streamlit.py
-python run_streamlit.py --server.baseUrlPath legacy    # Streamlit options pass through (as behind Caddy)
-
-# Run tests
-pytest tests/
-
-# Add a new dependency
-uv add <package>
-```
-
-**Do not invoke `streamlit run` directly.** `run_streamlit.py` pre-imports `torch` on Windows before Streamlit starts (DLL load-order errors), runs `src/app.py` from the repository root whatever the current directory, and passes its arguments to `streamlit run`.
-
-All pages execute with `src/` as the Python working directory. Use:
-```python
-from agents.furnacemind.agent import run_agent_loop   # correct
-from src.agents.furnacemind.agent import run_agent_loop  # wrong
-```
-
----
-
-## 12. ML Dataset API Sidecar
-
-A FastAPI service intended to run on a Raspberry Pi (or any local server). See `ml-dataset-api/CODEBASE.md` for full details.
-
-**Port:** 8080
-
-**Endpoint groups:**
-
-| Group | Endpoints | Description |
-|---|---|---|
-| `/data/online` | `POST /data/online/fetch` | Synchronous InfluxDB live telemetry fetch |
-| `/data/offline` | `POST /data/offline/fetch` | Synchronous offline report fetch |
-| `/dataset` | `POST /dataset/trigger`, `GET /dataset/status/{id}`, `GET /dataset/download` | Async ML dataset pipeline with background task tracking |
-
-**Caching strategy:** `StaticDatasetManager` maintains a versioned CSV with lag-aware end timestamps. New fetches only pull the uncached tail; the static head is reused. Maximum 3 CSVs kept; auto-rotation on rebuild.
-
-**Run:**
-```bash
-cd ml-dataset-api
-uv sync
-python run.py
-```
-
----
-
-## 13. Testing
-
-```bash
-# Run all tests (BURDEN_ENGINE_FAST=1 skips the 10-50 s production cases of the burden engine, as CI does on PRs)
-pytest tests/
-BURDEN_ENGINE_FAST=1 pytest tests/
-
-# Run with coverage
-pytest tests/ --cov=src --cov-report=term-missing
-
-# ML Dataset API tests (no real InfluxDB required)
-cd ml-dataset-api
-uv run --group dev pytest test/ --cov=app --cov-fail-under=80
-```
-
-**Test environment.** `tests/conftest.py` disables the Open-Meteo request and the twin store, fixes the plan day,
-and sets placeholder `QDRANT_URL` and `OPENROUTER_API_KEY` values (`utils.settings` validates both at import; no test
-calls Qdrant or an LLM). Tests that need PostgreSQL, Redis or Caddy carry the marker `requires_service`
-(`needs_postgres`, `needs_redis`): skipped without the service, failed with `BF_TEST_REQUIRE_SERVICES=1` (CI).
-
-**Module stubs.** A test that replaces dependencies of the module under test imports it with
-`tests.module_stubs.import_with_stubs(name, stubs)`, which restores `sys.modules` afterwards. Stubs written into
-`sys.modules` while a file is collected stay for the rest of the session: a `streamlit` stub without `cache_data` made
-50 test files fail at collection, and the failures depended on the order of collection.
-
-**Key test files:**
-- `tests/test_tickets_service.py` — Ticket CRUD, status transitions, audit events (uses in-memory SQLite)
-- `tests/test_page_registry.py` — Page registry consistency checks
-- `tests/test_database_facade_sqlalchemy.py` — PostgreSQL database facade
-
----
-
-## 14. Key Domain Concepts
-
-### Blast Furnace Basics
-
-BF2 converts iron ore + coke + sinter/pellets into hot metal (liquid iron). Hot blast (preheated air + O₂ + steam) is injected at the bottom through tuyeres. PCI (Pulverised Coal Injection) partially replaces coke.
-
-**Coke-to-PCI substitution ratio: 0.53** — 1 kg PCI replaces 0.53 kg coke.
-
-**Unit Cost formula:** `0.25 × (Coke Rate + 0.53 × PCI Rate)` [Lakhs/tHM]
-
-### Furnace Zones (bottom to top)
-
-| Zone | Elevation (m) | Description |
-|---|---|---|
-| Hearth | 0–5.5 | Molten iron + slag; tapped via taphole |
-| Tuyere | 5.5–10.5 | Hot blast injection; PCI injected; raceway combustion |
-| Bosh | 10.5–12.9 | Widest zone; burden softening and melting begins |
-| Belly | 12.9–15.0 | Transition zone |
-| Stack | 15.0–20.0 | Solid burden descends; CO reduction of ore |
-
-### Key KPIs
-
-| KPI | InfluxDB field | Good direction |
-|---|---|---|
-| Fuel Rate | `fuel_rate` | Lower |
-| ETA CO | `body_etaco` | Higher (gas utilisation) |
-| Production Rate | `production_per_hour` | Higher |
-| Coke Rate | `coke_rate` | Lower |
-| PCI Rate | `coal_rate_actual_value` | Within RAFT constraints |
-| RAFT | `body_raft` | ~2100–2200°C |
-| Permeability | `body_perm` | Higher (less resistance) |
-| Total ΔP | `body_dp_total` | Lower |
-
-### Shifts
-
-Fixed 8-hour windows in IST:
-- **Shift A:** 06:00–14:00
-- **Shift B:** 14:00–22:00
-- **Shift C:** 22:00–06:00
-
-### Three Naming Systems for the Same Parameters
-
-The codebase bridges three naming conventions:
-
-| Parameter | InfluxDB field | ML dataset column | MCartech tag |
-|---|---|---|---|
-| Fuel Rate | `fuel_rate` | `Act. Fuel RateKg/Thm.` | `BF2 Fuel rate (Kg/THM)` |
-| ETA CO | `body_etaco` | `FurnaceTopGasAnalysisCO2ETACO` | `BF2_BODY_ETACO` |
-| Production | `production_per_hour` | `ProductionTonnesPerHr` | `BF2 Production per hr` |
-
-The `data_mapping` section in `config/setting_ds_dv.yml` is the authoritative translation table used throughout the app.
-
----
-
-## 15. Svelte Frontend and twin-api
-
-Programme epic #262 (milestone #M5) moves the operator pages to a SvelteKit single-page application served behind
-Caddy with a FastAPI service (`twin-api`). Streamlit keeps running under `/legacy` until each page passes parity.
-
-| Part | Path | Run |
-|---|---|---|
-| SPA (SvelteKit 3, Svelte 5, TypeScript) | `frontend/` | `pnpm --dir frontend dev` (port 5173) |
-| twin-api (FastAPI) | `src/api/` | `python -m uvicorn api.main:app --app-dir src --port 8100` |
-| Service layer (no Streamlit) | `src/services/` | imported by the API, the worker and the Streamlit pages |
-| twin-worker (arq on Redis) | `src/worker/` | `PYTHONPATH=src python -m worker` |
-| Streamlit (legacy) | `src/app.py` | `python run_streamlit.py --server.baseUrlPath legacy` (port 8501), served under `/legacy` |
-
-**Development.** Node.js >= 20 with pnpm, plus the Python environment from section 11:
-
-```bash
-pnpm --dir frontend install
-python scripts/dev.py            # SPA + API + worker + Streamlit; open http://localhost:5173
-python scripts/dev.py api web    # a subset
-make dev / make lint / make test # Linux, macOS, Jetson
-```
-
-The SPA dev server proxies `/api` and `/legacy`, so the browser sees one origin, as in production behind Caddy.
-
-**Production origin.** On the Jetson, Caddy (`deploy/jetson/Caddyfile`, Caddy 2.10) serves one HTTPS origin: the
-SPA build with the `200.html` fallback (deep links survive a reload; hashed assets cached for a year, the rest
-revalidated), `/api/*` to the twin-api with `flush_interval -1` (server-sent events unbuffered), `/legacy` and
-`/legacy/*` to Streamlit with its WebSocket, and a 308 redirect from HTTP to HTTPS. Host name, certificate (Caddy's
-internal CA or the plant CA), build directory and upstreams come from `BF_*` variables; see
-`deploy/jetson/README.md`. The SPA links to the Streamlit pages by name (`#lib/legacy.ts`, generated from
-`config/page_registry.py` by `make fixtures`). `tests/test_caddyfile.py` checks the routes Caddy derives from the file
-(needs `caddy` on PATH or `BF_CADDY_BIN`).
-
-**Checks and CI.** Locally: `make lint` (Prettier and ESLint; Ruff on the programme's Python, `make lint-py`),
-`make check` (svelte-check), `make test` (Vitest; pytest with `BURDEN_ENGINE_FAST=1`), `make audit-ui`,
-`make lock-check`. GitHub Actions (`.github/workflows/`, SV-0.11):
-
-| Workflow | Trigger | Content |
-|---|---|---|
-| `ci.yml` | pull request; push to `main` and `feature/**`; manual | `static`: Ruff, `uv lock --check`, resolution for the Jetson (`make lock-check`). `python-tests`: `uv sync --frozen`, pytest (`BURDEN_ENGINE_FAST=1`) with PostgreSQL 16 (service container), Redis and Caddy 2.10.2; a missing service fails the run (`BF_TEST_REQUIRE_SERVICES=1`). `frontend`: install from the frozen lock, Prettier and ESLint, svelte-check, Vitest, `schema.d.ts` regenerated from `openapi.json` and compared, build, UI audit (report and screenshots kept 14 days) |
-| `nightly.yml` | daily 21:17 UTC (02:47 IST), manual | `ci.yml` with the full suite (the slow production cases of the burden engine) |
-| `release.yml` | tag `v*` | `ci.yml` with the full suite, then the release of the tag: `frontend-build.tar.gz` (`build/`), `uv.lock`, `pnpm-lock.yaml`, `SHA256SUMS` |
-
-CI uses uv 0.7.13 (lock rule), CPython 3.12 installed by uv (as on the Jetson), Node 22, pnpm 10.28.0, Ruff 0.17.2,
-Playwright 1.63.0 (devDependency of the frontend) and Caddy 2.10.2 (SHA-512 checked); actions are pinned to
-commits. Scheduled runs start from the default branch only. Every command step runs through `scripts/ci/step.sh`:
-when it fails, its last 50 lines appear as an error annotation on the pull request and in the Checks API.
-
-**Jetson packages.** `make lock-check` exports `uv.lock` and resolves it for `aarch64-manylinux_2_35` (JetPack 6:
-Ubuntu 22.04, glibc 2.35) and CPython 3.12 from wheels only, except `pypika` (pure Python) and `quickjs` (C extension,
-built with the Jetson's compiler), which publish no aarch64 wheel. xgboost 3.3 requires NCCL on every Linux machine,
-and NCCL 2.19.3 (pinned by torch 2.2.2) has x86_64 wheels only; `[tool.uv] override-dependencies` in `pyproject.toml`
-limits that requirement to x86_64 Linux, where torch needs it.
-
-**Imports.** Frontend modules under `frontend/src/lib` are imported as `#lib/...` with the file extension
-(`#lib/api/client.ts`; SvelteKit 3 subpath imports).
-
-**Sign-in and roles.** The SPA and the API use the accounts and roles of the Streamlit app (Neon
-`identity.users`; roles user < supervisor < admin). `POST /api/auth/login` sets a 12 h HS256 session token in an
-httpOnly, Secure, SameSite=Strict cookie (path `/api`); `GET /api/auth/me` returns the user; `POST /api/auth/logout`
-revokes the token. After 5 failed sign-ins from one address within 60 s further attempts get 429 until the oldest
-failure leaves the window. Every API route outside `api.auth.PUBLIC_PATHS` declares a minimum role with
-`require_role`, and `tests/test_api_auth.py` fails on a route without one. Settings (environment or `.env`):
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `BF_API_JWT_SECRET` | random per process (dev) | Signing key, >= 32 characters; **required in prod** (`openssl rand -hex 32`). `scripts/dev.py` keeps one in `src/storage/twin_api/` |
-| `BF_API_COOKIE_SECURE` | `true` | Set `false` only for plain-HTTP access from another machine in development |
-| `BF_API_TRUSTED_PROXIES` | `127.0.0.1,::1` | Peers whose `X-Forwarded-For` is used for the client address (Caddy) |
-| `BF_API_SESSION_HOURS` | `12` | Session lifetime |
-| `BF_API_LOGIN_MAX_FAILURES`, `BF_API_LOGIN_WINDOW_S` | `5`, `60` | Failed sign-in limit per address |
-
-The failure limit and the revoked-token list are held in the API process, so the API runs as one process (its
-async event loop serves the event streams). Running several API processes needs both shared through Redis; that
-decision belongs to the deployment issue (#279).
-
-**Live events and background jobs.** Model runs execute in the twin-worker (`python -m worker`, arq 0.28 on Redis);
-the API and the scheduler queue them, and the worker publishes progress to the Redis stream `twin:events`. Each API
-process reads the stream once and forwards it to the browsers as server-sent events.
-
-| Route | Role | Purpose |
-|---|---|---|
-| `GET /api/stream` | user | Event stream: `live.status`, `twin.snapshot`, `forecast.si`, `forecast.charged_coke`, `job.progress`, `job.done`, `alarm.raised`, `alarm.cleared`, and a heartbeat every 15 s. Missed events (at most the last 100) are replayed after a reconnect with `Last-Event-ID` (or `?last_event_id=`). The session is re-checked every 15 s; the stream ends when it is revoked or expired |
-| `GET /api/stream/recent` | user | Last events, oldest first |
-| `GET /api/jobs/kinds` | user | Job kinds with role, time limit, retries, schedule (IST), next slot and parameter schema |
-| `GET /api/jobs`, `GET /api/jobs/{id}` | user | Job records of the last 7 days |
-| `GET /api/jobs/stats` | user | Per kind for the jobs of `days` (default 14): runs, done, failed, cancelled, skipped, execution time p50 / p95 / max (over the tries), start delay p95; from `twin.jobs` (Redis, 7 days, without a twin store) |
-| `GET /api/jobs/schedule` | user | Audit of the schedule over `days` (default 14): per scheduled kind the slots done, failed, cancelled, running, skipped, missed, the latest 50 not done with their reason, the next slot |
-| `POST /api/jobs` | per kind | Queue a job (202); a request equal to a queued or running job (same kind and parameters) returns that job with `duplicate: true` |
-| `POST /api/jobs/{id}/cancel` | supervisor | A queued job is not started; a running job is stopped; both end as `cancelled` |
-
-Job semantics: parameters are validated against the kind's model before queuing; the time limit of each kind is
-enforced in the worker; transient failures are retried with the kind's retry delay up to `max_tries`; CPU-bound
-model solves run in a process pool; a job interrupted by a worker stop runs again after the arq time limit plus
-10 s; scheduled kinds start at their IST times (see Scheduled jobs). Kinds: `system.selftest` (admin; progress steps
-and one pool task, also in the component catalogue), `system.housekeeping`, the live forecasts `forecast.si` (every
-5 min) and `forecast.charged_coke` (HH:07; supervisor, see Live forecasts), `optimiser.run` (supervisor, see Twin and
-optimiser API) and the scheduled twin, optimiser, calibration and STRATA-Learn kinds (see Scheduled jobs); the model
-kinds follow with their pages. In the SPA, `#lib/live/stream.svelte.ts` holds one EventSource per tab (backoff,
-watchdog, session check), `#lib/live/connection.svelte.ts` drives the header state (offline after 10 s without the
-stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `BF_REDIS_URL` | unset (API), `redis://127.0.0.1:6379/0` (worker) | Redis shared by the API and the worker. Without it the API keeps events in-process and the job routes answer 503; `scripts/dev.py` sets it when a local Redis answers |
-| `BF_API_STREAM_HEARTBEAT_S` | `15` | Heartbeat and session-check interval of `/api/stream` |
-| `BF_WORKER_POOL` | `8` | Processes of the model-solve pool |
-| `BF_WORKER_MAX_JOBS` | `4` | Jobs run at the same time by one worker |
-| `BF_WORKER_JOB_TIMEOUT` | longest kind limit + 60 s | arq time limit of one delivery |
-| `BF_WORKER_SKIP_SCHEDULES` | unset | Kinds, or prefixes ending in `.`, that are not scheduled (still submittable); the test suite sets `forecast.,twin.,optimiser.,calibration.,learn.,report.` |
-| `BF_WORKER_CATCH_UP` | `1` | `0` turns off the catch-up of missed slots at worker start (the test suite sets `0`) |
-| `BF_STRATA_SOLVERS` | min(8, cpus) | Network-solver processes of one STRATA-ω run (worker and page 11 optimiser runs, nightly Jacobian, twin backfill); `0` or `1`: one solve after the other (the test suite sets `0`) |
-
-Redis: `apt install redis-server` (Linux, Jetson; Redis 6.0 or later), Memurai or WSL on Windows. Tests that need it
-(`tests/test_jobs.py`, `tests/test_api_live.py`) start a throw-away `redis-server` and are skipped without the binary.
-
-**Twin store (Neon `twin` schema).** Persistent results of the twin-api and the worker, in the schema `twin` of the
-Neon database: SQLAlchemy 2.0 models and repositories in `src/data/twin/` (`TwinStore`), migrations in
-`alembic/twin/`. Times are UTC (`timestamptz`); every time column queried by range leads an index.
-
-| Table | Content | Indexes |
-|---|---|---|
-| `jobs` | Job records beyond the 7 days kept in Redis: written by the worker at every change of state (ordered, non-blocking), copied again by the nightly housekeeping job; `scheduled_for` (the slot a scheduler job serves) and `run_s` (execution time over the tries) since twin_0002 | `submitted_at`, `(kind, submitted_at)`, `finished_at`, `scheduled_for` |
-| `snapshot` | Hourly twin evaluation of the window [t − 8 h, t): coke rates (TRACE, FORGE, STRATA ± 1σ, charged), ω (implied, STRATA, calibration), other quantities as JSON; one row per window end, a re-evaluation replaces it | `window_end` (unique), `evaluated_at` |
-| `optimiser_run` | Optimiser runs: mode, ω mode, status, production, cost and saving, coke ± σ, certainty; inputs and plan as JSON | `started_at`, `(mode, started_at)` |
-| `plan_decision` | Accept or reject of a run by a supervisor; the latest decision applies; append-only | `decided_at`, `(run_id, decided_at)` |
-| `shift_record` | Shift handover record (twin values, plan and decision, report), written once at the shift close | `shift_start` |
-| `alarm_event` | Alarms from raise to clear; at most one open alarm per kind and subject | `raised_at`; open alarms unique |
-| `facts_version` | Versions of the fact-register overlay; a version that changes a fact's status needs a second administrator | `created_at` |
-| `audit_log` | Admin writes and plan decisions (actor, role, address, object, details); append-only | `at`, `(actor, at)`, `(object_type, object_id, at)` |
-
-`shift_record`, `plan_decision` and `audit_log` refuse UPDATE and DELETE (trigger `twin.reject_change`). A user action
-(plan decision, fact-register proposal or review, alarm acknowledgement) writes its audit row in the same transaction.
-Migrations: `make db-upgrade`, `make db-downgrade` (one revision), `make db-current`, i.e.
-`alembic -n twin upgrade head` etc.; the URL comes from `-x url=...`, `BF_TWIN_DB_URL` or `DATABASE_URL`, and Alembic
-keeps its version in `twin.alembic_version`. The default Alembic environment (`alembic upgrade head` without
-`-n twin`) is the earlier relational migration of `furnace_data` and not part of the twin store.
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `BF_TWIN_DB_URL` | `DATABASE_URL` | Database of the twin store; `off` disables it (the test suite sets `off`). The worker archives job records when a URL is set |
-| `BF_TEST_DATABASE_URL` | unset | PostgreSQL server for `tests/test_twin_store.py` (a role that may create databases: CI service, Neon branch); unset, the tests start a throw-away local cluster with `initdb` / `pg_ctl` (PostgreSQL 16: `apt install postgresql`) and are skipped without one |
-
-**Twin evaluation (SV-1.1).** `services.twin.evaluate(t)` evaluates the window W = [t − 8 h, t), t floored to the
-full hour (IST), on the Coke Energy sources and pipeline run of `services.coke_energy`; `services.twin.snapshot_values`
-gives its `twin.snapshot` row. The window is aggregated and balanced by the pipeline's own statements
-(`build_shift_inputs(key_fn=window_key(start, end))`, `shift_balance`); every 14-day quantity comes from the stable
-shifts dated in [d − 14 d, d), d the date of the window's start, as on page 10 (`src/utils/coke_energy/twin.py`).
-
-| Quantity | Definition |
+- `tests/conftest.py` puts `src/` and `furnace_data/` on the path, turns off the Open-Meteo request and the twin
+  store, fixes the plan day (`COKE_ENERGY_TODAY=2026-10-15`), leaves every plant-data job unscheduled and sets
+  placeholder `QDRANT_URL` and `OPENROUTER_API_KEY` values (no test calls Qdrant or an LLM).
+- Tests that need PostgreSQL, Redis or Caddy carry `requires_service` (`needs_postgres`, `needs_redis`): skipped
+  without the service, failed with `BF_TEST_REQUIRE_SERVICES=1` (CI).
+- Never write stubs into `sys.modules` while a file is collected; use `tests.module_stubs.import_with_stubs`.
+- Parity fixtures: `make fixtures` (charts, legacy pages), `make client` (OpenAPI client); tests fail on drift.
+- Golden page-9 runs: `tests/test_bmo_golden.py` (5 plant days, about 4 min); rebuild with
+  `python -m tests.bmo_golden --write`.
+
+**CI** (`.github/workflows/`): `ci.yml` (static, python-tests with PostgreSQL + Redis + Caddy, frontend),
+`nightly.yml` (full suite), `release.yml` (artifacts of a tag). All three run on `workflow_dispatch` only
+(`gh workflow run ci.yml --ref <branch>`); nothing runs on push, pull request or schedule.
+
+## 10. Deployment
+
+Production is one NVIDIA Jetson (JetPack 6, Ubuntu 22.04, aarch64) behind Caddy. Everything is in `deploy/jetson/`:
+
+| Step | Command |
 |---|---|
-| K_TRACE | Oxygen-balance coke of the metered blast at the analyser's ηCO + 14-day median of (charged − burnt) |
-| K_FORGE | Two-zone balance of W with ω, Q_LZ, Q_UZ, r_H at their 14-day medians |
-| K_STRATA ± 1σ | The K_FORGE balance with ω = ω_STRATA; σ = \|dK/dω\| · σ(ω_STRATA), dK/dω at fixed ω |
-| ω_imp | Two-zone calibration of W on the reconciled basis (charged coke, O-balance air, analyser ηCO) |
-| ω_STRATA ± 1σ | STRATA 1.5 for the window's blend and operation against the same 14 days (`src/utils/burden_engine/strata_window.py`) |
-| K_charged, production, HMT, Si, blast moisture | From the window's balance; data flags: hourly rows, 10-min samples, taps, provisional DPR dust |
+| Base system (root, idempotent) | `provision.sh` then `verify_base.sh` |
+| Python on the device | `install_python.sh` (uv 0.7.13, CPython 3.12) |
+| Services | systemd units `bf-redis`, `bf-furnace-data` (:8000), `bf-twin-api` (:8100), `bf-twin-worker`, `bf-streamlit` (:8501), `bf-caddy` (:443), `bf-healthcheck.timer`, grouped by `bf-webapp.target` |
+| Release | `sudo deploy/jetson/release.sh <tag>` (CI release artifacts, `uv sync --frozen`, migrations, switch, smoke test, automatic rollback); `rollback.sh [<tag>]` |
+| Benchmark | `benchmark.sh --open-issue` → `docs/jetson_benchmark.md` |
 
-ω_STRATA follows the protocol on which the STRATA 1.5 posterior was fitted: anchor A = blend and operation of the 14
-days (ω_A = their median ω, the ω of K_FORGE; κ refitted so that w(A) = ω_A; network context and sinter RDI of the
-anchor), network solves at the window's blend (B), blend + production (P) and full operation at the charged coke (F).
-The ores enter by type (`ORE_k_CALC_MT` summed per window, mapped by the asset's `plant_map`). The network runs in
-exact mode (no Jacobian): one solve per new anchor and three per window, about 1 s each in the development container
-(about 3.5 s per window, 6 s with a new anchor). Status: `complete` (TRACE, FORGE, ω_imp and STRATA evaluated),
-`partial` (a 14-day quantity or STRATA missing; the notes say which), `failed` (too little data, a known data error, or
-a balance that does not solve). Tests: `tests/test_twin_window.py` (every window on a completed shift equals the
-pipeline: largest difference 0.0 kg/tHM and 0.0 in ω on 54 synthetic shifts), `tests/test_twin_strata.py`,
-`tests/test_services_twin.py`. On plant data (InfluxDB and Neon reachable): `python scripts/twin_parity.py --days 14`
-evaluates the window of every balanced shift of the last 14 days against the pipeline table and exits with 1 above
-0.1 kg/tHM or 0.0005 in ω (`--strata` adds K_STRATA and the evaluation time per window, `--out` a JSON report).
+Every Python dependency needs a linux-aarch64 wheel (`make lock-check`, `docs/jetson_wheel_audit.md`). Settings for
+the units come from `/etc/bf-webapp/env`. See `deploy/jetson/README.md` and `docs/deployment_handover.md`.
 
-**Drift alarm (SV-1.2).** `services.drift.run(store, bus, config)` reads the stored windows of the last 56 days and
-tests r = ω_imp − ω_STRATA (`src/utils/coke_energy/drift.py`): AR(1) innovations between non-overlapping windows (lag
-8 h, i.e. eight interleaved chains; the hourly windows overlap by 7 h and an AR(1) on the hourly series leaves
-innovations correlated 0.86 at one hour), ρ and σ_e re-estimated at every evaluation (σ_e from the median absolute
-deviation), two-sided CUSUM k 0.5, h 5. Alarm kind `omega_drift`, subject `high` (ω_imp above STRATA) or `low`, raised
-at the first signal, cleared 24 h after the last; raises and clears are published as `alarm.raised` /
-`alarm.cleared` (code `OMEGA_DRIFT`) and reach `/api/stream`. Settings: `config/coke_energy.yml → twin.drift`.
-Replay: `python scripts/drift_replay.py` (daily series of the STRATA evidence, 1 Jan – 7 Oct 2026; `--source
-snapshots` for the stored hourly windows).
+## 11. Documentation
 
-**Burden transit (SV-1.3).** `src/utils/coke_energy/burden_column.py`, `services.transit`. Reference of the layered
-gas-flow model (drawn profile, 23.5 m³ per charge): at 5.9 charges/h the cohesive-zone top 2.2 h after charging, the
-raceways 6.2 h (zones 2.2 / 0.9 / 3.1 h), coke 61 / 14 / 59 t = 133 t in transit (`coke_energy.yml → twin.transit`).
-Descent times: τ = τ_ref · 5.9 / n_ch at the current rate, and from the record the age of the charge at each zone
-boundary (the zones hold fixed numbers of charges, 12.98 / 5.31 / 18.29). The ledger counts the charges back from a
-time through the hourly record and gives per band the charges, the tonnes and wet blend of the ferrous charge, coke per
-charge, per tonne of ferrous and per tonne of hot metal; coke above and in the zone scales with the coke share of the
-charge volume (reference 0.387), the coke bed below it is the reference 59 t. Every window evaluation carries the
-column at its end (`tau_cz_h`, `tau_raceway_h`, `coke_*_t`). Implied lag: coke per tonne of ferrous charged against
-K_TRACE of the stored windows over 14 days, 95 % moving-block bootstrap interval. Report:
-`python scripts/transit_report.py [--at ...] [--lag]`.
+| Document | Content |
+|---|---|
+| `CLAUDE.md` | The system reference: furnace basics, data schema, every page and model, API, worker, conventions |
+| `docs/burden_fuel_optimiser.md` | Burden & Fuel Optimiser guide: modes, engine, STRATA-ω, fact register, validation |
+| `docs/burnt_vs_charged_coke.md` | Burnt vs charged coke per averaging window (CCC, Bland–Altman) |
+| `docs/coke_energy_model_plan.md` | Plan and status of the Coke Energy Model (page 10) |
+| `docs/energy_balance_calculation_procedure.md`, `docs/energy_balance_findings_and_open_decisions.md` | Energy-balance procedure and the decision record behind it |
+| `docs/bmo_fuel_slag_si_findings.md`, `docs/bmo_si_live_forecast.md`, `docs/bmo_charged_coke_phase1_acceptance.md` | Blend Mix Optimiser studies: fuel model, slag, Si forecast, charged-coke forecast acceptance |
+| `docs/coke_rate_model_outcomes.md`, `docs/coke_rate_model_v5_review.md` | Coke-rate model backtests and the V5 review |
+| `docs/operator_action_ledger.md`, `docs/plant_data_request.md`, `docs/slag_replay_vs_lab.md` | Operator-action study, plant data request, slag replay against the laboratory |
+| `docs/retirement.md` | Retirement of the Streamlit pages: replacement, parity tests, gates, sign-off |
+| `docs/deployment_handover.md`, `docs/jetson_benchmark.md`, `docs/jetson_wheel_audit.md` | Deployment handover, device benchmark, wheel audit |
+| `frontend/DESIGN.md` | SPA design system: tokens, components, charts, rules |
+| `deploy/jetson/README.md` | Device setup, units, Caddy, release flow |
+| `furnace-data-service/CODEBASE.md` | The dataset sidecar: layout, routes, lag-aware cache |
+| `src/assets/burden_engine/assumptions.md`, `optimiser_notes.md` | Assumptions shown on page 11 / `/optimiser`; notes sent with the optimiser commentary |
 
-**HMT forecast (SV-1.4, gated).** `src/utils/coke_energy/hmt_forecast.py`: HMT_f(t + τ_RW) = HMT(t) + [K_arr(t) −
-K_FORGE(HMT(t), x(t))] / (∂K_FORGE/∂HMT), HMT(t) the latest tap (≤ 3 h old), K_arr the dry coke per tHM of the last
-hour's charges (their coke-to-ferrous ratio times the window's ferrous rate), K_FORGE the window's FORGE balance at
-HMT(t), the slope by a 10 °C difference, τ_RW from the burden column. Every window carries these quantities
-(`hmt_now_c`, `k_arr_kg_thm`, `dk_dhmt_kg_thm_per_c`, `hmt_forecast_c`, `hmt_forecast_horizon_h`); the Live Twin
-shows the forecast only when `twin.hmt_forecast.gate.status` is `passed`. Gate run on plant data:
-`python scripts/hmt_gate.py --from 2026-01-01 --to 2026-10-08 --write` (RMSE at least 10 % below persistence and
-|bias| ≤ 5 °C; recorded as COKE-18, the 2023–24 run as COKE-19).
+## 12. Domain notes
 
-**Live forecasts (SV-1.5).** The worker issues the HM Si path (`forecast.si`, every 5 min IST) and the charged-coke
-block (`forecast.charged_coke`, HH:07, retried every 5 min up to HH:27 while the hour's build of the published dataset
-is missing; the local copy is fetched again first when it predates the hour) through `services.forecasts`, with the
-functions page 9 used, into the same ledgers (`src/storage/bmo_si_forecast/`, `src/storage/bmo_charged_coke/`, format
-unchanged; Si outcomes matched on every call, charged-coke outcomes on each new row). `setting_bmo.yml →
-bmo.forecast_issuer`: `auto` (page 9 reads the ledgers while the worker's last attempt is younger than 15 min (Si) or
-75 min (charged coke), else issues itself as before), `worker` (page 9 only reads; an out-of-date record is not passed
-to the optimiser) or `page`. Every attempt is logged in `attempts/YYYY-MM.jsonl` of the storage folder (the latest with
-its record in `latest_attempt.json`, which page 9 shows for a Si attempt with unusable inputs); events
-`forecast.si` and `forecast.charged_coke`. The ledgers are append-only JSON lines shared by processes
-(`utils.jsonl_log`: incremental reads, appends under a cross-process lock). Gap check:
-`python scripts/forecast_gaps.py --days 7` (exit 1 on a Si gap above 10 min or a charged-coke gap above 60 min).
-`BF_WORKER_SKIP_SCHEDULES=forecast.` leaves the forecast jobs unscheduled (the test suite leaves out every kind that
-reads plant data).
-
-**Twin and optimiser API (SV-1.6).** Read from the twin store (`twin` schema; `services.store`, 503 without
-`BF_TWIN_DB_URL` / `DATABASE_URL`, 503 while the database is unreachable). Every numeric field states its unit in the
-schema (`tests/test_api_twin.py` checks it). Coke kg/tHM dry, ω dimensionless, costs Rs/tHM, production t/d, times UTC.
-
-| Route | Role | Purpose |
-|---|---|---|
-| `GET /api/twin/now` | user | Latest evaluation (`TwinSnapshotData`), its age, the lag behind the window that should exist (run at HH:10, due at HH:15; stale from one missed hour) and the open alarms |
-| `GET /api/twin/series` | user | Stored windows in [start, end] (default 7 days, at most 92), `resolution=hour` or `shift` (the windows ending 06:00, 14:00, 22:00 IST: shifts C, A, B), selected `quantities`; 30 days hourly in 40–180 ms (SQLite and PostgreSQL, test fixture) |
-| `GET /api/twin/transit` | user | Burden column at `at` from the hourly dataset: descent times, coke by zone and in transit, the blend by zone; `lag=true` adds the implied lag against the stored K_TRACE |
-| `GET /api/twin/alarms` | user | Open alarms and the history of `days` (default 7), optionally one `kind` |
-| `POST /api/optimiser/runs` | supervisor | Queue `optimiser.run` (202): `mode` step1, step2 or max_production, `omega_mode` strata or fixed, Step 2 `production_t_d` (default: the latest twin window's production, at most 3 h old, else page 11's regime median), certainty filter, risk aversion, `calibration` day (default: the calibration of 02:30) or live (page 11's); page 11's defaults otherwise (`services.optimiser.default_case`) |
-| `GET /api/optimiser/runs`, `GET /api/optimiser/runs/{run or job id}` | user | Recent runs with their decision; one run with its inputs, result and decisions, or the job while it runs |
-| `GET /api/optimiser/latest` | user | Latest plan (status ok), optionally per `mode` |
-| `POST /api/optimiser/runs/{id}/decision` | supervisor | Accept or reject a plan with a comment; appended to `twin.plan_decision` with its audit row (`plan.decide`, actor, role, client address) in one transaction; the latest decision applies |
-
-The worker solves `optimiser.run` in the model-solve pool and stores the plan in `twin.optimiser_run` (status ok,
-infeasible with the LP's or the band's reason, or failed), with the job record it refers to.
-
-**Scheduled jobs (SV-1.7).** The worker's schedule (IST); every slot is submitted with `scheduled_for` = the slot.
-
-| Kind | Time | Work | Tries |
-|---|---|---|---|
-| `forecast.si` | every 5 min | HM Si path into the Si ledger (Live forecasts) | 1 |
-| `forecast.charged_coke` | HH:07 | Charged-coke block of the latest complete row | 5, every 5 min |
-| `twin.evaluate` | HH:10 | Window [HH − 8, HH) into `twin.snapshot`, once the local hourly dataset holds the row HH − 1 (published in the build of about HH:06; at HH:05 the window would have had 7 of its 8 hours); the windows of the last 24 h without a snapshot, or evaluated without their last row, first; then the implied-ω drift alarm and the `twin.snapshot` event of W | 4, every 5 min; the last try evaluates on the rows there are and flags the window |
-| `optimiser.step2` | 06:15, 14:15, 22:15 | Step 2 with STRATA-ω and Fixed-ω in parallel in the pool, at the current production (latest twin window, at most 3 h old, else the regime median), live yard and prices, the day's calibration; two `twin.optimiser_run` rows | 3, every 5 min while the yard or calibration falls back to the reference; the last try runs on it, labelled |
-| `optimiser.step1` | 06:30, 14:30, 22:30 | Step 1 (cheapest production level) with STRATA-ω, the day's calibration | 2 |
-| `calibration.nightly` | 02:30 | Two-zone calibration on the stable shifts dated in the 14 days before today (`src/storage/burden_engine/calibration/<date>.json`, 30 days kept) and the STRATA-Flow Jacobian at it (17 network solves, disk cache) | 3, every 10 min |
-| `learn.shadow` | 03:00 | STRATA-Learn shadow run on the stored evidence into `src/storage/burden_engine/learn/`; changes nothing in the asset, the register or the pages | 1 |
-| `system.housekeeping` | 04:00 | Archive sync, index trim, runtime statistics of the last 14 days into its result | 2 |
-
-The day's calibration (`services.day_calibration`) serves every optimiser run of the worker: the scheduled plans of a
-day compare on one calibration, and none spends the 17 Jacobian solves (21 s here) that a new live calibration costs
-after each balanced shift. Page 11 keeps its live calibration (`calibration=live` reproduces it). Catch-up at worker
-start (`worker.runtime.catch_up`): the latest slot of each kind runs when it is at most 30 min old; the other slots
-since the last heartbeat (Redis `twin:worker:alive`, every 10 s) are recorded as cancelled jobs `scheduler
-(skipped)` with the reason, as is a slot whose previous job of the kind is still queued or running. Audit:
-`python scripts/schedule_audit.py --days 14` (from `twin.jobs`; exit 1 on a missed or skipped slot, `--strict` also on
-a failed run; with the runtime statistics per kind) or `GET /api/jobs/schedule`. Runtime of the scheduled optimiser
-runs on a host, as the job runs them: `python scripts/optimiser_bench.py --mode step2` (STRATA-ω and Fixed-ω in a
-2-process pool; exit 1 above `--limit-s`, default 90 s; `--fresh-jacobian` times the 17 Jacobian solves first) or
-`--mode step1`.
-
-**STRATA-Flow throughput (SV-1.8).** Network solves that do not depend on each other run together
-(`utils/burden_engine/strata_network.py`): `NetworkParts.solve_many` (one executor `map`), `anchor_many` (several states
-anchored as one after the other would anchor them: a state reuses the nearest anchor within the tolerance, also one
-an earlier state of the list adds; only the new states are solved, together), the Jacobian of a new calibration (the
-calibration state and its 16 forward differences in one `solve_many`), a plan's three states (blend, blend +
-production, full operation; `PlanOmega.states`), and the twin window's three states (`strata_window.evaluate_window`).
-The searches' independent items run through `Engine.run_items`: Step 1's oxygen grid and bracket rounds
-(`bracket_rounds`, 4 levels per round; both oversize options in one call each) and its frontier levels (both options
-in one call), the grid points of maximum production and the relaxations of the value of limits. Every item starts from the network
-anchors present before the items and adds its own; the anchors are merged in item order afterwards. With a solver
-executor each item runs in a solver process on an engine rebuilt from the parent's (`Engine._spec`), else one after
-the other here; plans, anchors and solve counts are the same (`tests/test_strata_parallel.py`, real network in the
-nightly suite). SV-1.7 let a later item reuse the anchors of an earlier one, so a serial run now makes more solves
-for the same plans: Step 2 73 instead of 52, maximum production 347 instead of 278 (reference yard, shipped
-calibration; coke rate within 4·10⁻¹² kg/tHM, value of limits within 6·10⁻⁷ Rs/tHM of SV-1.7).
-
-Executor: `strata_network.start_solvers(n)` / `solver_processes(n)` start `n` processes (`BF_STRATA_SOLVERS`, else
-min(8, cpus)), build the STRATA-Flow context in each (about 2.6 s, the first solve of a process otherwise) and shut them
-down after the run; inside a block that has solver processes already, `solver_processes` uses those. On POSIX the
-processes fork from the process's forkserver, which builds the context once when it can import the code
-(`utils/burden_engine/strata_preload.py`; Python 3.12 starts the forkserver with the interpreter's own path, so `src`
-must be on `PYTHONPATH`, as the worker runs): the first pool of a process then starts in about 2.7 s, every later one in
-0.03 s (`strata_network.LAST_START`). While they start, `__main__` is an empty module, so that they never run a main
-script (a Streamlit page, an app test, a `python -m` module). The executor is a context variable: it holds for the
-thread or asyncio task that sets it (a Streamlit session, a worker job) and the `asyncio.to_thread` threads started from
-there, not for other sessions or jobs. A pool that does not start, or breaks during a run (a solver process killed),
-leaves the solves to the calling process with a warning; the results are the same. The anchors of a calibration are
-shared by the engines of a process and locked (`NetworkParts.lock`); `Engine.run_items` holds the lock while its items
-run. `services.optimiser.solve_case` runs a STRATA-ω case on solver processes: the worker's optimiser runs and page 11's
-runs (`ui/burden_optimiser/loaders.run_mode`) go through it; the nightly calibration solves a new Jacobian and the twin
-evaluation a backfill of 3 windows or more on solver processes. Benchmark: `python scripts/optimiser_bench.py --mode
-solve | jacobian | step2 | max_production | step1 [--solvers N] [--compare]`.
-
-**Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
-shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
-look as in Optimus: dark sidebar, light canvas, white panels, yellow accent, Inter; text contrast >= 4.5:1 on every
-surface, checked by a unit test). `make audit-ui` builds the SPA and runs axe-core,
-overflow, keyboard and dialog checks at 1920x1080, 1366x768 and 768x1024, and on the catalogue at 390x844
-(Playwright with Chromium required).
-
-**Charts and furnace schematic.** `frontend/src/lib/charts/` holds the chart kit on Apache ECharts 6 (SVG renderer,
-loaded on first use): time series on an IST axis with shift starts, uncertainty and plant bands, annotations and
-direct end labels; scatter with identity and limit lines; bars; donut; the Rist operating diagram of a shift. Every
-chart has a legend that toggles series and a table view with every value. Series colours are the six validated
-categorical slots of `tokens.css` (TRACE, FORGE, STRATA and HMT keep slots 1-4 on every page). The BF-02 schematic
-(`frontend/src/lib/furnace/`) is drawn from the configured furnace profile. `make fixtures` writes the parity fixtures
-from the Python models (`utils.coke_energy.rist_diagram`, `ui.furnace_status.schematic`); the Vitest suite checks the
-Svelte drawings against them and `tests/test_chart_fixtures.py` fails when a committed fixture is out of date. Rules:
-`frontend/DESIGN.md`, section 6.
-
-**Typed API client.** `frontend/src/lib/api/client.ts` wraps `openapi-fetch` with the types generated from the API's
-OpenAPI schema. After changing a route: `make client` (or `python scripts/export_openapi.py` and
-`pnpm --dir frontend api:types`), then commit `openapi.json` and `schema.d.ts`; `tests/test_api_foundation.py` fails
-on drift.
-Python routers import `services.*` only, never `ui.*` or Streamlit.
-
+- **Shifts:** fixed 8-hour windows in IST — A 06:00–14:00, B 14:00–22:00, C 22:00–06:00. Every shift analysis,
+  report and twin window uses them.
+- **KPIs:** fuel rate (`fuel_rate`, kg/tHM, lower is better), coke rate (`coke_rate`), PCI rate
+  (`coal_rate_actual_value`), ηCO (`body_etaco`, higher is better), production (`production_per_hour`), RAFT
+  (`body_raft`), permeability (`body_perm`), total ΔP (`body_dp_total`).
+- **Zones** (elevation from the bottom): hearth 0–5.5 m, tuyere 5.5–10.5 m, bosh 10.5–12.9 m, belly 12.9–15.0 m,
+  stack 15.0–20.0 m. The furnace profile and the 110 wall sensors are in `setting_ds_dv.yml`.
+- **Coke-to-PCI substitution:** 0.53 kg coke per kg PCI; **unit cost** = 0.25 × (coke rate + 0.53 × PCI rate)
+  Lakhs/tHM (V-Sense).
+- **Naming:** the same parameter has an InfluxDB field, an ML-dataset column and a plant tag
+  (`fuel_rate` / `Act. Fuel RateKg/Thm.` / `BF2 Fuel rate (Kg/THM)`); `setting_ds_dv.yml → data_mapping` is the
+  translation table.

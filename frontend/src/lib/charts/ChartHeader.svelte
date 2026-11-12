@@ -138,6 +138,7 @@ between the chart and its table view, which carries every value of the chart.
 	}
 	.value {
 		color: var(--vo-text-muted);
+		white-space: nowrap; /* a value never parts from its unit */
 	}
 	.key {
 		flex: none;

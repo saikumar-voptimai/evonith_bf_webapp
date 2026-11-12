@@ -41,7 +41,8 @@ the name and date of the shift-team approval. "Deleted on" is retirement + 30 da
 
 ### Welcome (`custom_pages/1_Welcome.py`)
 
-- **Replacement:** `/` (Live Twin, the SPA landing; SV-1.9, #289) for the KPI strip and the module tiles;
+- **Replacement:** `/status` (Furnace status, the SPA landing since SV-7.2, #325; `/` redirects to it) for the KPI
+  strip and the navigation rail for the module tiles (the Live Twin of SV-1.9, #289, is the admin view `/admin/live-twin`);
   `/admin/users` (SV-4.7, #310) for hopper mapping, burden distribution and user management.
 - **Parity evidence:** `tests/test_services_plant_admin.py::test_the_twin_api_writes_the_rows_of_the_streamlit_tools`.
 - **Before retirement:** Welcome is the default page (`/legacy/`); retired, the next page of the navigation (Data

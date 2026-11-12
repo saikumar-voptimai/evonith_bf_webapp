@@ -45,20 +45,6 @@ def _store_runs(rows: list[dict[str, Any]], job_record: dict[str, Any] | None) -
     return [str(store.optimiser.add(row).id) for row in rows]
 
 
-def _production(production_t_d: float | None) -> tuple[float | None, str | None, str | None]:
-    """(target, its source, why there is no current one): the requested production, else the latest twin window's,
-    else None (``default_case`` then takes the median of the regime window)."""
-    if production_t_d is not None:
-        return production_t_d, None, None
-    try:
-        value, label = optimiser.current_production(twin_store("twin-worker"))
-    except Exception as exc:  # the twin store unreachable: the run still takes page 11's production
-        return None, None, f"the twin store could not be read ({type(exc).__name__})"
-    if value is None:
-        return None, None, label
-    return value, label, None
-
-
 def _case(mode: str, omega_mode: str, production: tuple, **kw: Any) -> optimiser.Case:
     target, source, missing = production
     case = optimiser.default_case(mode, omega_mode=omega_mode, production_t_d=target, production_source=source, **kw)
@@ -122,9 +108,8 @@ async def _run_cases(job: JobContext, cases: list[optimiser.Case], *, message: s
 @handles("optimiser.run")
 async def run(job: JobContext, params: OptimiserRunParams) -> dict[str, Any]:
     await job.progress(0.05, "Building the case: yard, calibration and today's controls", force=True)
-    production = (None, None, None)
-    if params.mode == "step2":
-        production = await asyncio.to_thread(_production, params.production_t_d)
+    # the requested production, else the configured target (user decision 11 Nov 2026: nothing read from the twin)
+    production = (params.production_t_d, None, None)
     case = await asyncio.to_thread(
         _case,
         params.mode,
@@ -137,6 +122,7 @@ async def run(job: JobContext, params: OptimiserRunParams) -> dict[str, Any]:
         yard_basis=params.yard,
         settings=params.settings.model_dump() if params.settings is not None else None,
         limits=params.limits.model_dump() if params.limits is not None else None,
+        dust={k: v.model_dump() for k, v in params.dust.items()} if params.dust else None,
     )
     out = await _run_cases(job, [case], message=f"Optimising: {LABELS[params.mode]}, {OMEGA_LABELS[params.omega_mode]}")
     (first,) = out["runs"]
@@ -145,9 +131,8 @@ async def run(job: JobContext, params: OptimiserRunParams) -> dict[str, Any]:
 
 async def _scheduled_cases(job: JobContext, mode: str, omega_modes: tuple[str, ...]) -> list[optimiser.Case]:
     await job.progress(0.05, "Building the cases: yard, the day's calibration and today's controls", force=True)
+    # Step 2 at the configured target (2,270 t/d; user decision 11 Nov 2026), not the twin's current production
     production = (None, None, None)
-    if mode == "step2":
-        production = await asyncio.to_thread(_production, None)
     cases = [
         await asyncio.to_thread(_case, mode, omega_mode, production, calibration_basis="day")
         for omega_mode in omega_modes
@@ -162,10 +147,10 @@ async def _scheduled_cases(job: JobContext, mode: str, omega_modes: tuple[str, .
 
 @handles("optimiser.step2")
 async def step2(job: JobContext, params: NoParams) -> dict[str, Any]:
-    cases = await _scheduled_cases(job, "step2", ("strata", "fixed"))
+    cases = await _scheduled_cases(job, "step2", ("fixed", "strata"))
     target = cases[0].summary()["production_target_t_d"]
     out = await _run_cases(
-        job, cases, message=f"Optimising Step 2 at {target:.0f} t/d with STRATA-ω and Fixed-ω in parallel"
+        job, cases, message=f"Optimising Step 2 at {target:.0f} t/d with Fixed-ω and STRATA-ω in parallel"
     )
     return out | {"production_t_d": target, "production_source": cases[0].production_source}
 

@@ -147,7 +147,10 @@ def facts_table(reg: FactRegister) -> str:
 
 
 def describe_inputs(s: Mapping[str, Any], L: Mapping[str, Any], *, yard_source: str, calibration: Mapping[str, Any],
-                    regime: Mapping[str, Any] | None, mode: str, target_t_day: float | None) -> str:
+                    regime: Mapping[str, Any] | None, mode: str, target_t_day: float | None,
+                    slag_basis: Mapping[str, Any] | None = None) -> str:
+    from data.burden_engine.inputs import describe_slag_basis
+
     cal = dict(calibration)
     reg = dict(regime or {})
     lines = [
@@ -157,9 +160,10 @@ def describe_inputs(s: Mapping[str, Any], L: Mapping[str, Any], *, yard_source: 
         f"Calibration: {cal.get('source', 'n/a')}, {cal.get('window', '')}; shaft efficiency {_f(cal.get('omega'), '.3f')}, "
         f"losses {_f(cal.get('Q_LZ_GJh'), '.0f')} / {_f(cal.get('Q_UZ_GJh'), '.0f')} GJ/h (lower / upper)"
         + (f"; {cal['message']}" if cal.get("message") else ""),
-        f"Thermal target: HMT {_f(s.get('HMT'), ',.0f')} °C, Si {_f(s.get('hm_Si'), '.2f')} %; PCI "
+        f"Thermal target: HMT {_f(s.get('HMT'), ',.0f')} °C, Si {_f(s.get('hm_Si'), '.2f')} % (the coke balance); PCI "
         f"{_f(s.get('pci_plant'), '.0f')} and nut coke {_f(s.get('nut_plant'), '.0f')} kg/tHM (fixed inputs); blast "
         f"moisture {_f(s.get('humidity_g'), '.0f')} g/Nm3",
+        describe_slag_basis(slag_basis),
         f"Controls: HBT {_f(s.get('HBT'), ',.0f')} °C, hot-blast pressure {_f(s.get('Pb'), '.2f')} bar g, top pressure "
         f"{_f(s.get('Pt'), '.2f')} bar g",
         f"Slag limits: rate <= {_f(L.get('slag_max'), '.0f')} kg/tHM, CaO/SiO2 {_f(L.get('B2_min'), '.2f')}-"
@@ -389,6 +393,7 @@ def build_context(*, notes: str, reg: FactRegister, mode: str, plan: Mapping[str
                   model_check: Mapping[str, Any] | None = None, today: Mapping[str, Any] | None = None,
                   today_window: str = "", ore_only: Mapping[str, Any] | None = None,
                   value_of_limits: pd.DataFrame | None = None, frontier: Mapping[str, Any] | None = None,
+                  slag_basis: Mapping[str, Any] | None = None,
                   materials: Sequence[Mapping[str, Any]] = (), fluxes: Sequence[Mapping[str, Any]] = (),
                   fuel: Mapping[str, Any] | None = None) -> CommentaryContext:
     """Everything the commentary model is given, and what was not available."""
@@ -406,6 +411,7 @@ def build_context(*, notes: str, reg: FactRegister, mode: str, plan: Mapping[str
         missing.append("the live yard (reference yard of 16 Oct 2026 used)")
     live = [
         describe_inputs(settings, limits, yard_source=yard_source, calibration=calibration, regime=regime, mode=mode,
+                        slag_basis=slag_basis,
                         target_t_day=target_t_day),
         describe_model_check(model_check),
         describe_transit((model_check or {}).get("transit")),

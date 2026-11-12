@@ -21,6 +21,14 @@ PERSISTED_NUMERIC_COLUMNS = (
     "max_share_pct",
 )
 
+# An administrator's composition, saved through the API (services.operator_inputs.ORE_CHEMISTRY_FIELDS): page 9 shows
+# it in its editor and keeps it when it saves its own rows, but never writes it from the editor (the editor shows the
+# laboratory's values, which must not be frozen by a save).
+ORE_CHEMISTRY_COLUMNS = (
+    "fe_t_pct", "sio2_pct", "al2o3_pct", "cao_pct", "mgo_pct", "loi_pct", "moisture_pct", "p_pct", "tio2_pct",
+    "mno_pct", "na2o_pct", "k2o_pct", "feo_pct",
+)  # fmt: skip
+
 PERSISTED_MODEL_INPUT_COLUMNS = (
     "target_slag_basicity_min",
     "target_slag_basicity_max",
@@ -221,7 +229,7 @@ def apply_ore_editor_preferences(
     for index, row in out.iterrows():
         ore_id = str(row.get("ore_id", "")).strip()
         saved = saved_rows.get(ore_id, {}) or {}
-        for column in PERSISTED_NUMERIC_COLUMNS:
+        for column in (*PERSISTED_NUMERIC_COLUMNS, *ORE_CHEMISTRY_COLUMNS):
             if column in out.columns and column in saved:
                 value = _float_or_none(saved[column])
                 if value is not None:
@@ -404,10 +412,18 @@ def apply_dust_preferences(
 
 
 def merge_ore_editor(payload: dict[str, Any], editor_df: pd.DataFrame) -> dict[str, Any]:
-    """``payload`` with the ore editor's selection, prices and share bounds (the section is replaced)."""
+    """``payload`` with the ore editor's selection, prices and share bounds (the section is replaced); an
+    administrator's saved composition of a row is kept."""
 
     out = dict(payload)
-    out.update(build_ore_editor_preferences(editor_df))
+    before = dict((dict(out.get("ore_editor") or {})).get("rows") or {})
+    section = build_ore_editor_preferences(editor_df)
+    for ore_id, row in section["ore_editor"]["rows"].items():
+        old = dict(before.get(ore_id) or {})
+        kept = {k: old[k] for k in (*ORE_CHEMISTRY_COLUMNS, "chemistry_source") if k in old}
+        if kept:
+            row.update(kept)
+    out.update(section)
     return out
 
 

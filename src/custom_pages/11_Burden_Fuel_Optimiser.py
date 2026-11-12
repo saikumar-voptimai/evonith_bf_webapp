@@ -20,7 +20,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from utils.session import is_logged_in
+from utils.session import is_admin, is_logged_in, is_supervisor
 
 # ── Auth gate ─────────────────────────────────────────────────────────
 if not is_logged_in():
@@ -31,12 +31,12 @@ if not is_logged_in():
 import datetime as dt
 import json
 
-from data.burden_engine.inputs import build_engine_inputs
+from data.burden_engine.inputs import build_engine_inputs, describe_slag_basis
 import ui.burden_optimiser.loaders as loaders
 from services import operator_inputs
-from ui.burden_optimiser.sections import (plan_sentence, render_controls, render_facts, render_frontier, render_limits,
-                                          render_model_check, render_plan_summary, render_plan_tabs, render_status,
-                                          render_thermal, render_yard_editor)
+from ui.burden_optimiser.sections import (plan_sentence, render_controls, render_dust_editor, render_facts, render_frontier,
+                                          render_fuel_ash_inputs, render_limits, render_model_check, render_plan_summary,
+                                          render_plan_tabs, render_status, render_thermal, render_yard_editor)
 from ui.burden_optimiser.commentary import render_furnace_commentary
 from ui.burden_optimiser.omega_panel import render_auto, render_omega_result, render_omega_settings
 from utils.burden_engine import BandError, Engine, Infeasible, load_register
@@ -59,7 +59,8 @@ st.title("Burden & Fuel Optimiser — BF2")
 st.caption(
     "Chooses the ferrous blend and flux that minimise ore + flux + fuel cost per tonne of hot metal, with the coke "
     "rate from the two-zone energy model at your HMT and Si target, and the output the day's limits allow. PCI and "
-    "nut coke are fixed inputs. Coke rates are dry, shares wet % of the ferrous charge, costs Rs/tHM."
+    "nut coke are fixed inputs. Coke rates are as charged (wet; dry alongside), shares wet % of the ferrous charge, "
+    "costs Rs/tHM."
 )
 
 
@@ -87,11 +88,13 @@ with st.expander("Advanced settings", expanded=False):
     om_set = render_omega_settings("bfo_om")
 prod_cfg = dict(cfg.get("production", {}))
 if mode == "fixed":
+    # the configured target is the default (user decision 11 Nov 2026); today's production is shown as a hint
     today_t_day = (regime or {}).get("prod_th")
-    default_target = round(today_t_day * 24, -1) if today_t_day else float(prod_cfg.get("default_target_t_day", 2270.0))
+    default_target = float(prod_cfg.get("default_target_t_day", 2270.0))
+    today_hint = f" Today's production: about {round(today_t_day * 24, -1):,.0f} t/d (regime median)." if today_t_day else ""
     target = st.columns(4)[0].number_input("Hot metal target, t/d", min_value=1500.0, max_value=3000.0, step=10.0,
                                            value=float(default_target), format="%.0f", key="bfo_target",
-                                           help="Default: today's production (median of the regime window)")
+                                           help=f"Default: the configured target, {default_target:,.0f} t/d.{today_hint}")
 else:
     target = float(prod_cfg.get("default_target_t_day", 2270.0))
 
@@ -108,6 +111,31 @@ with st.expander("Thermal target and fixed fuels", expanded=False):
     thermal_defaults = {**cfg.get("thermal", {}),
                         **fuel_defaults(regime, cfg.get("thermal", {}), info.cal, live_pci=loaders.live_pci())}
     thermal = render_thermal(thermal_defaults, reg, humidity_default, "bfo_th")
+
+# the slag side is the Blend Mix Optimiser's (held Si / S / C, dust per stream, minor oxides, FeO rule); the dust's kg
+# per charge and analysis are editable here, applied to this run, and saved as operator inputs on request
+with st.expander("Top-gas dust and fuel ash", expanded=False):
+    slag_basis, dust_df = render_dust_editor(yard.get("slag_basis"), "bfo")
+    _can_save = is_admin() or is_supervisor()
+    _c1, _c2 = st.columns([1, 3])
+    if _c1.button("Save as operator inputs", key="bfo_dust_save", disabled=(not _can_save) or dust_df.empty,
+                  help="Saves the dust rows as a new version of the operator inputs (shared with the Blend Mix Optimiser, "
+                       "the API and the worker). Edits above apply to this run without saving."
+                       + ("" if _can_save else " Needs the supervisor or admin role.")):
+        from ui.bmo.operator_inputs import save_dust_preferences
+
+        try:
+            written = save_dust_preferences(operator_inputs.YAML_PATH, dust_df)
+        except Exception as exc:  # noqa: BLE001 - the page keeps the edits for this run
+            st.error(f"Dust inputs not saved: {exc}")
+        else:
+            st.success(f"Dust inputs saved ({written}); every optimiser reads them from the next run.")
+            _refresh()
+    _c2.caption("The DPR's measured streams stay off: the plant burden sheet's row is held constant "
+                "(setting_bmo.yml → data_sources.dust_quantity_source). Held hot-metal chemistry and the minor-oxide rules "
+                "are the Blend Mix Optimiser's.")
+    render_fuel_ash_inputs((info.cal or {}).get("case"), slag_basis)
+    st.caption(describe_slag_basis(slag_basis))
 
 charging = dict(cfg.get("charging", {}))
 saved = yard.get("charging_saved") or {}
@@ -134,7 +162,8 @@ if mode == "fixed":
 
 try:
     inputs = build_engine_inputs(materials, fluxes, fuel,
-                                 stock_horizon_days=float(cfg.get("yard", {}).get("stock_horizon_days", 1.0)))
+                                 stock_horizon_days=float(cfg.get("yard", {}).get("stock_horizon_days", 1.0)),
+                                 slag_basis=slag_basis)
 except ValueError as exc:
     st.error(f"Cannot build the yard for the optimiser: {exc}")
     st.stop()
@@ -240,7 +269,7 @@ context = build_context(
                      message=info.message if info.source != "live" else ""),
     regime=regime, target_t_day=float(args[5]) if res["mode"] == "fixed" else None, model_check=model_shown,
     today=today, today_window=window, ore_only=r0, value_of_limits=res.get("value_of_limits"),
-    frontier=res if res["mode"] == "cheapest" else None,
+    frontier=res if res["mode"] == "cheapest" else None, slag_basis=inputs.get("slag_basis"),
     materials=materials + [m for m in yard["materials"] if not m.get("carried", True)], fluxes=fluxes, fuel=fuel)
 render_furnace_commentary(context, key="bfo")
 

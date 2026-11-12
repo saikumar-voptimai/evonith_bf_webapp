@@ -17,7 +17,7 @@ describe('headingFor', () => {
 			title: 'Furnace status',
 			subtitle: navItemFor('/status')?.subtitle
 		});
-		expect(headingFor('/optimiser').title).toBe('Blend Simulator');
+		expect(headingFor('/optimiser').title).toBe('Blend & Fuel Optimiser');
 		expect(headingFor('/models')).toMatchObject({ group: 'Digital twin', title: 'Models' });
 	});
 
@@ -62,7 +62,7 @@ describe('client navigation (SV-7.2, #325)', () => {
 	it('shows a user the Furnace pages, the two optimisers and the digital twin as Models, in that order', () => {
 		expect(rail('user')).toEqual([
 			['Furnace', ['Furnace status', 'Shift reports', 'FurnaceMind']],
-			['Optimisers', ['Blend Mix Optimiser', 'Blend Simulator']],
+			['Optimisers', ['Blend & Fuel Optimiser']],
 			['Digital twin', ['Models']]
 		]);
 		expect(rail('supervisor')).toEqual(rail('user'));
@@ -84,8 +84,8 @@ describe('client navigation (SV-7.2, #325)', () => {
 
 	it('renames the optimiser page Blend Simulator on its route and puts Models on /models for issue 329', () => {
 		expect(navItemFor('/optimiser')).toMatchObject({
-			label: 'Blend Simulator',
-			title: 'Blend Simulator',
+			label: 'Blend & Fuel Optimiser',
+			title: 'Blend & Fuel Optimiser',
 			issue: 300
 		});
 		expect(navItemFor('/models')).toMatchObject({ label: 'Models', title: 'Models', issue: 329 });

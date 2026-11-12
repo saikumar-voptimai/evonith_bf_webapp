@@ -92,21 +92,26 @@ def test_live_values_overlay_the_configured_rows():
     assert rows["gcp_dust"]["cao_pct"] == 1.5 and "analysis 2026-10-08" in rows["gcp_dust"]["source"]
     assert "DPR 2026-10-12 to 2026-10-13" in rows["dust_catcher"]["source"]
     df = build_dust_editor_df(list(rows.values()))
-    assert list(df["dust_id"]) == ["dust_catcher", "gcp_dust"]
+    assert list(df["dust_id"]) == ["bf_gas_dust", "dust_catcher", "gcp_dust"]
     caption = dust_caption(rates, None, saved_ids=["gcp_dust"])
     assert "210 kg/charge" in caption and "saved values in use" in caption
 
 
-def test_configured_dust_is_the_measured_dust_not_the_workbook_row():
-    """The workbook row (CaO 5.63 %, MgO 3.57 %) read slag MgO and basicity low against the lab; the dust analyses
-    carry CaO ~2 % and MgO < 1 %."""
+def test_configured_dust_is_the_plant_burden_sheets_row_held_constant():
+    """User decision 11 Nov 2026: the plant burden sheet's one row (530 kg per charge, CaO 5.63 %, MgO 3.57 %) held
+    constant, to match the client's sheets; the DPR's measured streams (CaO ~2 %, MgO < 1 %, which read closer to the
+    lab) stay configured but off, and the DPR quantity is not read."""
     cfg = yaml.safe_load(open(repo_path("src/config/setting_bmo.yml"), encoding="utf-8"))["bmo"]
     rows = {r["dust_id"]: r for r in cfg["dust_inputs"]}
-    assert set(rows) == {"dust_catcher", "gcp_dust"}
-    for r in rows.values():
+    assert [(k, r["enabled"]) for k, r in rows.items()] == [("bf_gas_dust", True), ("dust_catcher", False), ("gcp_dust", False)]
+    sheet = rows["bf_gas_dust"]
+    assert sheet["rate_basis"] == "kg_per_charge" and sheet["quantity_kg_per_charge"] == 530.0
+    assert (sheet["cao_pct"], sheet["mgo_pct"]) == (5.63, 3.57)
+    for k in ("dust_catcher", "gcp_dust"):
+        r = rows[k]
         assert r["rate_basis"] == "kg_per_charge" and 100 < r["quantity_kg_per_charge"] < 400
         assert r["cao_pct"] < 3.0 and r["mgo_pct"] < 1.5
-    assert cfg["data_sources"]["dust_window_days"] > 0
+    assert cfg["data_sources"]["dust_quantity_source"] == "configured" and cfg["data_sources"]["dust_window_days"] > 0
     # chemistry is the configured values unless the config opts in to the dataset's sparse analyses
     assert cfg["data_sources"]["dust_chemistry_source"] == "configured"
 

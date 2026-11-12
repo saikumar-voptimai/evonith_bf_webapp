@@ -54,6 +54,7 @@ from scipy.optimize import linprog
 
 from utils.burden_engine.facts import ENGINE_FACTS, FactRegister, load_register
 from utils.burden_engine.hydraulics import Hydraulics, raft_c
+from utils.coke_energy.slag_basis import dust_fe, dust_kg
 from utils.burden_engine.omega_model import (CERTAINTY_LEVELS, OmegaModel, OmegaState, assumption_sensitivity,
                                              difference_sigma)
 from utils.coke_energy.rist import solve_2z
@@ -218,8 +219,23 @@ class Engine:
         c = self.cal
         self.case0 = copy.deepcopy(c["case"])
         self.p = c["p"]
-        du = self.case0["dust"]
-        self.fe_dust = du["dc_kg"] * du["dc_Fe_pct"] / 100 + du["gcp_kg"] * du["gcp_Fe_pct"] / 100
+        # Slag on the Blend Mix Optimiser's basis (user decision 11 Nov 2026): held hot-metal Si / S / C for the slag
+        # side, top-gas dust per stream at kg per charge with the measured chemistry, minor oxides from the analyses,
+        # FeO from the Fe not reaching the pig iron (``utils.coke_energy.slag_basis``). Carried by the inputs
+        # (``data.burden_engine.inputs.slag_basis``); without it the calibration's own rule applies (the case report).
+        self.slag_basis = dict(self.inp.get("slag_basis") or {}) or None
+        if self.slag_basis:
+            self.p = {**c["p"], "slag_basis": dict(self.slag_basis["rules"])}
+            for key, fid in (("coke", "coke"), ("nut", "nut_coke"), ("pci", "pci")):
+                f = dict((self.slag_basis.get("fuel") or {}).get(fid) or {})
+                fu = dict(self.case0[key])
+                fu["ash_comp"] = {**fu["ash_comp"], "alk": float(f.get("alk_pct", 0.0)), "MnO": float(f.get("MnO_pct", 0.0))}
+                fu["S_pct"], fu["P_pct"] = float(f.get("S_pct", 0.0)), float(f.get("P_pct", 0.0))
+                self.case0[key] = fu
+            self.charge_t = float(self.slag_basis.get("charge_t") or Limits.charge_t)
+            wet_cal = sum(float(b["dry_kg"]) / (1 - float(b.get("moist_pct", 0.0)) / 100) for b in c["burden_cal"])
+            nut_wet = float(self.case0["nut_kg"]) / (1 - float(self.case0["nut"]["moist_pct"]) / 100)
+            self.case0["dust"] = self.dust_streams(self.case0["dust"], (wet_cal + nut_wet) / 1000 / self.charge_t)
         # Hot-blast meter vs model: at the calibration point the model's blast + O2 per tHM x production reproduces the
         # meter's average to ~1 % (DATA-01); this factor removes the remainder.
         hb_meter = c.get("hb_meter_nm3h") or self.hy.base["V"]
@@ -354,17 +370,40 @@ class Engine:
             raise BandError(f"HM Si {s.hm_Si:.2f} % is outside BAND-03 ({lo:.2f}-{hi:.2f} %)")
 
     # ------------------------------------------------------------------------------------------------ model
+    def dust_streams(self, du: Mapping[str, Any], charges_per_t: float) -> dict[str, Any]:
+        """The case's dust on page 9's basis: each stream's kg/tHM = its kg per charge x the charges per tHM of the
+        blend (page 9's ``compute_charge_count``: ferrous + flux + nut coke, wet, over the charge mass), else its
+        kg/tHM; the pooled dc / gcp figures the carbon balance and the dust's sensible heat use are kept in step
+        (the calibration's carbon analyses per stream, the streams' Fe)."""
+        streams = []
+        for d in self.slag_basis["dust"]:
+            kg = (float(d["kg_per_charge"]) * charges_per_t if d.get("kg_per_charge") is not None
+                  else float(d.get("kg_per_thm") or 0.0))
+            streams.append({**d, "kg": kg if d.get("enabled", True) else 0.0})
+        out = {k: v for k, v in du.items() if k != "streams"}
+        for grp in ("dc", "gcp"):
+            rows = [d for d in streams if (grp == "gcp") == ("gcp" in str(d["id"]).lower())]
+            kg = sum(d["kg"] for d in rows)
+            out[f"{grp}_kg"] = kg
+            out[f"{grp}_Fe_pct"] = sum(d["kg"] * float(d.get("Fe_pct", 0.0)) for d in rows) / kg if kg > 0 else 0.0
+        out["streams"] = streams
+        return out
+
     def make_case(self, z, s: Settings, P):
         c = copy.deepcopy(self.case0)
         c["burden"] = []
         for v, w in zip(self.vars, z):
             dry = max(w, 0.0) * (1 - v.moist / 100)
-            c["burden"].append(dict(name=v.id, dry_kg=dry, comp=v.chem, moist_pct=v.moist, LOI_type=v.loi_type))
+            c["burden"].append(dict(name=v.id, kind=v.kind, dry_kg=dry, comp=v.chem, moist_pct=v.moist,
+                                    LOI_type=v.loi_type))
         c["pci_kg"] = s.pci_plant * (1 - c["pci"]["moist_pct"] / 100)
         c["nut_kg"] = s.nut_plant * (1 - c["nut"]["moist_pct"] / 100)
         c["hm"] = dict(c["hm"]); c["hm"]["Si"] = s.hm_Si
         c["HMT"], c["HBT"], c["O2_per_air"], c["humidity_g"] = s.HMT, s.HBT, s.O2_per_air, s.humidity_g
         c["prod_th"] = P
+        if self.slag_basis:
+            wet = float(np.sum(np.maximum(np.asarray(z, float), 0.0))) + s.nut_plant
+            c["dust"] = self.dust_streams(c["dust"], wet / 1000 / self.charge_t)
         return c
 
     def evaluate(self, z, s: Settings, P, full=False):
@@ -394,13 +433,15 @@ class Engine:
         sig_w = po.sigma(K, R_eff) if po is not None else 0.0
         out = dict(K=K, K_wet=Kw, hb=r["V"] + ro["V_O2"], O2=ro["V_O2"], T_top=r["T_top"], slag=ro["slag_kg"],
                    CaO=sl["CaO"], SiO2=sl["SiO2"], MgO=sl["MgO"], Al2O3=sl["Al2O3"],
-                   Fe_res=ro["Fe_burden"] - ro["Fe_HM"] - ro["Fe_slag"] - self.fe_dust, eta=100 * r["eta"],
+                   Fe_res=ro["Fe_burden"] - ro["Fe_HM"] - ro["Fe_slag"] - dust_fe(c["dust"]), eta=100 * r["eta"],
                    sig_K=abs(self._dKdw) * sig_w / wet if po is not None else 0.0)
         if full:
             out.update(air=r["V"], y_d=r["y_d"], r_d=r["r_d"], topgas=ro["V_tg"], B2=sl["B2"], Al2O3_pct=sl["Al2O3_pct"],
                        MgO_pct=sl["MgO_pct"], O_err=r["O_err"], E_err=r["E_err"], omega=r["omega"], R_cap=r["R_cap"],
                        fuel_dry=K + c["nut_kg"] + c["pci_kg"], fuel_rate=Kw + s.nut_plant + s.pci_plant,
-                       nut_dry=c["nut_kg"], pci_dry=c["pci_kg"], CO2_carb=ro["CO2_carb_kg"])
+                       nut_dry=c["nut_kg"], pci_dry=c["pci_kg"], CO2_carb=ro["CO2_carb_kg"],
+                       TiO2=sl["TiO2"], MnO=sl["MnO"], FeO=sl["FeO"], slag_minor=sl["minor"],
+                       dust_kg=dust_kg(c["dust"]), Fe_dust=dust_fe(c["dust"]), slag_detail=sl.get("detail"))
             if po is not None:
                 out["omega_terms"] = asdict(po.terms(K, R_eff))
         return out

@@ -140,6 +140,13 @@ def put_operator_inputs(
     except svc.InvalidInputs as exc:
         raise ApiError(422, "The operator inputs cannot be used: " + "; ".join(exc.problems) + ".") from exc
     principal: Principal = request.state.principal
+    with_chemistry = svc.ore_chemistry_set(sections)
+    if with_chemistry and principal.role != "admin":  # user decision 12 Nov 2026
+        raise ApiError(
+            403,
+            "Only an administrator may replace an ore's composition (" + ", ".join(with_chemistry) + "); "
+            "other roles set the price, the share bounds and the selection.",
+        )
     actor = Actor(
         name=principal.username,
         role=principal.role,

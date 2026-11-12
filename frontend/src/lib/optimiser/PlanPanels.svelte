@@ -7,10 +7,7 @@ today's charged blend modelled at the same output.
 -->
 <script lang="ts">
 	import Coins from '@lucide/svelte/icons/coins';
-	import Flame from '@lucide/svelte/icons/flame';
 	import Lightbulb from '@lucide/svelte/icons/lightbulb';
-	import Truck from '@lucide/svelte/icons/truck';
-	import Waves from '@lucide/svelte/icons/waves';
 	import type { Snippet } from 'svelte';
 	import KpiStrip from '../components/KpiStrip.svelte';
 	import KpiTile from '../components/KpiTile.svelte';
@@ -63,6 +60,7 @@ today's charged blend modelled at the same output.
 	const sources = $derived(sourceLines(result));
 	const warnAfter = 8 * 60;
 	const staleAfter = 16 * 60;
+	const uid = $props.id();
 </script>
 
 <Panel
@@ -117,23 +115,34 @@ today's charged blend modelled at the same output.
 	</ul>
 </Panel>
 
-<div class="panels">
-	<Panel title="Cost" icon={Coins} note="Rs/tHM; change from today’s blend">
-		<CellTiles cells={cost.cells} />
-		<p class="caption">{cost.caption}</p>
-	</Panel>
-	<Panel title="Fuel rates" icon={Flame} note="kg/tHM; coke from the two-zone energy balance">
-		<CellTiles cells={fuel} />
-	</Panel>
-	<Panel title="Slag" icon={Waves} note="Basicity ratios against this plant’s own p5–p95 band">
-		<CellTiles cells={slag.chemistry} />
-		<CellTiles cells={slag.ratios} />
-	</Panel>
-	<Panel title="Charging" icon={Truck} note="As charged, at the plan’s production">
-		<CellTiles cells={charging.cells} />
-		<p class="caption">{charging.caption}</p>
-	</Panel>
-</div>
+<!-- Page 11's four result panels as one overview: a labelled row of tiles each, so the readouts sit in rows, not stacks. -->
+<Panel
+	title="Overview"
+	icon={Coins}
+	note="Cost, fuel, slag and charging of the plan; changes are against today’s blend"
+>
+	<div class="groups">
+		<section class="group" aria-labelledby="{uid}-cost">
+			<h3 id="{uid}-cost" class="vo-eyebrow">Cost, Rs/tHM</h3>
+			<CellTiles cells={cost.cells} min="9rem" />
+			<p class="caption">{cost.caption}</p>
+		</section>
+		<section class="group" aria-labelledby="{uid}-fuel">
+			<h3 id="{uid}-fuel" class="vo-eyebrow">Fuel rates, kg/tHM · coke from the two-zone energy balance</h3>
+			<CellTiles cells={fuel} min="9rem" />
+		</section>
+		<section class="group" aria-labelledby="{uid}-slag">
+			<h3 id="{uid}-slag" class="vo-eyebrow">Slag · basicity ratios against this plant’s own p5–p95 band</h3>
+			<CellTiles cells={slag.chemistry} min="9rem" />
+			<CellTiles cells={slag.ratios} min="9rem" />
+		</section>
+		<section class="group" aria-labelledby="{uid}-charging">
+			<h3 id="{uid}-charging" class="vo-eyebrow">Charging · as charged, at the plan’s production</h3>
+			<CellTiles cells={charging.cells} min="9rem" />
+			<p class="caption">{charging.caption}</p>
+		</section>
+	</div>
+</Panel>
 
 <style>
 	.chips {
@@ -165,15 +174,16 @@ today's charged blend modelled at the same output.
 		font-size: var(--vo-fs-label);
 		color: var(--vo-text-muted);
 	}
-	.panels {
+	.groups {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--vo-space-4);
 	}
-	@media (max-width: 1279px) {
-		.panels {
-			grid-template-columns: minmax(0, 1fr);
-		}
+	.group {
+		display: grid;
+		gap: var(--vo-space-2);
+	}
+	.group h3 {
+		margin: 0;
 	}
 	.caption {
 		margin: var(--vo-space-2) 0 0;

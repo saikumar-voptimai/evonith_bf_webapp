@@ -44,6 +44,9 @@ export default defineConfig({
 			version: { name: buildVersion(), pollInterval: 600_000 }
 		})
 	],
+	// Pre-bundled at start: a dependency Vite discovers later is re-optimised and the open tab's import of it fails
+	// with 504 "Outdated Optimize Dep" (the FurnaceMind chart, 12 Nov 2026).
+	optimizeDeps: { include: ['plotly.js-dist-min', 'echarts'] },
 	server: {
 		port: 5173,
 		strictPort: true,

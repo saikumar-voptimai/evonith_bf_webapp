@@ -56,7 +56,7 @@
 
 <div class="reports">
 	<aside class="list" data-print="hide">
-		<ReportList {reports} {view} onview={(v) => show(v)} />
+		<ReportList {reports} {view} onview={(v) => show(v)} horizontal />
 	</aside>
 
 	<div class="view">
@@ -101,28 +101,9 @@
 	.view {
 		min-width: 0;
 	}
-	/* Tablet and phone: the list above the report (its height capped); laptop and control room: side by side. */
-	.list :global(.days) {
-		max-height: 22rem;
-		overflow-y: auto;
-	}
-	@media (min-width: 1100px) {
-		.reports {
-			grid-template-columns: 20rem minmax(0, 1fr);
-			align-items: start;
-		}
-		.list {
-			position: sticky;
-			top: calc(84px + var(--vo-space-4));
-		}
-		.list :global(.days) {
-			max-height: calc(100vh - 21rem);
-		}
-	}
-	@media (min-width: 1600px) {
-		.reports {
-			grid-template-columns: 23rem minmax(0, 1fr);
-		}
+	/* The list is a strip above the report at every width (user decision 12 Nov 2026); its days scroll sideways. */
+	.list :global(.days.row) {
+		max-height: 16rem;
 	}
 	@media print {
 		.reports {

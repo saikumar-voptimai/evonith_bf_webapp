@@ -10,15 +10,22 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 	import Drawer from '../components/Drawer.svelte';
 	import NumberInput from '../components/NumberInput.svelte';
 	import { jobErrorText } from '../live/jobs.svelte.ts';
-	import { rowProblems, type InputEdit, type InputRow } from './optimiser.ts';
+	import { dustProblems, rowProblems, type DustRow, type InputEdit, type InputRow } from './optimiser.ts';
 
 	interface Props {
 		open: boolean;
 		edit: InputEdit | null;
 		onsave: (edit: InputEdit, note: string | null) => Promise<void>;
+		/** Administrators also replace an ore's composition (user decision 12 Nov 2026: others edit the price, the
+		 * share bounds and the tick only). */
+		admin?: boolean;
+		/** The ore composition fields, label and decimals, in the table's order. */
+		chemFields?: { key: string; label: string; digits: number }[];
 	}
 
-	let { open = $bindable(false), edit, onsave }: Props = $props();
+	let { open = $bindable(false), edit, onsave, admin = false, chemFields = [] }: Props = $props();
+	let chem = $state<Record<string, number | null>>({});
+	let chemValid = $state<Record<string, boolean>>({});
 
 	let row = $state<InputRow>({
 		id: '',
@@ -32,6 +39,19 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 	let coke = $state<number | null>(null);
 	let nut = $state<number | null>(null);
 	let pci = $state<number | null>(null);
+	let dust = $state<DustRow>({
+		id: '',
+		name: '',
+		enabled: true,
+		kgPerCharge: null,
+		moisture: null,
+		sio2: null,
+		al2o3: null,
+		cao: null,
+		mgo: null,
+		fe: null,
+		source: null
+	});
 	let note = $state('');
 	let saving = $state(false);
 	let error = $state<string | null>(null);
@@ -42,6 +62,7 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 	let cokeValid = $state(true);
 	let nutValid = $state(true);
 	let pciValid = $state(true);
+	let dustValid = $state<Record<string, boolean>>({});
 
 	$effect.pre(() => {
 		if (!open || !edit) return;
@@ -49,18 +70,35 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 			coke = edit.prices['coke'] ?? null;
 			nut = edit.prices['nut_coke'] ?? null;
 			pci = edit.prices['pci'] ?? null;
+		} else if (edit.kind === 'dust') {
+			dust = { ...edit.row };
+			dustValid = {};
 		} else {
 			row = { ...edit.row };
+			chem = Object.fromEntries(chemFields.map((f) => [f.key, edit.row.chem?.[f.key] ?? null]));
+			chemValid = {};
 		}
 		note = '';
 		error = null;
 	});
 
-	const problems = $derived(edit && edit.kind !== 'fuel' ? rowProblems(row, edit.kind) : []);
+	const problems = $derived(
+		!edit || edit.kind === 'fuel'
+			? []
+			: edit.kind === 'dust'
+				? dustProblems(dust)
+				: rowProblems(row, edit.kind)
+	);
 	const fieldsValid = $derived(
 		edit?.kind === 'fuel'
 			? cokeValid && nutValid && pciValid
-			: priceValid && minValid && maxValid && (edit?.kind !== 'flux' || stockValid)
+			: edit?.kind === 'dust'
+				? Object.values(dustValid).every(Boolean)
+				: priceValid &&
+					minValid &&
+					maxValid &&
+					(edit?.kind !== 'flux' || stockValid) &&
+					Object.values(chemValid).every(Boolean)
 	);
 	const blocked = $derived(problems.length > 0 || !fieldsValid);
 	const title = $derived(
@@ -68,8 +106,19 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 			? 'Operator inputs'
 			: edit.kind === 'fuel'
 				? 'Fuel prices'
-				: `${edit.kind === 'ore' ? 'Ferrous material' : 'Flux'}: ${edit.row.name}`
+				: edit.kind === 'dust'
+					? `Top-gas dust: ${edit.row.name}`
+					: `${edit.kind === 'ore' ? 'Ferrous material' : 'Flux'}: ${edit.row.name}`
 	);
+
+	const DUST_FIELDS = [
+		{ key: 'cao', label: 'CaO of the dry dust' },
+		{ key: 'mgo', label: 'MgO of the dry dust' },
+		{ key: 'sio2', label: 'SiO₂ of the dry dust' },
+		{ key: 'al2o3', label: 'Al₂O₃ of the dry dust' },
+		{ key: 'fe', label: 'Fe of the dry dust' },
+		{ key: 'moisture', label: 'Moisture' }
+	] as const;
 
 	async function save(): Promise<void> {
 		if (!edit) return;
@@ -79,7 +128,11 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 			const next: InputEdit =
 				edit.kind === 'fuel'
 					? { kind: 'fuel', prices: { coke, nut_coke: nut, pci } }
-					: { kind: edit.kind, row: { ...row } };
+					: edit.kind === 'dust'
+						? { kind: 'dust', row: { ...dust } }
+						: edit.kind === 'ore' && admin && chemFields.length
+							? { kind: 'ore', row: { ...row, chem: { ...chem } } }
+							: { kind: edit.kind, row: { ...row } };
 			await onsave(next, note.trim() || null);
 			open = false;
 		} catch (e) {
@@ -96,7 +149,34 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 	description="Saved as a new version of the operator inputs; the next run reads it."
 	size="sm"
 >
-	{#if edit && edit.kind !== 'fuel'}
+	{#if edit && edit.kind === 'dust'}
+		<div class="fields">
+			<label class="check"
+				><input type="checkbox" bind:checked={dust.enabled} /> Deducted from the burden before the slag forms</label
+			>
+			<NumberInput
+				label="Dust per charge, wet"
+				unit="kg/charge"
+				bind:value={dust.kgPerCharge}
+				min={0}
+				step={10}
+				hint="The plant burden sheet's row is 530 kg/charge; spread over each blend's charges per tHM"
+				bind:valid={dustValid['kgPerCharge']}
+			/>
+			{#each DUST_FIELDS as f (f.key)}
+				<NumberInput
+					label={f.label}
+					unit="%"
+					bind:value={dust[f.key]}
+					min={0}
+					max={100}
+					step={0.1}
+					digits={2}
+					bind:valid={dustValid[f.key]}
+				/>
+			{/each}
+		</div>
+	{:else if edit && edit.kind !== 'fuel'}
 		<div class="fields">
 			{#if edit.kind === 'ore'}
 				<label class="check"
@@ -141,6 +221,25 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 					step={10}
 					bind:valid={stockValid}
 				/>
+			{/if}
+			{#if edit.kind === 'ore' && admin && chemFields.length}
+				<h3 class="vo-eyebrow">Composition, dry basis (administrators)</h3>
+				<p class="hint">Replaces the laboratory's values for every optimiser until cleared.</p>
+				<div class="chem">
+					{#each chemFields as f (f.key)}
+						<NumberInput
+							label={f.label}
+							unit="%"
+							value={chem[f.key] ?? null}
+							onchange={(v) => (chem[f.key] = v)}
+							min={0}
+							max={100}
+							step={0.01}
+							digits={f.digits}
+							bind:valid={chemValid[f.key]}
+						/>
+					{/each}
+				</div>
 				<NumberInput
 					label="Charged, min"
 					unit="t/d"
@@ -187,6 +286,16 @@ bounds) or the fuel prices, and saves the whole section as a new version of the 
 		display: grid;
 		gap: var(--vo-space-3);
 		margin-bottom: var(--vo-space-3);
+	}
+	.chem {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--vo-space-2) var(--vo-space-3);
+	}
+	.hint {
+		margin: 0;
+		font-size: var(--vo-fs-label);
+		color: var(--vo-text-muted);
 	}
 	.check {
 		display: flex;

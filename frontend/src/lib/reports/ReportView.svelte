@@ -719,11 +719,13 @@ column on A4 (print theme; `print.ts` plans the pages).
 	.regen {
 		margin-top: var(--vo-space-3);
 	}
-	/* Fuel and burden side by side, the parameter groups in two columns, on wide screens. */
-	@media (min-width: 1100px) {
+	/* The parameter groups in two columns on wide screens; fuel and burden side by side only where their tables fit. */
+	@media (min-width: 1440px) {
 		.cols {
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		}
+	}
+	@media (min-width: 1100px) {
 		.params {
 			grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
 		}

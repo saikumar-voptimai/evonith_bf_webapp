@@ -43,16 +43,26 @@ def kind_for(material_key: str) -> str:
 
 
 def chem_from_ore(c: OreChemistry) -> tuple[dict[str, float], float]:
-    """Engine chemistry (dry %) and moisture from a BMO chemistry record."""
+    """Engine chemistry (dry %) and moisture from a BMO chemistry record. The minor elements page 9's slag balance
+    counts (S, Zn, Na2O, K2O) are carried for the slag basis."""
     chem = dict(Fe=c.fe_t_pct, FeO=c.feo_pct, SiO2=c.sio2_pct, Al2O3=c.al2o3_pct, CaO=c.cao_pct, MgO=c.mgo_pct,
-                MnO=c.mno_pct, TiO2=c.tio2_pct, P=c.p_pct, LOI=getattr(c, "loi_pct", 0.0))
+                MnO=c.mno_pct, TiO2=c.tio2_pct, P=c.p_pct, LOI=getattr(c, "loi_pct", 0.0),
+                S=getattr(c, "s_pct", 0.0), Zn=getattr(c, "zn_pct", 0.0), Na2O=getattr(c, "na2o_pct", 0.0),
+                K2O=getattr(c, "k2o_pct", 0.0))
     return {k: float(v or 0.0) for k, v in chem.items()}, float(c.moisture_pct or 0.0)
 
 
 def chem_from_flux(f: FluxInput) -> dict[str, float]:
+    g = lambda k: float(getattr(f, k, 0.0) or 0.0)  # noqa: E731
     return dict(Fe=float(f.fe2o3_pct or 0.0) * FE_IN_FE2O3, FeO=0.0, SiO2=float(f.sio2_pct), Al2O3=float(f.al2o3_pct),
                 CaO=float(f.cao_pct), MgO=float(f.mgo_pct), MnO=float(f.mno_pct), TiO2=float(f.tio2_pct),
-                P=float(f.p_pct), LOI=float(f.loi_pct))
+                P=float(f.p_pct), LOI=float(f.loi_pct), S=g("s_pct"), Zn=g("zn_pct"), Na2O=g("na2o_pct"),
+                K2O=g("k2o_pct"), CaF2=g("caf2_pct"))
+
+
+#: Saved ore-row composition keys (operator inputs, API names) -> engine chemistry keys.
+SAVED_CHEM_KEYS = dict(fe_t_pct="Fe", sio2_pct="SiO2", al2o3_pct="Al2O3", cao_pct="CaO", mgo_pct="MgO", loi_pct="LOI",
+                       p_pct="P", tio2_pct="TiO2", mno_pct="MnO", na2o_pct="Na2O", k2o_pct="K2O", feo_pct="FeO")
 
 
 def _saved(prefs: Mapping[str, Any] | None, *keys: str) -> dict:
@@ -73,6 +83,13 @@ def yard_rows(ores: Iterable[OreInput], prefs: Mapping[str, Any] | None = None, 
         chem, moist = chem_from_ore(o.chemistry)
         s = saved.get(o.ore_id, {}) or {}
         source = str(o.metadata.get("chemistry_source", "") or "")
+        # an administrator's composition (operator inputs, API names) replaces the laboratory's values it names
+        manual = {ck: float(s[sk]) for sk, ck in SAVED_CHEM_KEYS.items() if s.get(sk) is not None}
+        if manual:
+            chem = {**chem, **manual}
+            source = "operator inputs"
+        if s.get("moisture_pct") is not None:
+            moist = float(s["moisture_pct"])
         carried, reason = True, ""
         if chem["Fe"] <= 0:
             carried, reason = False, "no Fe in the chemistry"
@@ -119,8 +136,85 @@ def catalogue_fluxes(flux_cfg: Iterable[Mapping[str, Any]]) -> list[Any]:
             max_qty_mt=(float(item["max_qty_mt"]) if item.get("max_qty_mt") is not None else None),
             moisture_pct=g("moisture_pct"), sio2_pct=g("sio2_pct"), al2o3_pct=g("al2o3_pct"), cao_pct=g("cao_pct"),
             mgo_pct=g("mgo_pct"), fe2o3_pct=g("fe2o3_pct"), mno_pct=mno, tio2_pct=tio2, p_pct=g("p_pct"),
-            loi_pct=g("loi_pct")))
+            loi_pct=g("loi_pct"), s_pct=g("s_pct"), zn_pct=g("zn_pct"), na2o_pct=g("na2o_pct"), k2o_pct=g("k2o_pct"),
+            caf2_pct=g("caf2_pct")))
     return out
+
+
+# ------------------------------------------------------------------------------------------------- slag basis
+HM_HELD_KEYS = (("carbon_pct", "C_pct"), ("silicon_pct", "Si_pct"), ("sulphur_pct", "S_pct"), ("other_pct", "other_pct"))
+RULE_KEYS = ("pi_loss_pct", "fe_to_pig_iron_fraction", "mn_recovery_pct", "sulphur_gas_loss_pct",
+             "alkali_to_slag_fraction", "si_to_sio2_factor", "fe_to_feo_factor", "mn_to_mno_factor",
+             "slag_correction_factor", "tio2_to_slag")
+DUST_PCT_KEYS = ("sio2", "al2o3", "cao", "mgo", "fe", "mn", "p", "s", "ti", "zn", "na2o", "k2o", "caf2")
+
+
+def slag_basis(bmo_cfg: Mapping[str, Any], prefs: Mapping[str, Any] | None = None, *,
+               dust_rates: Mapping[str, Mapping[str, Any]] | None = None, charge_t: float | None = None,
+               source: str = "") -> dict[str, Any]:
+    """The Blend Mix Optimiser's slag conventions for the engine (``utils.coke_energy.slag_basis``), from page 9's
+    own configuration so both pages compute one slag for one blend (user decision 11 Nov 2026).
+
+    ``bmo_cfg``: the ``bmo`` block of ``setting_bmo.yml``. ``prefs``: the operator inputs (``hot_metal_chemistry``
+    and ``dust_editor`` rows laid over the defaults, as page 9 does). ``dust_rates``: the DPR's kg per charge per
+    stream (``EvonithBmoContextProvider.get_dpr_dust_rates``); without them the configured kg per charge stand.
+    ``charge_t``: the charge mass the streams' kg per charge are spread over (page 9's ``charge_mass_mt``)."""
+    from data.bmo.dust_inputs import dust_cfg_with_live
+
+    prefs = dict(prefs or {})
+    sb = dict(bmo_cfg.get("slag_balance") or {})
+    held = {k: v for k, v in (prefs.get("hot_metal_chemistry") or {}).items()}
+    rules: dict[str, Any] = {}
+    for src, dst in HM_HELD_KEYS:
+        v = held.get(src, sb.get(src, 0.0))
+        rules[dst] = float(v if v is not None else 0.0)
+    for k in RULE_KEYS:
+        v = sb.get(k)
+        rules[k] = (bool(v) if k == "tio2_to_slag" else float(v)) if v is not None else None
+    defaults = dict(pi_loss_pct=0.2, fe_to_pig_iron_fraction=0.999, mn_recovery_pct=60.0, sulphur_gas_loss_pct=10.0,
+                    alkali_to_slag_fraction=0.8, si_to_sio2_factor=2.14, fe_to_feo_factor=72.0 / 56.0,
+                    mn_to_mno_factor=1.291, slag_correction_factor=1.0, tio2_to_slag=True)
+    rules = {k: (defaults[k] if v is None else v) for k, v in rules.items()} | {
+        k: v for k, v in defaults.items() if k not in rules}
+    saved_dust = dict((prefs.get("dust_editor") or {}).get("rows") or {})
+    dust = []
+    for row in dust_cfg_with_live(bmo_cfg.get("dust_inputs", []), dust_rates, None):
+        row = {**row, **(saved_dust.get(str(row.get("dust_id", ""))) or {})}
+        basis = str(row.get("rate_basis", "kg_per_charge") or "kg_per_charge").lower()
+        d: dict[str, Any] = dict(id=str(row.get("dust_id", "")), name=str(row.get("display_name", row.get("dust_id", ""))),
+                                 enabled=bool(row.get("enabled", True)), moist_pct=float(row.get("moisture_pct", 0.0) or 0.0),
+                                 source=str(row.get("source", "configured")))
+        if basis == "kg_per_charge":
+            d["kg_per_charge"] = float(row.get("quantity_kg_per_charge", 0.0) or 0.0)
+        else:  # t/day in page 9; per tHM only with a production: carried as t/day for the record, no deduction
+            d["kg_per_charge"], d["t_per_day"] = None, float(row.get("wet_qty_mt", 0.0) or 0.0)
+        for k in DUST_PCT_KEYS:
+            d[{"sio2": "SiO2", "al2o3": "Al2O3", "cao": "CaO", "mgo": "MgO", "fe": "Fe", "mn": "Mn", "p": "P", "s": "S",
+               "ti": "Ti", "zn": "Zn", "na2o": "Na2O", "k2o": "K2O", "caf2": "CaF2"}[k] + "_pct"] = float(
+                row.get(f"{k}_pct", 0.0) or 0.0)
+        dust.append(d)
+    fuel = {}
+    for item in bmo_cfg.get("fuel_ash_inputs", []) or []:
+        g = lambda k: float(item.get(k, 0.0) or 0.0)  # noqa: E731
+        mno = g("mn_pct") / MN_IN_MNO if str(item.get("mn_basis", "mno")).lower() == "mn" else g("mno_pct")
+        alk = g("alkali_pct") or (g("na2o_pct") + g("k2o_pct"))
+        fuel[str(item.get("fuel_id", ""))] = dict(alk_pct=alk, S_pct=g("s_pct"), P_pct=g("p_pct"), MnO_pct=mno)
+    return dict(source=source or "Blend Mix Optimiser (setting_bmo.yml slag_balance, dust_inputs, fuel_ash_inputs)",
+                rules=rules, dust=dust, fuel=fuel, charge_t=float(charge_t) if charge_t else None)
+
+
+def describe_slag_basis(b: Mapping[str, Any] | None) -> str:
+    """One line for the page and the commentary: what the slag side holds."""
+    if not b:
+        return "Slag balance: the calibration's rule (slag FeO % and a flat minor-oxide allowance)."
+    r = b["rules"]
+    dust = ", ".join(f"{d['name']} {d['kg_per_charge']:.0f} kg/charge" for d in b["dust"]
+                     if d.get("enabled", True) and d.get("kg_per_charge") is not None)
+    src = {d.get("source", "") for d in b["dust"] if d.get("enabled", True)}
+    return (f"Slag balance on the Blend Mix Optimiser's basis: hot metal Si {r['Si_pct']:.2f} %, S {r['S_pct']:.2f} %, "
+            f"C {r['C_pct']:.1f} % held for the slag side; top-gas dust {dust} ({'; '.join(sorted(s for s in src if s))}); "
+            f"alkalis {100 * r['alkali_to_slag_fraction']:.0f} % to slag, sulphur less {r['sulphur_gas_loss_pct']:.0f} % "
+            f"to gas; FeO from {100 * (1 - r['fe_to_pig_iron_fraction']):.1f} % of the Fe charged.")
 
 
 def flux_rows(fluxes: Iterable[FluxInput], prefs: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -170,11 +264,12 @@ def saved_charging(prefs: Mapping[str, Any] | None) -> dict[str, float]:
 
 def build_engine_inputs(materials: Iterable[Mapping[str, Any]], fluxes: Iterable[Mapping[str, Any]],
                         fuel: Mapping[str, float], *, stock_horizon_days: float = 1.0,
-                        use_stock: bool = True) -> dict[str, Any]:
+                        use_stock: bool = True, slag_basis: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The engine's input dict from (possibly operator-edited) yard and flux rows.
 
     Only carried and selected materials are offered to the LP. Stock caps a material's t/day at stock / horizon
-    (``use_stock``); a material with zero stock is left out, as the Blend Mix Optimiser pins it to zero."""
+    (``use_stock``); a material with zero stock is left out, as the Blend Mix Optimiser pins it to zero.
+    ``slag_basis`` (:func:`slag_basis`) travels with the inputs: the engine then computes slag on page 9's basis."""
     mats, left_out = [], {}
     for m in materials:
         if not m.get("carried", True):
@@ -205,8 +300,11 @@ def build_engine_inputs(materials: Iterable[Mapping[str, Any]], fluxes: Iterable
         raise ValueError(f"fuel prices missing: {sorted(missing)}")
     if not any(m["selected"] for m in mats):
         raise ValueError("no ferrous material is selected, carried and in stock")
-    return dict(source="Blend Mix Optimiser yard (context provider + operator inputs)", materials=mats,
-                fluxes=fl, not_carried=left_out, fuel={k: float(v) for k, v in fuel.items()})
+    out = dict(source="Blend Mix Optimiser yard (context provider + operator inputs)", materials=mats,
+               fluxes=fl, not_carried=left_out, fuel={k: float(v) for k, v in fuel.items()})
+    if slag_basis:
+        out["slag_basis"] = dict(slag_basis)
+    return out
 
 
 FERROUS_PREFIX = ("sinter_", "ore_", "pellet_")
@@ -297,13 +395,46 @@ def load_yard(cfg: Mapping[str, Any], *, prefs: Mapping[str, Any] | None = None,
     stale_inputs = fallback_warning(provenance)  # the YAML file standing in for a twin store that failed
     if stale_inputs:
         warnings.append(stale_inputs)
+    # page 9's top-gas dust: the configured kg per charge held constant (the plant's burden sheet, user decision
+    # 11 Nov 2026), or with data_sources.dust_quantity_source "dpr" the DPR's kg per charge over its window
+    ds = dict(bmo_cfg.get("data_sources") or {})
+    rates: dict[str, Any] = {}
+    dust_source = "configured kg per charge"
+    reader = getattr(provider, "get_dpr_dust_rates", None)
+    if str(ds.get("dust_quantity_source", "configured")).lower() != "dpr":
+        reader = None
+    if callable(reader):
+        try:
+            rates, dust_warnings = reader(window_days=int(ds.get("dust_window_days", 30)),
+                                          min_charges_per_day=int(ds.get("dust_min_charges_per_day", 100)))
+            warnings.extend(dust_warnings or [])
+            if rates:
+                dust_source = f"DPR, last {int(ds.get('dust_window_days', 30))} days"
+        except Exception as exc:  # noqa: BLE001 - the configured rows stand, as on page 9
+            warnings.append(f"DPR dust unavailable ({type(exc).__name__}: {exc}); configured dust quantities used.")
+    charging = saved_charging(prefs)
+    basis = slag_basis(bmo_cfg, prefs, dust_rates=rates or None,
+                       charge_t=charging.get("charge_t") or float((cfg.get("charging") or {}).get("charge_t", 26.46)),
+                       source=f"Blend Mix Optimiser: setting_bmo.yml with the operator inputs; dust {dust_source}")
     return dict(
         materials=yard_rows(ores, prefs, exclude_fallback=bool(yard_cfg.get("exclude_fallback_chemistry", True)),
                             k_rules=yard_cfg.get("k_rules")),
         fluxes=flux_rows(fluxes, prefs),
         fuel=fuel_prices(prefs, dict(slag_price=float(((cfg.get("prices") or {}).get("slag_price_rs_per_t")) or 0.0))),
         slag=slag_limits(prefs),
-        charging_saved=saved_charging(prefs),
+        charging_saved=charging,
+        slag_basis=basis,
         warnings=warnings,
         operator_inputs=provenance,
     )
+
+
+def reference_slag_basis(charge_t: float | None = None,
+                         bmo_settings_path: str | Path = "src/config/setting_bmo.yml") -> dict[str, Any]:
+    """Page 9's slag conventions for the reference yard (offline): the configured values of ``setting_bmo.yml``,
+    no operator inputs, the configured dust kg per charge."""
+    import yaml
+
+    bmo_cfg = (yaml.safe_load(repo_path(bmo_settings_path).read_text(encoding="utf-8")) or {}).get("bmo", {})
+    return slag_basis(bmo_cfg, None, dust_rates=None, charge_t=charge_t,
+                      source="Blend Mix Optimiser: setting_bmo.yml (configured values; dust configured kg per charge)")

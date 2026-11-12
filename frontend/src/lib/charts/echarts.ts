@@ -56,6 +56,7 @@ export type { EChartsType };
 
 /** Data items of a mark line (one value for a horizontal or vertical line, or a pair of coordinates). */
 export type MarkLineData = NonNullable<MarkLineComponentOption['data']>;
+export type MarkAreaData = NonNullable<MarkAreaComponentOption['data']>;
 
 export function createChart(element: HTMLElement): EChartsType {
 	return init(element, null, { renderer: 'svg' });

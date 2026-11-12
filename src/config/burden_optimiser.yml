@@ -61,6 +61,9 @@ burden_optimiser:
 
   thermal:
     # Client basis (ASM-08). PCI and nut coke are fixed inputs; HMT and Si are band-checked (BAND-02/03).
+    # hm_Si is the thermal Si of the coke balance only. The slag balance holds the Blend Mix Optimiser's Si / S / C
+    # (setting_bmo.yml -> slag_balance, operator-editable on page 9), with its dust rows and minor-oxide rules, so
+    # both pages report one slag for one blend (user decision 11 Nov 2026).
     HMT: 1470.0
     hm_Si: 0.38
     pci_kg_thm: 190.0
