@@ -1,7 +1,7 @@
 <!--
 @component
 Zone 3 of the Live Twin (SV-1.9): shaft efficiency per window. ω_imp (implied by the window's coke and gas) against
-ω_STRATA with ±2σₑ, the 14-day calibration ω_cal, and the CUSUM state of the drift alarm on ω_imp − ω_STRATA.
+ω_STRATA with ±2σₑ, FORGE's calibrated ω_cal, and the CUSUM state of the drift alarm on ω_imp − ω_STRATA.
 -->
 <script lang="ts">
 	import Gauge from '@lucide/svelte/icons/gauge';

@@ -1,6 +1,6 @@
 <!--
 TRACE (SV-1.10, #290): burnt coke from the gas-side oxygen balance. Latest shift and hour, raw (GBC) against calibrated
-over a chosen period and resolution, the 14-day correction, the inputs of the balance and the freshness of every
+over a chosen period and resolution, the correction, the inputs of the balance and the freshness of every
 source, and burnt against charged coke. Every quantity comes from the twin-api (`/api/trace*`), which serves the
 Coke Energy pipeline's values (page 10) from the view the `twin.trace` job builds every hour at :20.
 -->
@@ -321,7 +321,7 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 						status={shiftStatus?.kind}
 						statusLabel={shiftStatus?.label}
 						delta={versus(latest?.shift.k_burnt, previous?.k_burnt)}
-						note="Raw + 14-day correction"
+						note="Raw + correction"
 					/>
 					<KpiTile
 						label="Raw (GBC)"
@@ -333,7 +333,7 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 						note="Oxygen balance, metered air"
 					/>
 					<KpiTile
-						label="14-day correction"
+						label="Correction"
 						value={latest?.shift.burnt_offset}
 						unit={KG}
 						digits={1}
@@ -409,7 +409,7 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 						loading={firstLoad}
 						status={hourStatus?.kind}
 						statusLabel={hourStatus?.label}
-						note="Raw + 14-day correction"
+						note="Raw + correction"
 					/>
 					<KpiTile
 						label="Raw (GBC)"

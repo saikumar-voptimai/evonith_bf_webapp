@@ -7,6 +7,7 @@ import {
 	calibrationNote,
 	calibrationRows,
 	frameCaption,
+	sharePct,
 	isViewMissing,
 	periodPresets,
 	predictionSeries,
@@ -164,6 +165,21 @@ describe('calibration and view', () => {
 		);
 		expect(calibrationRows(cal).map((s) => s.shift_key)).toEqual(['2026-10-25_C', '2026-10-12_A']);
 		expect(calibrationRows(null)).toEqual([]);
+	});
+
+	it('states the tracker with its target shift, half-life and the shares in percent', () => {
+		const tracked = {
+			...cal,
+			method: 'exponential',
+			half_life_days: 3,
+			target_shift: '2026-10-26_A',
+			min_shifts: 4
+		} as ForgeCalibration;
+		expect(calibrationNote(tracked)).toBe(
+			'Calibration of 26 Oct 2026, shift A: means over the stable shifts that ended before it, at most 14 days old, weighted by age (half-life 3 days): 38 shifts (4 needed).'
+		);
+		expect(sharePct(0.0425)).toBeCloseTo(4.25, 10);
+		expect(sharePct(null)).toBeNull();
 	});
 
 	it('names the view and its data in IST', () => {

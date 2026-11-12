@@ -1,25 +1,28 @@
 """Rolling-window twin evaluation (SV-1.1, #281): the Coke Energy pipeline applied to one window W = [t - 8 h, t).
 
 The window is aggregated by the statements that aggregate a shift (``build_shift_inputs`` with ``window_key``) and
-balanced by the statements that balance a shift (``shift_balance``). Every 14-day quantity comes from the completed
-shifts of a pipeline result (the pool) with the pipeline's windowing: stable shifts dated in [d - 14 d, d), at least
-``min_shifts`` of them, d the date of the window's start. A window that coincides with a balanced shift therefore
-returns that shift's values from the pipeline table:
+balanced by the statements that balance a shift (``shift_balance``). Every calibrated quantity comes from the
+completed shifts of a pipeline result (the pool) with the pipeline's calibration (``pipeline.calibration_values``,
+``PipelineSettings.calibration``): the web's median over the stable shifts dated in [d - 14 d, d), d the date of the
+window's start, or the tracker over the stable shifts that ended before the window began (exponential weights by age,
+half-life 3 d, at most 14 d old). A window that coincides with a balanced shift therefore returns that shift's values
+from the pipeline table:
 
-    K_TRACE    coke the metered blast burnt (oxygen balance at the analyser's eta CO) plus the 14-day median of
+    K_TRACE    coke the metered blast burnt (oxygen balance at the analyser's eta CO) plus the calibrated
                (charged - burnt) of the pool                                          = pipeline ``K_burnt``
-    K_FORGE    two-zone balance with omega, Q_LZ, Q_UZ, r_H at their 14-day medians   = pipeline ``K_energy``
+    K_FORGE    two-zone balance with omega, Q_LZ, Q_UZ, r_H at their calibration       = pipeline ``K_energy``
     omega_imp  two-zone calibration of W on the reconciled basis (charged coke, O-balance air, analyser eta CO)
                                                                                       = pipeline ``omega_shift``
-    omega_cal  the 14-day median omega that K_FORGE uses                              = pipeline ``omega_fixed``
+    omega_cal  the calibrated omega that K_FORGE uses                                 = pipeline ``omega_fixed``
     K_charged  dry coke charged per tonne of hot metal                                = pipeline ``K_charged``
     K_STRATA   the K_FORGE balance with omega = omega_STRATA, STRATA 1.5 for the window's blend and operation
-               against the same 14 days (``utils.burden_engine.strata_window``: anchor A = those shifts, network
+               against the stable shifts dated in the 14 days before (``utils.burden_engine.strata_window``: anchor A
+               = those shifts with omega_A = omega_cal, network
                solves at the window's blend, blend + production and full operation); 1 sigma = |dK/domega| x
                sigma(omega_STRATA), dK/domega of the balance at fixed omega
 
 Status: ``complete`` when K_TRACE, K_FORGE, omega_imp and (when requested) K_STRATA were evaluated; ``partial`` when
-the window balanced but a 14-day quantity is missing (fewer than ``min_shifts`` stable shifts in the pool, or a date
+the window balanced but a calibrated quantity is missing (too few stable shifts in the pool, or a date
 before ``predict_from``) or STRATA did not evaluate; ``failed`` when the window has too little data, a known data error,
 or a balance that does not solve. Pure numerics: no I/O, no Streamlit (``services.twin`` loads the sources and stores
 the result).
@@ -47,8 +50,8 @@ from utils.coke_energy.pipeline import (
     _case,
     _with_dates,
     build_cases,
+    calibration_values,
     excluded_shifts,
-    rolling_pool_median,
     run_shift_balances,
     shift_params,
     valid_shift_mask,
@@ -120,6 +123,11 @@ class Window:
     def hours(self) -> float:
         return (pd.Timestamp(self.end) - pd.Timestamp(self.start)) / pd.Timedelta(hours=1)
 
+    @property
+    def mid(self) -> pd.Timestamp:
+        """Middle of the window: a shift's midpoint for a shift window (the tracker's target time)."""
+        return pd.Timestamp(self.start) + (pd.Timestamp(self.end) - pd.Timestamp(self.start)) / 2
+
 
 @dataclass
 class WindowEvaluation:
@@ -186,18 +194,24 @@ def _invalid_reasons(row: pd.Series) -> list[str]:
     return [msg for ok, msg in checks if not bool(ok)]
 
 
-def _pool_medians(
-    pool: PipelineResult, target: pd.Series, frames: Mapping[str, list[str]], settings: PipelineSettings
+def _pool_calibration(
+    pool: PipelineResult, window: Window, frames: Mapping[str, list[str]], settings: PipelineSettings
 ) -> dict[str, float]:
-    """14-day medians over the pool's stable shifts for one target date, as the pipeline computes them."""
+    """The calibration over the pool's stable shifts for one window, as the pipeline computes it for a shift."""
     out: dict[str, float] = {}
     R = _with_dates(pool.R)
+    target = pd.DataFrame({"date": [window.date], "t_mid": [window.mid]}, index=[window.key])
     for name, cols in frames.items():
         source = pool.B[["gap"]] if name == "burnt" else pool.Z
         Rs = R.join(source, rsuffix="_2z")
-        med = rolling_pool_median(Rs[Rs.stable], target, cols, settings.window_days, settings.min_shifts)
-        out.update({c: float(v) for c, v in med.iloc[0].items()})
+        cal = calibration_values(Rs[Rs.stable], target, cols, settings)
+        out.update({c: float(v) for c, v in cal.iloc[0].items()})
     return out
+
+
+def _too_few(settings: PipelineSettings) -> str:
+    n, days = settings.calibration_min_shifts, settings.window_days
+    return f"fewer than {n} stable shifts in the {days} days before the window"
 
 
 def evaluate_window(
@@ -212,7 +226,7 @@ def evaluate_window(
     strata: bool = True,
     transit: burden_column.TransitReference | None = None,
 ) -> WindowEvaluation:
-    """Evaluate ``window`` on the four source frames with the 14-day quantities of ``pool`` (see the module notes).
+    """Evaluate ``window`` on the four source frames with the calibrated quantities of ``pool`` (see the module notes).
 
     ``strata=False`` skips K_STRATA (3 network solves per window and 1 per 14-day anchor, about 1 s each).
     ``transit``: reference of the burden column (``burden_column.TransitReference``); the column at the window's end
@@ -256,20 +270,18 @@ def evaluate_window(
     ev.quantities.update({f"{g}_share_pct": v for g, v in burden_column.ferrous_shares(row).items()})
     ev.status = "partial"
 
-    target = pd.Series([window.date], index=[key])
-    med = _pool_medians(pool, target, {"burnt": ["gap"], "energy": ["omega", "Q_LZ_GJh", "Q_UZ_GJh", "r_H"]}, settings)
+    med = _pool_calibration(
+        pool, window, {"burnt": ["gap"], "energy": ["omega", "Q_LZ_GJh", "Q_UZ_GJh", "r_H"]}, settings
+    )
 
-    # K_TRACE: the metered blast's coke plus the pool's 14-day (charged - burnt).
+    # K_TRACE: the metered blast's coke plus the pool's calibrated (charged - burnt).
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         k_raw, _, _ = k_burnt(_case(cases, key, rb.eta_H2), rb.eta_CO / 100, p)
     ev.quantities["k_burnt_raw_kg_thm"] = float(k_raw)
     offset = _num(med["gap_roll"])
     if offset is None:
-        ev.notes.append(
-            f"TRACE: fewer than {settings.min_shifts} stable shifts in the {settings.window_days} days "
-            "before the window"
-        )
+        ev.notes.append(f"TRACE: {_too_few(settings)}")
     else:
         ev.k_trace = float(k_raw + offset)
         ev.quantities["burnt_offset_kg_thm"] = offset
@@ -286,7 +298,7 @@ def evaluate_window(
     except Exception as exc:  # noqa: BLE001 - as the pipeline, a calibration that does not solve leaves omega empty
         ev.notes.append(f"omega_imp: two-zone calibration did not solve ({exc})")
 
-    # K_FORGE: two-zone balance at the pool's 14-day medians.
+    # K_FORGE: two-zone balance at the pool's calibration.
     omega_roll = _num(med["omega_roll"])
     prod = float(rb.prod_th)
 
@@ -304,10 +316,7 @@ def evaluate_window(
         )
 
     if omega_roll is None:
-        ev.notes.append(
-            f"FORGE: fewer than {settings.min_shifts} stable shifts in the {settings.window_days} days "
-            "before the window"
-        )
+        ev.notes.append(f"FORGE: {_too_few(settings)}")
     elif window.date < pd.Timestamp(settings.predict_from):
         ev.notes.append(f"FORGE: window before predict_from {settings.predict_from}")
     else:
@@ -329,7 +338,7 @@ def evaluate_window(
     if ev.k_forge is not None:
         _hmt_forecast(ev, fd, hm, window, S.loc[key], balance)
 
-    # K_STRATA: the same balance with omega_STRATA of the window against the same 14 days.
+    # K_STRATA: the same balance with omega_STRATA of the window against the 14-day anchor (omega_A = omega_cal).
     if strata and ev.k_forge is not None:
         _evaluate_strata(ev, pool, S.loc[key], rb, window, settings, balance)
 

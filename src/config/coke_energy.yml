@@ -12,11 +12,21 @@ coke_energy:
   history_start: "2025-08-01"
   predict_from: "2025-12-01"
 
-  # Out-of-sample calibration: medians over the stable shifts of the previous N days (dates strictly before the shift's
-  # date). Used for the heat-loss allowance U (oxygen-balance model), for omega / Q_LZ / Q_UZ / r_H (energy model) and
-  # for the burnt-coke offset (charged - burnt).
+  # Out-of-sample calibration window: the stable shifts of the previous N days. The 14-day median (dates strictly before
+  # the shift's date, at least rolling_min_shifts) is the web model's rule; it stays for the heat-loss allowance U of
+  # the oxygen-balance model.
   rolling_window_days: 14
   rolling_min_shifts: 10
+  # Calibration of omega / Q_LZ / Q_UZ / r_H (energy model, FORGE) and of the burnt-coke offset (charged - burnt,
+  # TRACE). exponential (user decision 12 Nov 2026): mean over the stable shifts that ended before the shift began and
+  # are at most rolling_window_days old, weight 0.5 ** (age / half_life_days), age midpoint to midpoint, at least
+  # min_shifts of them. Tested on the stable shifts of 2026 (claude/model_check_oct_nov_2026.md 6.2,
+  # claude/forge_error_drivers_and_omega_prediction.md): FORGE - TRACE SD 6.9 -> 6.4 kg/tHM per shift, TRACE against
+  # 3-day charged coke SD 4.7 -> 3.7; half-lives 2-5 d give the same. median restores the web model's 14-day median.
+  calibration_tracker:
+    method: exponential
+    half_life_days: 3.0
+    min_shifts: 4
 
   # Blast moisture (DATA-04, DATA-11). The cold blast is ambient air (no steam injection on BF-02). Default
   # open_meteo (STRATA 1.5, 25 Oct 2026): daily mean RH at Wardha from Open-Meteo mapped linearly onto 7-21 g/Nm3,

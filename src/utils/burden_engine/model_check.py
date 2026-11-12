@@ -2,7 +2,9 @@
 
 Before an operator trusts a blend the optimiser proposes, the page shows the model against what the furnace is doing:
 for each recent shift, the coke the blast actually burnt next to what the energy balance (two-zone, shaft efficiency
-and heat losses held at the 14 days before the shift: the optimiser's model and calibration rule) and the oxygen
+and heat losses held at their calibration over the stable shifts before the shift: the optimiser's model; the shift
+record tracks the calibration with exponential weights, half-life 3 d, the optimiser calibrates on the pooled 14 days)
+and the oxygen
 balance (eta CO fixed at the analyser's value) predict for that shift's HMT, Si, blast and burden. The predictions are
 out of sample. The numbers come from the Coke Energy pipeline's shift table (``PipelineResult.shifts``), the same
 result the optimiser calibrates on, so this module only selects and scores; it does no physics.

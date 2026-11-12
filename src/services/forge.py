@@ -1,8 +1,10 @@
-"""FORGE page data (SV-1.11, #291): the two-zone (Rist) energy balance at the 14-day medians against burnt coke.
+"""FORGE page data (SV-1.11, #291): the two-zone (Rist) energy balance at its calibration against burnt coke.
 
-FORGE is page 10's energy-balance model (``K_energy``: omega, Q_LZ, Q_UZ and r_H fixed at their medians over the stable
-shifts dated in the 14 days before the shift); burnt coke is TRACE (``K_burnt``: the metered blast's oxygen balance
-less the 14-day charged - burnt offset). Both come from the Coke Energy pipeline of ``services.coke_energy``, unchanged.
+FORGE is page 10's energy-balance model (``K_energy``: omega, Q_LZ, Q_UZ and r_H fixed at their calibration over the
+stable shifts before the shift: the tracker, exponential weights by age with a half-life of 3 d over the 14 days before,
+or the web's 14-day median, per ``coke_energy.yml -> calibration_tracker``); burnt coke is TRACE (``K_burnt``: the
+metered blast's oxygen balance plus the calibrated charged - burnt offset). Both come from the Coke Energy pipeline of
+``services.coke_energy``, unchanged.
 
 Two halves, so no request runs the pipeline or a balance:
 
@@ -11,8 +13,8 @@ Two halves, so no request runs the pipeline or a balance:
   stored view (``build_view`` -> ``save``): every balanced shift with its coke rates and calibration, and the frames;
 * the API reads the stored view (``load``) and answers from it: the shifts of a period with page 10's accuracy
   statistics (``prediction``: ``accuracy.period_rows`` and ``accuracy.accuracy``) and the statistics over the trailing
-  ``stats_days`` of every day; the frames (``rist``); the calibration of a day (``calibration``: the pipeline's
-  ``rolling_pool_median`` over the stored stable shifts, so it equals the shift table's ``omega_fixed``, ...).
+  ``stats_days`` of every day; the frames (``rist``); the calibration of a shift (``calibration``: the pipeline's
+  ``calibration_values`` over the stored stable shifts, so it equals the shift table's ``omega_fixed``, ...).
 
 Coke rates are kg/tHM dry; heat losses GJ/h; shaft efficiency and r_H dimensionless; shift times IST (tz-naive) in
 the store and UTC in the API.
@@ -33,7 +35,8 @@ import pandas as pd
 
 from services import coke_energy as ce
 from utils.coke_energy.accuracy import accuracy, period_rows, scored_shifts
-from utils.coke_energy.pipeline import PipelineSettings, rolling_pool_median
+from utils.coke_energy.pipeline import SHIFT_MID_HOURS, PipelineSettings, calibration_values
+from utils.coke_energy.pipeline import calibration_pool as pool_rows
 from utils.coke_energy.rist_diagram import RistShift, rist_dict
 from utils.memo import memo
 
@@ -42,7 +45,7 @@ SRC = Path(__file__).resolve().parents[1]
 STORE_DIR = SRC / "storage" / "forge"
 VIEW_FILE = "view.json"
 SCHEMA = 1
-MODEL = "FORGE: two-zone (Rist) balance with omega, Q_LZ, Q_UZ and r_H at their 14-day medians (Coke Energy page)"
+MODEL = "FORGE: two-zone (Rist) balance with omega, Q_LZ, Q_UZ and r_H at their calibration (Coke Energy page)"
 
 # Stored per balanced shift: the shift table's columns (PipelineResult.shifts) and r_H of the shift's calibration.
 NUMERIC = (
@@ -161,6 +164,9 @@ def build_view(
         "settings": {
             "window_days": int(settings.window_days),
             "min_shifts": int(settings.min_shifts),
+            "calibration": settings.calibration,
+            "half_life_days": float(settings.half_life_days),
+            "tracker_min_shifts": int(settings.tracker_min_shifts),
             "history_start": str(settings.history_start),
             "predict_from": str(settings.predict_from),
             "stats_days": forge_settings.stats_days,
@@ -490,28 +496,69 @@ def default_calibration_day(T: pd.DataFrame) -> date | None:
     return None if T.empty else (T.sdate.max() + pd.Timedelta(days=1)).date()
 
 
-def calibration(stored: StoredView, day: date | None = None) -> dict[str, Any]:
-    """The FORGE calibration of ``day``: the medians of omega, Q_LZ, Q_UZ and r_H over the stable shifts dated in the
-    ``window_days`` before it (at least ``min_shifts`` of them, else none), and those shifts."""
+def stored_settings(stored: StoredView) -> PipelineSettings:
+    """The pipeline's calibration settings the view was built with (views before the tracker: the 14-day median)."""
     s = stored.settings
-    window_days, min_shifts = int(s.get("window_days", 14)), int(s.get("min_shifts", 10))
+    return PipelineSettings(
+        window_days=int(s.get("window_days", 14)),
+        min_shifts=int(s.get("min_shifts", 10)),
+        calibration=str(s.get("calibration", "median")),
+        half_life_days=float(s.get("half_life_days", 3.0)),
+        tracker_min_shifts=int(s.get("tracker_min_shifts", 4)),
+    )
+
+
+def next_shift(T: pd.DataFrame) -> tuple[pd.Timestamp, str] | None:
+    """Date and letter of the shift after the latest balanced one."""
+    if T.empty:
+        return None
+    last = T.sort_values("t_mid").iloc[-1]
+    day, letter = pd.Timestamp(last.sdate).normalize(), str(last["shift"])
+    return (day, {"A": "B", "B": "C"}[letter]) if letter in ("A", "B") else (day + pd.Timedelta(days=1), "A")
+
+
+def calibration(stored: StoredView, day: date | None = None) -> dict[str, Any]:
+    """The FORGE calibration of a shift with the stable shifts it rests on (the shift table's ``omega_fixed``, ...).
+
+    Median (the web): omega, Q_LZ, Q_UZ and r_H over the stable shifts dated in the ``window_days`` before ``day`` (at
+    least ``min_shifts``), the same for every shift of the day; default: the day after the latest balanced shift.
+    Tracker: their weighted means over the stable shifts that ended before the target shift began, at most
+    ``window_days`` old, weight 0.5 ** (age / half-life) (at least ``tracker_min_shifts``); target: the A shift of
+    ``day``, by default the shift after the latest balanced one. ``weight`` is each shift's share of omega_cal."""
+    settings = stored_settings(stored)
     T = stored.shifts
-    day = day or default_calibration_day(T) or datetime.now(UTC).date()
-    target = pd.Timestamp(day)
-    lo = target - pd.Timedelta(days=window_days)
+    if settings.calibration == "median" or day is not None:
+        day = day or default_calibration_day(T) or datetime.now(UTC).date()
+        target_day, letter = pd.Timestamp(day), "A"
+    else:
+        nxt = next_shift(T) or (pd.Timestamp(datetime.now(UTC).date()), "A")
+        target_day, letter = nxt
+        day = target_day.date()
+    t_mid = target_day + pd.Timedelta(hours=SHIFT_MID_HOURS[letter])
     pool = calibration_pool(T)
-    med = rolling_pool_median(pool, pd.Series([target], index=["day"]), list(CALIBRATION), window_days, min_shifts)
-    m = med.iloc[0]
-    used = pool[(pool.date >= lo) & (pool.date < target)].sort_values("t_mid")
+    target = pd.DataFrame({"date": [target_day], "t_mid": [t_mid]}, index=["target"])
+    m = calibration_values(pool, target, list(CALIBRATION), settings).iloc[0]
+    used = pool_rows(pool, target_day, t_mid, settings, value_col="omega")
+    n_cal = int(used["omega"].notna().sum())
+    if settings.calibration == "median":
+        lo, last = target_day - pd.Timedelta(days=settings.window_days), target_day - pd.Timedelta(days=1)
+        complete = len(used) >= settings.min_shifts
+    else:
+        lo = (t_mid - pd.Timedelta(days=settings.window_days)).normalize()
+        last = pd.Timestamp(used.sdate.max()) if len(used) else target_day
+        complete = n_cal >= settings.tracker_min_shifts
     return {
         "day": day,
+        "method": settings.calibration,
+        "half_life_days": None if settings.calibration == "median" else float(settings.half_life_days),
+        "target_shift": f"{target_day:%Y-%m-%d}_{letter}",
         "window_start": lo.date(),
-        "window_end": (target - pd.Timedelta(days=1)).date(),
-        "window_days": window_days,
-        "min_shifts": min_shifts,
+        "window_end": last.date(),
+        "window_days": int(settings.window_days),
+        "min_shifts": int(settings.calibration_min_shifts),
         "n_shifts": int(len(used)),
-        "n_calibrated": int(used["omega"].notna().sum()),
-        "complete": bool(len(used) >= min_shifts),
+        "n_calibrated": n_cal,
+        "complete": bool(complete),
         "omega_cal": number(m["omega_roll"]),
         "q_lz_gj_h": number(m["Q_LZ_GJh_roll"]),
         "q_uz_gj_h": number(m["Q_UZ_GJh_roll"]),
@@ -526,6 +573,7 @@ def calibration(stored: StoredView, day: date | None = None) -> dict[str, Any]:
                 "r_h": number(r["r_H"]),
                 "k_burnt": number(r["K_burnt"]),
                 "k_charged": number(r["K_charged"]),
+                "weight": number(r["weight"]),
             }
             for k, r in used.iterrows()
         ],

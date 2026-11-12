@@ -35,7 +35,7 @@ class OmegaRow(BaseModel):
     omega_imp: float | None = Field(None, description="Implied shaft efficiency of the window, dimensionless")
     omega_strata: float | None = Field(None, description="STRATA shaft efficiency of the window, dimensionless")
     omega_strata_sd: float | None = Field(None, description="1 sigma of omega_strata (parameters), dimensionless")
-    omega_cal: float | None = Field(None, description="14-day median shaft efficiency, dimensionless")
+    omega_cal: float | None = Field(None, description="Calibrated shaft efficiency (FORGE's), dimensionless")
     band_low: float | None = Field(None, description="omega_strata + mu − 2 sigma_e, dimensionless")
     band_high: float | None = Field(None, description="omega_strata + mu + 2 sigma_e, dimensionless")
     r: float | None = Field(None, description="Residual omega_imp − omega_strata, dimensionless")

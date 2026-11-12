@@ -10,7 +10,7 @@ HMT(t)        the latest tap temperature before t (at most ``max_age_h`` old)
 K_arr(t)      dry coke per tonne of hot metal of the charges dumped in [t - 1 h, t): their coke to ferrous ratio
               times the ferrous rate of the window (wet kg/tHM), so that neither the hourly charge counter nor the
               hourly production figure enters (both alternate from hour to hour, SV-1.3)
-K_FORGE(HMT)  the FORGE balance of the window ending at t (omega, Q_LZ, Q_UZ, r_H at the 14-day medians) with the
+K_FORGE(HMT)  the FORGE balance of the window ending at t (omega, Q_LZ, Q_UZ, r_H at their calibration) with the
               hot-metal temperature set to HMT(t)
 dK/dHMT       its slope, kg/tHM per degC, by a 10 degC difference
 

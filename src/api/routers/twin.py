@@ -82,15 +82,15 @@ class TwinSeriesRow(BaseModel):
     window_end: datetime = Field(..., description="End of the 8-h window (UTC)")
     shift_key: str | None = Field(None, description="Shift of the window when it is one (YYYY-MM-DD_A, IST date)")
     status: str = Field(..., description="complete, partial or failed")
-    k_trace: float | None = Field(None, description="Burnt coke, oxygen balance + 14-day offset, kg/tHM dry")
-    k_forge: float | None = Field(None, description="Two-zone balance at the 14-day medians, kg/tHM dry")
+    k_trace: float | None = Field(None, description="Burnt coke, oxygen balance + calibrated offset, kg/tHM dry")
+    k_forge: float | None = Field(None, description="Two-zone balance at its calibration (FORGE), kg/tHM dry")
     k_strata: float | None = Field(None, description="Two-zone balance at omega_STRATA, kg/tHM dry")
     k_strata_sd: float | None = Field(None, description="1 sigma of k_strata, kg/tHM dry")
     k_charged: float | None = Field(None, description="Coke charged, kg/tHM dry")
     omega_imp: float | None = Field(None, description="Implied shaft efficiency, dimensionless")
     omega_strata: float | None = Field(None, description="STRATA 1.5 shaft efficiency, dimensionless")
     omega_strata_sd: float | None = Field(None, description="1 sigma of omega_strata, dimensionless")
-    omega_cal: float | None = Field(None, description="14-day median shaft efficiency, dimensionless")
+    omega_cal: float | None = Field(None, description="Calibrated shaft efficiency (FORGE's), dimensionless")
     quantities: dict[str, float] = Field(
         default_factory=dict, description="Requested quantities of the window, units in the keys (e.g. hmt_c, °C)"
     )

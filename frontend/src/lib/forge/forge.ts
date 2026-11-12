@@ -1,6 +1,7 @@
 /**
  * FORGE page (SV-1.11, #291): FORGE against burnt coke per shift with page 10's statistics, the Rist diagram of the
- * stable shifts and the 14-day calibration, from `/api/forge/*` (the view the `twin.forge` job stores hourly).
+ * stable shifts and the calibration (tracked, or the web's 14-day median), from `/api/forge/*` (the view the
+ * `twin.forge` job stores hourly).
  *
  * Pure builders of the page: chart series, the statistic tiles, frame labels and the API frame as the chart's
  * `RistShift`. Coke rates are kg/tHM dry; times arrive in UTC and are shown in IST.
@@ -10,7 +11,7 @@ import { ApiError } from '../api/client.ts';
 import type { RistShift } from '../charts/rist.ts';
 import type { TimeSeries } from '../charts/timeseries.ts';
 import type { RangePreset } from '../components/date-range.ts';
-import { formatNumber, formatQuantity, formatSigned, UNIT_SPACE } from '../format/number.ts';
+import { formatNumber, formatQuantity, formatSigned, isNumber, UNIT_SPACE } from '../format/number.ts';
 import { formatDay, istDateTime } from '../time/format.ts';
 
 export type ForgePrediction = Schemas['ForgePrediction'];
@@ -188,13 +189,28 @@ export function frameCaption(frame: ForgeRistFrame): string {
 	return parts.join(' · ');
 }
 
-/** `Stable shifts dated 12 Oct 2026 to 25 Oct 2026, the 14 days before 26 Oct 2026: 38 shifts (10 needed).` */
+/** Median (web): `Medians over the stable shifts dated 12 Oct 2026 to 25 Oct 2026, the 14 days before 26 Oct 2026:
+ * 38 shifts (10 needed).` Tracker: `Calibration of 26 Oct 2026, shift A: means over the stable shifts that ended
+ * before it, at most 14 days old, weighted by age (half-life 3 days): 38 shifts (4 needed).` */
 export function calibrationNote(cal: ForgeCalibration): string {
+	if (cal.method === 'exponential') {
+		const target = cal.target_shift ? shiftLabel(cal.target_shift) : formatDay(cal.day);
+		return (
+			`Calibration of ${target}: means over the stable shifts that ended before it, at most ` +
+			`${cal.window_days} days old, weighted by age (half-life ${formatNumber(cal.half_life_days ?? null, 0)} days): ` +
+			`${cal.n_shifts} shifts (${cal.min_shifts} needed).`
+		);
+	}
 	return (
 		`Medians over the stable shifts dated ${formatDay(cal.window_start)} to ${formatDay(cal.window_end)}, ` +
 		`the ${cal.window_days} days before ${formatDay(cal.day)}: ${cal.n_shifts} shifts ` +
 		`(${cal.min_shifts} needed).`
 	);
+}
+
+/** A shift's share of the calibration in percent (null without one). */
+export function sharePct(weight: number | null | undefined): number | null {
+	return isNumber(weight) ? 100 * weight : null;
 }
 
 /** `View of 28 Oct 06:20 IST: 1,352 balanced shifts, hourly data to 28 Oct 05:00.` */

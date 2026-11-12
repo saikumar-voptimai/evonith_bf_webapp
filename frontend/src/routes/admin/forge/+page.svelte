@@ -28,6 +28,7 @@
 		predictionSeries,
 		provenance,
 		rollingSeries,
+		sharePct,
 		shiftLabel,
 		statTiles,
 		VIEW_STALE_MIN,
@@ -172,7 +173,8 @@
 		{ key: 'q_lz_gj_h', label: 'Q lower zone', unit: GJH, numeric: true, digits: 1 },
 		{ key: 'q_uz_gj_h', label: 'Q upper zone', unit: GJH, numeric: true, digits: 1 },
 		{ key: 'r_h', label: 'r H', numeric: true, digits: 3 },
-		{ key: 'k_charged', label: 'Charged coke', unit: KG, numeric: true, digits: 1 }
+		{ key: 'k_charged', label: 'Charged coke', unit: KG, numeric: true, digits: 1 },
+		{ key: 'weight', label: 'Share', unit: '%', numeric: true, digits: 1, value: (s) => sharePct(s.weight) }
 	];
 </script>
 
@@ -203,7 +205,7 @@
 	{:else}
 		<Panel
 			title="Prediction against burnt coke"
-			note="FORGE, the two-zone balance at the 14-day medians, against the coke the blast burnt (TRACE), per shift; statistics as on the Coke Energy page."
+			note="FORGE, the two-zone balance at its calibration over the stable shifts before each shift, against the coke the blast burnt (TRACE), per shift; statistics as on the Coke Energy page."
 			updatedAt={builtAt}
 			warnAfterMin={VIEW_WARN_MIN}
 			staleAfterMin={VIEW_STALE_MIN}
@@ -351,7 +353,7 @@
 				title="Calibration"
 				note={calibration
 					? calibrationNote(calibration)
-					: 'Medians of ω, the heat losses and r H over the stable shifts of 14 days.'}
+					: 'ω, the heat losses and r H over the stable shifts of the 14 days before, weighted by age.'}
 				updatedAt={builtAt}
 				warnAfterMin={VIEW_WARN_MIN}
 				staleAfterMin={VIEW_STALE_MIN}
@@ -408,7 +410,7 @@
 						maxHeight="28rem"
 						dense
 						emptyTitle="No stable shifts in the window"
-						emptyMessage="FORGE needs stable shifts in the 14 days before the day to calibrate."
+						emptyMessage="FORGE needs stable shifts in the 14 days before the shift to calibrate."
 					/>
 					{#if calibration && (calibration.n_calibrated < calibration.n_shifts || !calibration.complete)}
 						<p class="vo-muted pad note">
@@ -417,7 +419,7 @@
 								it.
 							{:else}
 								{calibration.n_shifts - calibration.n_calibrated} shifts without a two-zone calibration count towards
-								the window but not the medians.
+								the window but not the calibration.
 							{/if}
 						</p>
 					{/if}

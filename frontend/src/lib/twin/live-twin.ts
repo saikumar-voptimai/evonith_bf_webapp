@@ -318,7 +318,7 @@ export function gapTiles(gaps: ModelGaps | null | undefined): GapTile[] {
 }
 
 // ------------------------------------------------------------------------------------------------- zone 3: shaft efficiency
-/** ω_imp per window, ω_STRATA with ±2σₑ and the 14-day calibration ω_cal (FORGE's ω). */
+/** ω_imp per window, ω_STRATA with ±2σₑ and FORGE's calibrated ω_cal (tracked over the shifts before the window). */
 export function omegaSeries(rows: readonly SeriesRow[]): TimeSeries[] {
 	const band: [number, number | null, number | null][] = [];
 	for (const r of rows) {
@@ -342,7 +342,7 @@ export function omegaSeries(rows: readonly SeriesRow[]): TimeSeries[] {
 		},
 		{
 			id: 'omega_cal',
-			label: 'ω_cal, 14-day calibration',
+			label: 'ω_cal, FORGE calibration',
 			short: 'ω_cal',
 			colour: 'series-forge',
 			dashed: true,
