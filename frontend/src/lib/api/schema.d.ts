@@ -7202,7 +7202,7 @@ export interface components {
             check: components["schemas"]["HmtCheck"];
             /**
              * Cold Tap C
-             * @description A tap below it is cold, °C
+             * @description A tap below it is cold, °C: the lower edge of BAND-02 unless configured
              */
             cold_tap_c: number;
             /**

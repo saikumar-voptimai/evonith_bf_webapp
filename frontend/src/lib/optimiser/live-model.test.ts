@@ -327,6 +327,8 @@ describe('HMT, ηCO and top gas', () => {
 		]);
 		expect(tiles[0]!.note).toBe('13:00 IST, received 13:30');
 		expect(tiles[2]!.note).toBe('about 15:00 IST · below 1,460\u00a0°C: 5\u00a0%');
+		const rare = { ...VIEW, hmt: { ...VIEW.hmt, cold_tap_c: 1440, p_cold_next: 0.001 } };
+		expect(hmtTiles(rare)[2]!.note).toBe('about 15:00 IST · below 1,440\u00a0°C: <1\u00a0%');
 		const stale = { ...VIEW, hmt: { ...VIEW.hmt, stale: true } };
 		expect(hmtTiles(stale)[1]!.note).toBe('no recent tap: the long-run level');
 		expect(hmtTiles(null).every((x) => x.value === null)).toBe(true);

@@ -10529,7 +10529,7 @@
             "$ref": "#/components/schemas/HmtCheck"
           },
           "cold_tap_c": {
-            "description": "A tap below it is cold, \u00b0C",
+            "description": "A tap below it is cold, \u00b0C: the lower edge of BAND-02 unless configured",
             "title": "Cold Tap C",
             "type": "number"
           },

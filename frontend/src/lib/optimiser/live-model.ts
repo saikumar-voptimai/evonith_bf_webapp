@@ -10,7 +10,7 @@
 import type { Schemas } from '../api/client.ts';
 import type { PlantBand, TimeAnnotation, TimePoint, TimeSeries } from '../charts/timeseries.ts';
 import type { StatusKind } from '../components/status.ts';
-import { formatNumber, formatQuantity, formatSigned, isNumber } from '../format/number.ts';
+import { formatNumber, formatQuantity, formatSigned, isNumber, UNIT_SPACE } from '../format/number.ts';
 import { formatDuration, istDateTime, istTime } from '../time/format.ts';
 import { gapped } from '../twin/live-twin.ts';
 
@@ -395,7 +395,7 @@ export function hmtTiles(view: LiveModelView | null | undefined): LiveTile[] {
 	const next = date(h?.next_tap?.at);
 	const cold =
 		h && isNumber(h.p_cold_next)
-			? `below ${formatQuantity(h.cold_tap_c, 0, '°C')}: ${formatQuantity(100 * h.p_cold_next, 0, '%')}`
+			? `below ${formatQuantity(h.cold_tap_c, 0, '°C')}: ${h.p_cold_next < 0.005 ? `<1${UNIT_SPACE}%` : formatQuantity(100 * h.p_cold_next, 0, '%')}`
 			: '';
 	return [
 		{

@@ -1075,7 +1075,7 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `twin.live_model.pci_valid_kg_thm` (80–320: tag stuck, injection off) carries no coke rates; (4) hot-metal
   temperature from the tap filter (`utils/coke_energy/hmt_filter.py`: level as a random walk + deviation with a
   4.06 h time constant + scatter of a single tap; parameters in `coke_energy.yml → twin.live_model.hmt.filter`,
-  fitted on Jan–Jun 2026): last tap, estimate now, next tap with the chance of a tap below `cold_tap_c` (1,460 °C),
+  fitted on Jan–Jun 2026): last tap, estimate now, next tap with the chance of a tap below the lower edge of BAND-02 (1,440 °C; `cold_tap_c` overrides),
   6 h ahead, each ±1σ; taps as points (`TimeSeries.marksOnly`), the estimate, the forecast with a band that widens
   with the lead, BAND-02 behind; score = every tap of the last 14 days against the forecast made 2 h and 6 h before
   it with the taps published by then (`created_at`), next to the last tap held; watch when the newest tap is beyond

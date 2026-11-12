@@ -208,7 +208,8 @@ coke_energy:
           min_taps: 8                # taps before an estimate is given
         horizon_h: 6                 # the forecast band reaches this far
         band_step_min: 30
-        cold_tap_c: 1460             # a tap below it is cold: p05 of the shift means (shift_report.yml); 8 % of the taps
+        cold_tap_c: null             # a tap below it is cold. null: the lower edge of BAND-02 in the fact register
+                                     # (1,440 degC, 1 % of the taps; user decision 12 Nov 2026); a number overrides it
         score_horizons_h: [2, 6]     # leads scored against the last tap held, over the last 14 days
         score_min_taps: 10
         burn_in_days: 10             # taps read before the scored days

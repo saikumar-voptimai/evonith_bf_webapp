@@ -207,8 +207,9 @@ or 30 days with its table.
 			/>
 			<p class="caption">
 				Each point is the 8-hour window ending at that hour. Burnt: the oxygen balance at the metered blast
-				with the analyser’s ηCO, less the 14-day charged − burnt offset. Modelled: the two-zone energy balance
-				with shaft efficiency and heat losses held at the 14 days before the window, the optimiser’s model.
+				with the analyser’s ηCO, plus the 14-day median of charged − burnt. Modelled: the two-zone energy
+				balance with shaft efficiency and heat losses held at the 14 days before the window, the optimiser’s
+				model.
 			</p>
 		{:else}
 			<EmptyState
