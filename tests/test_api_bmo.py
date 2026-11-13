@@ -29,6 +29,18 @@ CHARGED_BUNDLE = ROOT / "src/assets/models/bmo_charged_coke/20261007_0400"
 SNAPSHOTS = ROOT / "src/storage/bmo_snapshots"
 
 
+class IndexedRedis(MemoryRedis):
+    """``MemoryRedis`` with the reads of the job index (``JobStore.list``, ``list_kind``); the job-control, calibration,
+    learn and admin-jobs tests import it from here."""
+
+    async def zrevrange(self, key: str, start: int, stop: int) -> list[str]:
+        ranked = sorted(self.sorted.get(key, {}).items(), key=lambda kv: kv[1], reverse=True)
+        return [member for member, _ in ranked[start : stop + 1]]
+
+    async def mget(self, keys: list[str]) -> list[Any]:
+        return [self.values.get(k) for k in keys]
+
+
 @pytest.fixture()
 def client():
     app = build()
