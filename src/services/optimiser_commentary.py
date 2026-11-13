@@ -35,8 +35,8 @@ LLM_TRIES = 2
 LLM_RETRY_DELAY_S = 15.0
 #: Page 11's mode labels (``MODES`` of the page).
 MODE_LABELS = {
-    "cheapest": "Step 1 · Cheapest production level",
-    "fixed": "Step 2 · Fixed production",
+    "cheapest": "Cheapest production level",
+    "fixed": "Fixed production",
     "max": "Maximum production",
 }
 THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -73,7 +73,7 @@ def run_context(
     elif mode == "cheapest":
         plan = result.get("best")
         frontier = dict(result, frontier=_frame(result.get("frontier")) if result.get("frontier") else pd.DataFrame())
-        label = f"cheapest output on the Step 1 frontier, {plan['P_tday']:,.0f} t/d" if plan else ""
+        label = f"cheapest output on the production frontier, {plan['P_tday']:,.0f} t/d" if plan else ""
     else:
         plan = result.get("result")
         label = f"maximum production {plan['P_tday']:,.0f} t/d" if plan else ""

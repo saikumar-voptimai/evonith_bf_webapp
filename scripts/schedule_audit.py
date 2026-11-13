@@ -4,10 +4,10 @@
                                      [--strict] [--list 20]
 
 Reads ``twin.jobs`` (``BF_TWIN_DB_URL``, else ``DATABASE_URL``) and lists, per scheduled kind, the slots of the
-period and what became of each: done, failed, cancelled, still running, skipped (worker not running at the slot, or
-the previous job still active; the record gives the reason) or missed (no record at all); then the runtime statistics
-per kind (runs, p50 / p95 / max execution time over the tries, p95 start delay). Exit code 1 when a slot was missed
-or skipped (``--strict``: also when a scheduled run failed).
+period and what became of each: done, failed, cancelled, still running, skipped (the previous job still active; the
+record gives the reason), missed (no record while the worker ran) or off (the worker was not running at the slot);
+then the runtime statistics per kind (runs, p50 / p95 / max execution time over the tries, p95 start delay). Exit
+code 1 when a slot was missed, skipped or off (``--strict``: also when a scheduled run failed).
 """
 
 from __future__ import annotations
@@ -53,14 +53,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Schedule {start.astimezone(ist):%d %b %Y %H:%M} to {end.astimezone(ist):%d %b %Y %H:%M} IST "
           f"({args.days:g} d), {len(rows)} job records")  # fmt: skip
     print(f"{'kind':<22} {'schedule':<24} {'slots':>6} {'done':>6} {'failed':>6} {'running':>7} {'skipped':>7} "
-          f"{'missed':>6}")  # fmt: skip
+          f"{'missed':>6} {'off':>6}")  # fmt: skip
     failed = False
     for kind in kinds:
         a = table[kind.name]
         c = a.counts
         print(f"{kind.name:<22} {a.schedule:<24} {a.expected:>6} {c['done']:>6} {c['failed']:>6} {c['running']:>7} "
-              f"{c['skipped']:>7} {c['missed']:>6}")  # fmt: skip
-        failed |= not a.clean or (args.strict and c["failed"] > 0)
+              f"{c['skipped']:>7} {c['missed']:>6} {c['off']:>6}")  # fmt: skip
+        # Acceptance of #287 counts the slots the worker was off for as well: the worker has to run throughout.
+        failed |= not a.clean or c["off"] > 0 or (args.strict and c["failed"] > 0)
     for kind in kinds:
         problems = table[kind.name].problems
         if not problems:

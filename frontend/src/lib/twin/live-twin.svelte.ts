@@ -116,7 +116,7 @@ export const TICK_MS = 1_000;
 /** Hot-metal samples read for the thermal charts, h. */
 export const HOT_METAL_HOURS = 72;
 
-/** Default Step 2 run of "Run now": page 11's defaults with STRATA-ω. */
+/** Default fixed-production run of "Run now": page 11's defaults with STRATA-ω. */
 export const RUN_NOW: Schemas['OptimiserRunParams'] = {
 	mode: 'step2',
 	omega_mode: 'strata',
@@ -391,7 +391,7 @@ export class LiveTwin {
 		return this.#api.window(end);
 	}
 
-	/** Start a Step 2 run with page 11's defaults (`RUN_NOW`); the caller follows the returned job. */
+	/** Start a fixed-production run with page 11's defaults (`RUN_NOW`); the caller follows the returned job. */
 	startRun(): Promise<Schemas['RunSubmitted']> {
 		return this.#api.startRun(RUN_NOW);
 	}

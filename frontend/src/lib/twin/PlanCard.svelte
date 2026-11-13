@@ -2,7 +2,7 @@
 @component
 Zone 6 of the Live Twin (SV-1.9): the latest optimiser plan (`/api/optimiser/latest`, re-read on `job.done` of an
 optimiser job): time, trigger, mode and ω mode; ferrous blend and flux; coke ±σ, fuel rate, cost and its difference
-to today's charged blend; certainty tier; the three largest critical assumptions. Run now starts a Step 2 run
+to today's charged blend; certainty tier; the three largest critical assumptions. Run now starts a fixed-production run
 (supervisors; progress of the job on the stream); Accept and Reject record the shift's decision (supervisors).
 -->
 <script lang="ts">
@@ -78,7 +78,7 @@ to today's charged blend; certainty tier; the three largest critical assumptions
 		<EmptyState
 			compact
 			title="No plan stored yet"
-			message="Step 2 runs at 06:15, 14:15 and 22:15; start one now."
+			message="Fixed-production plans run at 06:15, 14:15 and 22:15; start one now."
 		/>
 	{:else if plan}
 		<dl class="meta">

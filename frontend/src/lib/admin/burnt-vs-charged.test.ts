@@ -3,6 +3,9 @@ import {
 	band95,
 	blandAltman,
 	closureSeries,
+	excludedNote,
+	excludedRuns,
+	excludedRunText,
 	isBasis,
 	lagBars,
 	lagLabel,
@@ -11,6 +14,7 @@ import {
 	leakSeries,
 	modelText,
 	monthLabel,
+	nextShiftKey,
 	periodText,
 	ratioText,
 	recentMark,
@@ -23,6 +27,7 @@ import {
 	windowStats,
 	type AgreementStats,
 	type BurntVsCharged,
+	type BvcExcluded,
 	type BvcLag,
 	type BvcSplit,
 	type LeakCheck,
@@ -321,5 +326,48 @@ describe('leak water', () => {
 		]);
 		expect(recentMark(leak())).toEqual([{ t: T0, label: 'Recent days' }]);
 		expect(recentMark(null)).toEqual([]);
+	});
+});
+
+describe('shifts left out as data errors', () => {
+	const fuel = (shift: string, kg: number): BvcExcluded => ({
+		shift,
+		day: shift.slice(0, 10),
+		reason: `fuel record ${kg} kg/tHM dry, outside 470-640 kg/tHM`,
+		fuel_kg_thm: kg
+	});
+	const rows: BvcExcluded[] = [
+		fuel('2025-11-30_C', 455),
+		fuel('2025-12-01_A', 441),
+		{ shift: '2026-10-07_C', day: '2026-10-07', reason: 'ore moisture 129.7 % above 15 %', fuel_kg_thm: 560 },
+		fuel('2026-10-16_B', 920),
+		fuel('2026-10-16_C', 819),
+		fuel('2026-10-17_A', 792)
+	];
+
+	it('steps through the shift grid', () => {
+		expect(nextShiftKey('2026-10-16_B')).toBe('2026-10-16_C');
+		expect(nextShiftKey('2026-10-16_C')).toBe('2026-10-17_A');
+		expect(nextShiftKey('2025-12-31_C')).toBe('2026-01-01_A');
+	});
+
+	it('groups consecutive shifts of one cause', () => {
+		const runs = excludedRuns(rows);
+		expect(runs.map((r) => [r.first, r.last, r.shifts, r.cause])).toEqual([
+			['2025-11-30_C', '2025-12-01_A', 2, 'fuel record'],
+			['2026-10-07_C', '2026-10-07_C', 1, 'ore moisture'],
+			['2026-10-16_B', '2026-10-17_A', 3, 'fuel record']
+		]);
+		expect(excludedRunText(runs[2]!)).toBe(
+			'16 Oct 2026 B – 17 Oct 2026 A, 3 shifts, fuel record 792–920\u00a0kg/tHM'
+		);
+		expect(excludedRunText(runs[1]!)).toBe('7 Oct 2026 C, one shift, ore moisture');
+		expect(excludedRuns(null)).toEqual([]);
+	});
+
+	it('says what was left out in one line', () => {
+		expect(excludedNote([])).toBeNull();
+		expect(excludedNote(rows)).toMatch(/^6 shifts with a data error are left out of both bases/);
+		expect(excludedNote(rows.slice(0, 1))).toMatch(/^1 shift with a data error/);
 	});
 });

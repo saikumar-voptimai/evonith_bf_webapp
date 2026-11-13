@@ -46,10 +46,10 @@ class BmoRunSubmitted(BaseModel):
 # ---------------------------------------------------------------------------------------- plan (SV-7.4, #327)
 @router.get("/plan", response_model=BmoPlanBoard, summary="The Blend Mix Optimiser plan board")
 async def plan_board(store: Annotated[TwinStore, Depends(twin_store)]) -> BmoPlanBoard:
-    """The Step 2 runs the page opens on: the implied production (latest ok Step 1 run), the shift's scheduled STRATA-ω
-    run of the last day, the latest ok Step 2 run of any kind and the last day's Step 2 runs, each with the decision
-    that applies. The plan of a run is GET /api/optimiser/runs/{run_id}/result; a decision is
-    POST /api/optimiser/runs/{run_id}/decision (supervisor)."""
+    """The fixed-production runs the page opens on: the implied production (latest ok cheapest-production run), the
+    shift's scheduled STRATA-ω run of the last day, the latest ok fixed-production run of any kind and the last day's
+    fixed-production runs, each with the decision that applies. The plan of a run is
+    GET /api/optimiser/runs/{run_id}/result; a decision is POST /api/optimiser/runs/{run_id}/decision (supervisor)."""
     return await asyncio.to_thread(bmo_plan.board, store)
 
 
@@ -61,10 +61,11 @@ async def start_plan_run(
     jobs: Annotated[JobStore, Depends(job_store)],
     body: Annotated[BmoPlanRunParams | None, Body()] = None,
 ) -> BmoRunSubmitted:
-    """Queue ``optimiser.run`` with Fixed-ω on the day's calibration and the live yard: Step 2 at the given production
-    (default: the current one) with page 9's slag window and charging limits, or Step 1 to recompute the implied
-    production (the shift's scheduled run refines it). Follow the job with GET /api/optimiser/runs/{job id} or the
-    ``job.done`` event. A request equal to a queued or running one returns it."""
+    """Queue ``optimiser.run`` with Fixed-ω on the day's calibration and the live yard: fixed production at the given
+    production (default: the current one) with page 9's slag window and charging limits, or the cheapest production
+    level to recompute the implied production (the shift's scheduled run refines it). Follow the job with
+    GET /api/optimiser/runs/{job id} or the ``job.done`` event. A request equal to a queued or running one returns
+    it."""
     principal: Principal = request.state.principal
     params = bmo_plan.run_params(body or BmoPlanRunParams())
     try:

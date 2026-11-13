@@ -96,7 +96,8 @@ def test_a_worker_started_after_a_slot_catches_it_up(redis_url, monkeypatch) -> 
             assert skipped.scheduled_for == older and "was not running" in skipped.error
             assert ran == [caught.id]
             audit = sch.audit(await store.list(100), [kind], older, now)[kind.name]
-            assert audit.counts["done"] == 1 and audit.counts["skipped"] == 1
+            # the worker was not running at the older slot: off, not skipped (services.schedule.OFF_PREFIX)
+            assert audit.counts["done"] == 1 and audit.counts["off"] == 1 and audit.counts["skipped"] == 0
             await worker.close()
             task.cancel()
             alive = await runtime.read_alive(pool)  # written again at shutdown

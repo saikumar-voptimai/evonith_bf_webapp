@@ -7,7 +7,7 @@
 import { api, type Schemas } from '../api/client.ts';
 import type { StatusKind } from '../components/status.ts';
 import { formatNumber, formatQuantity, NO_VALUE } from '../format/number.ts';
-import { formatDuration } from '../time/format.ts';
+import { formatDuration, istDateTime } from '../time/format.ts';
 
 export type JobHistory = Schemas['JobHistory'];
 export type JobRow = Schemas['JobHistoryRow'];
@@ -21,6 +21,7 @@ export type JobStats = Schemas['JobStatsResponse'];
 export type KindStats = Schemas['KindStats'];
 export type ScheduleAudit = Schemas['ScheduleAuditResponse'];
 export type KindSchedule = Schemas['KindSchedule'];
+export type WorkerOutage = Schemas['WorkerOutage'];
 export type JobStatus = JobRow['status'];
 export type SourceState = SourceRow['state'];
 export type LimitState = HostHealth['state'];
@@ -232,9 +233,12 @@ export interface KindRow {
 	failed: number;
 	cancelled: number;
 	running: number;
+	/** Slots skipped while the worker ran (the previous job still active); the audit's count when it has the kind. */
 	skipped: number;
-	/** Slots without any record; null for kinds without a schedule. */
+	/** Slots without any record while the worker ran; null for kinds without a schedule. */
 	missed: number | null;
+	/** Slots the worker could not serve because it was not running; null for kinds without a schedule. */
+	off: number | null;
 	p50: number | null;
 	p95: number | null;
 	max: number | null;
@@ -242,7 +246,7 @@ export interface KindRow {
 	lastStatus: string | null;
 	lastFinishedAt: string | null;
 	nextSlot: string | null;
-	/** No slot missed or skipped; null without a schedule. */
+	/** No slot missed or skipped while the worker ran; null without a schedule. */
 	clean: boolean | null;
 }
 
@@ -261,8 +265,9 @@ export function kindRows(stats: JobStats | null, audit: ScheduleAudit | null): K
 				failed: k.failed,
 				cancelled: k.cancelled,
 				running: k.running,
-				skipped: k.skipped,
+				skipped: s ? s.skipped : k.skipped,
 				missed: s ? s.missed : null,
+				off: s ? (s.off ?? 0) : null,
 				p50: k.runtime_p50_s ?? null,
 				p95: k.runtime_p95_s ?? null,
 				max: k.runtime_max_s ?? null,
@@ -276,14 +281,44 @@ export function kindRows(stats: JobStats | null, audit: ScheduleAudit | null): K
 		.filter((k) => k.runs > 0 || k.schedule !== null);
 }
 
-export function scheduleStatus(row: Pick<KindRow, 'clean' | 'missed' | 'skipped'>): StatusWord | null {
+/**
+ * Slots of a scheduled kind: a warning only for what went wrong while the worker ran (missed or skipped slots); slots
+ * the worker was not running for are a neutral "Worker off", since they say nothing about the job.
+ */
+export function scheduleStatus(
+	row: Pick<KindRow, 'clean' | 'missed' | 'skipped'> & Partial<Pick<KindRow, 'off'>>
+): StatusWord | null {
 	if (row.clean === null) return null;
-	if (row.clean) return { kind: 'ok', label: 'Clean' };
+	const off = row.off ?? 0;
+	if (row.clean) {
+		return off
+			? { kind: 'stale', label: `Worker off · ${formatNumber(off)} slot${off === 1 ? '' : 's'}` }
+			: { kind: 'ok', label: 'Clean' };
+	}
 	const parts = [
-		row.missed ? `${row.missed} missed` : '',
-		row.skipped ? `${row.skipped} skipped` : ''
+		row.missed ? `${formatNumber(row.missed)} missed` : '',
+		row.skipped ? `${formatNumber(row.skipped)} skipped` : ''
 	].filter(Boolean);
 	return { kind: 'warning', label: parts.join(', ') || 'Gaps' };
+}
+
+/**
+ * One line on the periods the worker was not running (`GET /api/jobs/schedule` `worker_off`): total hours, the number
+ * of periods and the latest; null when it ran throughout.
+ */
+export function outageNote(audit: Pick<ScheduleAudit, 'worker_off'> | null): string | null {
+	const off = audit?.worker_off ?? [];
+	if (!off.length) return null;
+	const hours = off.reduce((sum, o) => sum + o.hours, 0);
+	const latest = off[0]!;
+	const span = latest.ongoing
+		? `down since ${istDateTime(new Date(latest.start))} IST`
+		: `latest ${istDateTime(new Date(latest.start))} to ${istDateTime(new Date(latest.end))} IST`;
+	const periods = off.length === 1 ? 'one period' : `${formatNumber(off.length)} periods`;
+	return (
+		`The worker was not running for ${formatQuantity(hours, 1, 'h')} in this period (${periods}; ${span}). ` +
+		'Slots in those periods are counted as worker off, not as missed or skipped.'
+	);
 }
 
 /** A p95 above 80 % of the time limit warns that the kind may time out. */

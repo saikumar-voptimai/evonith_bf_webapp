@@ -22,6 +22,7 @@
 		limitStatus,
 		memoryText,
 		nearTimeout,
+		outageNote,
 		overallStatus,
 		periodLabel,
 		PERIODS,
@@ -202,6 +203,7 @@
 	const diskState = $derived(limitStatus(disk?.state));
 	const hotState = $derived(limitStatus(hot?.state));
 	const kinds = $derived(kindRows(stats, audit));
+	const offNote = $derived(outageNote(audit));
 	const rows = $derived(history?.rows ?? []);
 	const filtered = $derived(!!(view.kind || view.status));
 	const kindOptions = $derived(
@@ -539,7 +541,7 @@
 		title="Job kinds"
 		note="Runs, failures and run times (p50 and p95 over the tries) of the {periodLabel(
 			view.days
-		).toLowerCase()}; scheduled kinds with their missed and skipped slots."
+		).toLowerCase()}; scheduled kinds with the slots missed or skipped while the worker ran, and those it was off for."
 		updatedAt={jobsUpdatedAt}
 		busy={jobsLoading && !!stats}
 		flush
@@ -554,6 +556,9 @@
 					compact
 				/>
 			</div>
+		{/if}
+		{#if offNote}
+			<p class="off-note vo-muted small">{offNote}</p>
 		{/if}
 		<DataTable
 			caption="Job kinds with runs, failures, run times and schedule"
@@ -709,6 +714,10 @@
 		align-items: start;
 	}
 	.error {
+		padding: var(--vo-space-3) var(--vo-space-5) 0;
+	}
+	.off-note {
+		margin: 0;
 		padding: var(--vo-space-3) var(--vo-space-5) 0;
 	}
 	.host {

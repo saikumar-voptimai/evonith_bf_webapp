@@ -1,6 +1,6 @@
 <!--
 @component
-Recent optimiser runs, newest first (the scheduled Step 2 and Step 1 runs and the runs started here or on the Live
+Recent optimiser runs, newest first (the scheduled fixed-production and cheapest-production runs and the runs started here or on the Live
 Twin): mode, shaft efficiency, status, finish time, production and cost. Choosing one shows its result.
 -->
 <script lang="ts">
@@ -31,7 +31,7 @@ Twin): mode, shaft efficiency, status, finish time, production and cost. Choosin
 <Panel
 	title="Runs"
 	icon={History}
-	note="Scheduled runs at 06:15 / 14:15 / 22:15 (Step 2) and 06:30 / 14:30 / 22:30 (Step 1)"
+	note="Scheduled runs: fixed production at 06:15 / 14:15 / 22:15, cheapest production level at 06:30 / 14:30 / 22:30"
 	updatedAt={newest}
 	warnAfterMin={8 * 60}
 	staleAfterMin={16 * 60}

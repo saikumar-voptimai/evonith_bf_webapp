@@ -3,8 +3,8 @@
  * (`GET /api/optimiser/runs/{id}/result`), the reference (`GET /api/optimiser/reference`) and the operator inputs
  * (`GET /api/operator-inputs`) to what the page shows, and from the form to the run request
  * (`POST /api/optimiser/runs`). The layout follows page 11 (`ui/burden_optimiser/sections.py`): overview strip, cost,
- * fuel, slag and charging panels with the plant bands, the blend table beside a donut, the Step 1 frontier, the value
- * of limits. `optimiser.test.ts` checks the builders against page 11's figures on a recorded run
+ * fuel, slag and charging panels with the plant bands, the blend table beside a donut, the production frontier, the
+ * value of limits. `optimiser.test.ts` checks the builders against page 11's figures on a recorded run
  * (`fixtures/result.json`, `scripts/export_chart_fixtures.py`).
  */
 import type { Schemas } from '../api/client.ts';
@@ -114,7 +114,7 @@ export const THERMAL_FIELDS: FieldSpec[] = [
 	}
 ];
 
-/** Controls held for a Step 2 plan (`OptimiserSettings`). */
+/** Controls held for a fixed-production plan (`OptimiserSettings`). */
 export const CONTROL_FIELDS: FieldSpec[] = [
 	{ key: 'hbt_c', label: 'Hot-blast temperature', unit: '°C', digits: 0, step: 5, min: 900, max: 1300 },
 	{
@@ -167,7 +167,10 @@ export const SLAG_LIMIT_FIELDS: FieldSpec[] = [
 	{ key: 'mgo_al2o3_min', label: 'MgO/Al₂O₃, min', unit: '', digits: 3, step: 0.005, min: 0.1, max: 1 }
 ];
 
-/** Blast and gas limits of Step 1 and maximum production (`OptimiserLimits`), with the key of today's median. */
+/**
+ * Blast and gas limits of the cheapest production level and maximum production (`OptimiserLimits`), with the key of
+ * today's median.
+ */
 export const PROCESS_LIMIT_FIELDS: (FieldSpec & { today?: keyof Schemas['TodayPoint'] })[] = [
 	{
 		key: 'blast_max_nm3h',
@@ -366,7 +369,8 @@ function setValues(values: Record<string, number | null>, specs: FieldSpec[]): R
 
 /**
  * The run request of the form: only the values the operator set (the rest stay page 11's defaults); controls are held
- * in Step 2 only (the production modes search them), the blast and gas limits apply to Step 1 and maximum production.
+ * at a fixed production only (the production modes search them), the blast and gas limits apply to the cheapest
+ * production level and maximum production.
  */
 export function runParams(form: RunForm): RunParams {
 	const process = form.mode !== 'step2';
@@ -440,8 +444,8 @@ export function caseValue(c: RunCase | null | undefined, key: string): number | 
 
 // ------------------------------------------------------------------------------------------------ results
 
-/** The plan a result reports and what it is compared with: today's charged blend (Step 2) and the ore + flux-only
- * plan when it differs (page 11's `render_plan_tabs`). */
+/** The plan a result reports and what it is compared with: today's charged blend (fixed production) and the ore +
+ * flux-only plan when it differs (page 11's `render_plan_tabs`). */
 export function comparisons(result: OptimiserResult): { label: string; plan: PlanView }[] {
 	const out: { label: string; plan: PlanView }[] = [];
 	const plan = result.plan;
@@ -920,7 +924,7 @@ export function donutOf(plan: PlanView): { segments: DonutSegment[]; ferrousTd: 
 	return { segments, ferrousTd };
 }
 
-// ------------------------------------------------------------------------------------------------ Step 1
+// --------------------------------------------------------------------------------- cheapest production level
 
 export interface FrontierView {
 	series: ScatterSeries[];
@@ -930,7 +934,7 @@ export interface FrontierView {
 	extraRsPerT: number | null;
 }
 
-/** The Step 1 frontier (page 11's `render_frontier`): cost against production, the cheapest and highest points. */
+/** The production frontier (page 11's `render_frontier`): cost against production, the cheapest and highest points. */
 export function frontierView(result: OptimiserResult): FrontierView {
 	const points = (result.frontier ?? []).map((p): [number, number] => [p.production_t_d, p.cost_rs_thm]);
 	const best = result.mode === 'step1' ? (result.plan ?? null) : null;
@@ -969,7 +973,7 @@ export function frontierView(result: OptimiserResult): FrontierView {
 
 // ------------------------------------------------------------------------------------------------ limits
 
-/** Value of limits (Step 2): the changes that save at least 0.5 Rs/tHM, and the names of the others. */
+/** Value of limits (fixed production): the changes that save at least 0.5 Rs/tHM, and the names of the others. */
 export function valueOfLimits(result: OptimiserResult): {
 	useful: OptimiserResult['value_of_limits'];
 	rest: string[];

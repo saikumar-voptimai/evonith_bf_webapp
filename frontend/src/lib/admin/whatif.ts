@@ -302,7 +302,7 @@ export function strataSummary(
 				.sort((a, b) => b[1] - a[1])
 				.map(([id, v]) => `${names.get(id) ?? id} ${formatQuantity(v, 1, '%')}`)
 				.join(', ')
-		: 'Cheapest blend (Step 2)';
+		: 'Cheapest blend at the production';
 	const set = setLevers(inputs?.settings);
 	const controls = STRATA_SETTINGS.filter((s) => isNumber(set[s.key])).map(
 		(s) => `${s.label} ${quantity(set[s.key] as number, s.digits, s.unit)}`

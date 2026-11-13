@@ -124,7 +124,7 @@ describe('what-if levers (SV-4.3, #306)', () => {
 		expect(strataSummary({ blend: { sinter_sp_02: 100 }, settings: { pci_kg_thm: 200 } }, names)).toBe(
 			`Forced blend: Sinter 100.0${NBSP}%; PCI as injected 200.0${NBSP}kg/tHM`
 		);
-		expect(strataSummary({ blend: null, settings: null }, names)).toBe('Cheapest blend (Step 2)');
+		expect(strataSummary({ blend: null, settings: null }, names)).toBe('Cheapest blend at the production');
 	});
 
 	it('selects at most four cases', () => {

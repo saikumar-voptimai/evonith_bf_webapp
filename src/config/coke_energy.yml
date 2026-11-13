@@ -61,6 +61,14 @@ coke_energy:
   # moisture rule catches the same error class generally.
   bad_shifts: ["2026-10-07_C"]
   max_ore_moisture_pct: 15.0
+  # A shift whose charge record gives a dry fuel rate (coke + nut coke + PCI per tHM) outside this band is a record
+  # error, not a furnace state, and is left out like the shifts above (14 Nov 2026). The balanced shifts of Aug 2025 -
+  # Nov 2026 lie at 489-632 kg/tHM; the known record errors lie outside: PCI recorded at about 40 t/h after the
+  # stop of 15 Oct 2026 (16 Oct B - 21 Oct B, 790-920 kg/tHM; raw burnt coke 31-60 kg/tHM), the charged coke of
+  # 31 Oct - 5 Dec 2025 (140-220 kg/tHM against 250-280 in the DPR; 340-460 kg/tHM) and 2 Apr 2026 C (PCI 291
+  # against 138 kg/tHM in the DPR; 651 kg/tHM). With them in, the shift CCC of burnt against charged coke was 0.32
+  # and the raw closure 104.3 %; without them 0.76 and 100.4 %. null = no check.
+  fuel_rate_valid_kg_thm: [470, 640]
 
   # Slag temperature above hot metal (plant practice, 15 Oct 2026): about 30 degC for a low-Al2O3 slag (~16 %), rising
   # with Al2O3 to about 60 degC. Linear between the two points, flat outside them; each shift uses its measured slag

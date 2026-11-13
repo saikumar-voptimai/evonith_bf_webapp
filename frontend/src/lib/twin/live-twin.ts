@@ -677,7 +677,7 @@ const CERTAINTY_KIND: Record<string, StatusKind> = {
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : {});
 
-/** The plan a run reports (as `services.optimiser.plan_of`): Step 2 with fuel, Step 1 the cheapest level, else the maximum. */
+/** The plan a run reports (as `services.optimiser.plan_of`): fixed production with fuel, the cheapest level, else the maximum. */
 export function planOf(result: Obj): Obj {
 	const mode = result['mode'];
 	if (mode === 'fixed') return obj(result['with_fuel']);

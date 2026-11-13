@@ -2,7 +2,7 @@
 @component
 A plan as page 11 lays it out (`render_plan_summary`): the plan panel with its feasibility and certainty, the line an
 operator can act on and the overview strip, then the material through the process in four panels: cost, fuel, slag
-(with the plant's own p5–p95 bands of the basicity ratios) and charging. In Step 2 the panels show the change from
+(with the plant's own p5–p95 bands of the basicity ratios) and charging. At a fixed production the panels show the change from
 today's charged blend modelled at the same output. With the page's live model the plan panel also states how the
 energy model has done on the furnace (the shift record's bias and typical error), the plan's coke next to the coke
 charged now and the coke burnt and modelled over the last 8 h, the time of each live input, and, for an accepted
@@ -44,7 +44,7 @@ plan, when its first charge reaches the cohesive zone and the raceways (user dec
 		reference: Reference | null;
 		/** Finished time of the run. */
 		updatedAt: Date | null;
-		/** Plan switch (Step 1: cheapest or highest output), shown in the plan panel's header. */
+		/** Plan switch (cheapest production level: cheapest or highest output), shown in the plan panel's header. */
 		actions?: Snippet;
 		/** The page's live model: the model's record and the furnace now beside the plan. */
 		live?: LiveModel;

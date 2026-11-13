@@ -18,6 +18,7 @@ Method: docs/burnt_vs_charged_coke.md.
 		blandAltman,
 		closureSeries,
 		DEFAULT_WINDOW,
+		excludedNote,
 		HEADLINE_WINDOWS,
 		isBasis,
 		KG,
@@ -180,6 +181,7 @@ Method: docs/burnt_vs_charged_coke.md.
 	const lagChart = $derived(lagBars(lag));
 
 	const closure = $derived(data?.closure ?? null);
+	const excludedText = $derived(excludedNote(data?.excluded));
 	const cumulative = $derived(closureSeries(closure));
 	const months = $derived([...(closure?.months ?? [])].reverse());
 	const monthColumns: Column<BvcClosureMonth>[] = [
@@ -350,6 +352,9 @@ Method: docs/burnt_vs_charged_coke.md.
 							: 'No raw burnt coke'}
 					/>
 				</KpiStrip>
+				{#if excludedText}
+					<p class="pad note vo-muted">{excludedText}</p>
+				{/if}
 				{#snippet footer()}
 					{@render rebuildButton()}
 				{/snippet}

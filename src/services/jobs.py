@@ -71,7 +71,7 @@ class OptimiserSettings(BaseModel):
 class OptimiserLimits(BaseModel):
     """Limits of a run that replace the fact register's defaults (ASM-11/12/13, FLOW-12) and the operator's saved slag
     limits and charging. The fuel-rate band (BAND-01) is the register's and cannot be changed here. Unset fields keep
-    the default; the process rows apply to Step 1 and maximum production."""
+    the default; the process rows apply to the cheapest production level and maximum production."""
 
     model_config = {"extra": "forbid"}
 
@@ -129,8 +129,9 @@ class OptimiserRunParams(BaseModel):
     mode: Literal["step1", "step2", "max_production"] = Field(
         ...,
         description=(
-            "step1: cheapest production level and the frontier; step2: cheapest blend at a fixed production, with fuel "
-            "in the objective and the ore + flux-only answer (page 9's objective); max_production"
+            "step1: cheapest production level and the frontier; step2: fixed production, the cheapest blend at a "
+            "production target with fuel in the objective and the ore + flux-only answer (page 9's objective); "
+            "max_production: maximum production. The mode names step1 / step2 are kept as identifiers only"
         ),
     )
     omega_mode: Literal["strata", "fixed"] = Field(
@@ -140,7 +141,7 @@ class OptimiserRunParams(BaseModel):
     )
     production_t_d: float | None = Field(
         None, ge=1500, le=3000,
-        description="Step 2 hot-metal target (default: the configured target of 2,270 t/d), t/d",
+        description="Hot-metal target of a fixed-production run (default: the configured target of 2,270 t/d), t/d",
     )
     certainty: Literal["low", "any", "medium", "high"] = Field(
         "low", description="STRATA-ω certainty filter: low excludes Investigate plans (page 11's default)"
@@ -438,7 +439,7 @@ class StrataCaseParams(BaseModel):
     blend: dict[str, float] | None = Field(
         None,
         description="Forced ferrous blend: material id → share of the wet ferrous burden, % (renormalised to 100); "
-        "null = the cheapest blend at the production (Step 2)",
+        "null = the cheapest blend at the production (fixed production)",
     )
     settings: OptimiserSettings | None = Field(None, description="Controls and thermal targets instead of the basis")
 
@@ -534,15 +535,16 @@ register(
         name="optimiser.run",
         title="Optimiser run",
         role="supervisor",
-        # Step 1 with STRATA-ω: 18.4 min on the development host (offline case, both oversize options, 670 network
-        # solves); the AGX Orin may need twice that until the solves run in parallel (SV-1.8)
+        # Cheapest production level with STRATA-ω: 18.4 min on the development host (offline case, both oversize
+        # options, 670 network solves); the AGX Orin may need twice that until the solves run in parallel (SV-1.8)
         timeout_s=3600,
         max_tries=1,
         params=OptimiserRunParams,
         description=(
-            "Runs the Burden & Fuel Optimiser (Step 1, Step 2 with and without fuel, maximum production; Fixed-ω or "
-            "STRATA-ω) with page 11's defaults (live yard and calibration, today's controls) or the yard, calibration, "
-            "controls and limits of the request in the model-solve pool and stores the plan in twin.optimiser_run "
+            "Runs the Burden & Fuel Optimiser (cheapest production level, fixed production with and without fuel, "
+            "maximum production; Fixed-ω or STRATA-ω) with page 11's defaults (live yard and calibration, today's "
+            "controls) or the yard, calibration, controls and limits of the request in the model-solve pool and stores "
+            "the plan in twin.optimiser_run "
             "(SV-1.6, SV-3.2)."
         ),
     )
@@ -550,21 +552,24 @@ register(
 register(
     JobKind(
         name="forecast.si",
-        title="HM Si forecast",
+        title="HM Si forecast (Streamlit Blend Mix Optimiser)",
         role="supervisor",
         timeout_s=150,
         max_tries=1,  # the next run is 5 min later
         schedule=(None, set(range(0, 60, 5))),
         description=(
-            "Issues the hot-metal Si path (Now, +1, +2, +3 h) at the current origin into the Si ledger and matches "
-            "matured outcomes to the raw samples (SV-1.5)."
+            "Issues the hot-metal Si path (Now, +1, +2, +3 h) into the Si ledger once per origin, the full IST hour "
+            "(the other runs of the hour find it issued and write nothing), and matches matured outcomes to the raw "
+            "samples (SV-1.5). Read only by the Streamlit Blend Mix Optimiser (page 9: the Si tile and the hot-metal "
+            "Si of its LP runs); the Svelte app no longer shows it. Page 9 issues the forecast itself when the worker "
+            "has not tried for 15 min (setting_bmo.yml, forecast_issuer: auto)."
         ),
     )
 )
 register(
     JobKind(
         name="forecast.charged_coke",
-        title="Charged-coke forecast",
+        title="Charged-coke forecast (Streamlit Blend Mix Optimiser)",
         role="supervisor",
         timeout_s=300,
         max_tries=5,  # HH:07 to HH:27 while the build of the hour is not published
@@ -572,7 +577,8 @@ register(
         schedule=(None, {7}),
         description=(
             "Fetches the hourly dataset when the local build predates this hour and issues the 4-h charged-coke "
-            "block for the latest complete row into the charged-coke ledger (SV-1.5)."
+            "block for the latest complete row into the charged-coke ledger (SV-1.5); read by the Streamlit Blend Mix "
+            "Optimiser (page 9). The hourly dataset it refreshes is read by every model."
         ),
     )
 )
@@ -629,30 +635,30 @@ register(
 register(
     JobKind(
         name="optimiser.step2",
-        title="Scheduled Step 2",
+        title="Scheduled fixed-production plan",
         role="supervisor",
         timeout_s=900,
         max_tries=3,  # 06:15 to 06:25 while the yard or the calibration falls back to the reference
         retry_delay_s=300,
         schedule=({6, 14, 22}, {15}),
         description=(
-            "Step 2 at the current production (latest twin window) with STRATA-ω and Fixed-ω in parallel: live yard "
-            "and prices, the day's calibration; two runs in twin.optimiser_run (SV-1.7)."
+            "Fixed production at the configured target (2,270 t/d) with Fixed-ω and STRATA-ω in parallel: live yard "
+            "and prices, the day's calibration; two runs in twin.optimiser_run (SV-1.7). Kind name optimiser.step2."
         ),
     )
 )
 register(
     JobKind(
         name="optimiser.step1",
-        title="Scheduled Step 1",
+        title="Scheduled cheapest-production plan",
         role="supervisor",
         timeout_s=3600,  # as optimiser.run
         max_tries=2,
         retry_delay_s=300,
         schedule=({6, 14, 22}, {30}),
         description=(
-            "Step 1 (cheapest production level) with STRATA-ω: live yard and prices, the day's calibration; one run "
-            "in twin.optimiser_run (SV-1.7)."
+            "Cheapest production level and its frontier with STRATA-ω: live yard and prices, the day's calibration; "
+            "one run in twin.optimiser_run (SV-1.7). Kind name optimiser.step1."
         ),
     )
 )

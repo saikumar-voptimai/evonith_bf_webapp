@@ -20,7 +20,7 @@ from api.errors import ApiError
 from api.live import job_store, live_state
 from api.store import optional_twin_store
 from data.twin.repositories import TwinStore
-from services import job_audit, jobstats, schedule
+from services import job_audit, jobstats, schedule, system_health
 from services.auth import Principal, Role, has_role
 from services.events import JobDoneData
 from services.jobs import CATALOG, QUEUE_NAME, RECORD_TTL_S, JobRecord, JobStore, UnknownJobKind
@@ -77,7 +77,7 @@ class JobStatsResponse(BaseModel):
 
 class SlotProblem(BaseModel):
     slot: datetime = Field(..., description="Schedule slot (UTC)")
-    state: Literal["failed", "cancelled", "running", "skipped", "missed"]
+    state: Literal["failed", "cancelled", "running", "skipped", "missed", "off"]
     job_id: str | None = None
     reason: str | None = None
 
@@ -91,18 +91,29 @@ class KindSchedule(BaseModel):
     failed: int = Field(..., description="Slots whose job failed, count")
     cancelled: int = Field(..., description="Slots whose job a user cancelled, count")
     running: int = Field(..., description="Slots whose job is still queued or running, count")
-    skipped: int = Field(..., description="Slots recorded as skipped (worker not running, previous job active), count")
-    missed: int = Field(..., description="Slots without any job record, count")
-    clean: bool = Field(..., description="No slot missed or skipped")
+    skipped: int = Field(..., description="Slots skipped while the worker ran (the previous job still active), count")
+    missed: int = Field(..., description="Slots without any job record while the worker ran, count")
+    off: int = Field(0, description="Slots not served because the worker was not running, count")
+    clean: bool = Field(..., description="No slot missed or skipped while the worker ran")
     next_slot: datetime | None = Field(None, description="Next scheduled time (UTC)")
     problems: list[SlotProblem] = Field(..., description="The latest 50 slots not done, oldest first")
+
+
+class WorkerOutage(BaseModel):
+    start: datetime = Field(..., description="Last activity of the worker before it stopped (UTC), or the period start")
+    end: datetime = Field(..., description="Next start of the worker (UTC), or the period end while it is down")
+    hours: float = Field(..., description="Length within the period, h")
+    ongoing: bool = Field(False, description="The worker is down now")
 
 
 class ScheduleAuditResponse(BaseModel):
     start: datetime = Field(..., description="Start of the period (UTC)")
     end: datetime = Field(..., description="End of the period (UTC); slots of the last minute are not counted")
     source: Literal["twin.jobs", "redis"] = Field(..., description="Where the records were read")
-    clean: bool = Field(..., description="No slot of any kind missed or skipped in the period")
+    clean: bool = Field(..., description="No slot of any kind missed or skipped in the period while the worker ran")
+    worker_off: list[WorkerOutage] = Field(
+        default_factory=list, description="Periods the worker was not running, within the period, newest first"
+    )
     kinds: list[KindSchedule]
 
 
@@ -177,23 +188,47 @@ async def stats(
     return JobStatsResponse(start=start, end=stop, source=source, kinds=[KindStats(**vars(v)) for v in table.values()])
 
 
+async def _worker_down_since(request: Request, now: datetime) -> datetime | None:
+    """The last heartbeat of a worker that is down now; None while it beats or when that is unknown."""
+    live = getattr(request.app.state, "live", None)
+    row = await system_health.worker_row(getattr(live, "redis", None), now=now)
+    return row["last_at"] if row["state"] == "down" else None
+
+
+def _outage_rows(off: list[schedule.Interval], start: datetime, stop: datetime, down: bool) -> list[WorkerOutage]:
+    rows = []
+    for a, b in reversed(off):
+        a, b = max(a, start), min(b, stop)
+        if a < b:
+            rows.append(
+                WorkerOutage(start=a, end=b, hours=(b - a).total_seconds() / 3600.0, ongoing=down and b >= stop)
+            )
+    return rows
+
+
 @router.get("/schedule", response_model=ScheduleAuditResponse, summary="Audit of the schedule")
 async def schedule_audit(
+    request: Request,
     jobs: Annotated[JobStore | None, Depends(optional_job_store)],
     twin: Annotated[TwinStore | None, Depends(optional_twin_store)],
     days: Annotated[float, Query(gt=0, le=92, description="Length of the period, d")] = 14,
     end: Annotated[datetime | None, Query(description="End of the period (default now)")] = None,
 ) -> ScheduleAuditResponse:
     """For every scheduled kind, the slots of the period and what became of each: done, failed, cancelled, still
-    running, skipped (with the reason) or missed (no record). Clean = no slot missed or skipped."""
+    running, skipped (with the reason), missed (no record) or off (the worker was not running). Clean = no slot missed
+    or skipped while the worker ran; the periods the worker was off are listed apart."""
     start, stop = _period(days, end, "twin.jobs" if twin is not None else "redis")
     rows, source = await _records(jobs, twin, start, stop)
     now = datetime.now(UTC)
     stop = min(stop, now - schedule.SETTLE)
+    down_since = await _worker_down_since(request, now)
     kinds_ = [k for k in CATALOG.values() if k.schedule is not None]
-    table = schedule.audit(rows, kinds_, start, stop)
+    table = schedule.audit(rows, kinds_, start, stop, now=now, down_since=down_since)
     out = [KindSchedule(**table[k.name].as_dict(), next_slot=schedule.next_slot(k.schedule, now)) for k in kinds_]
-    return ScheduleAuditResponse(start=start, end=stop, source=source, clean=all(k.clean for k in out), kinds=out)
+    off = _outage_rows(schedule.outages(rows, now=now, down_since=down_since), start, stop, down_since is not None)
+    return ScheduleAuditResponse(
+        start=start, end=stop, source=source, clean=all(k.clean for k in out), worker_off=off, kinds=out
+    )
 
 
 @router.get("", response_model=list[JobRecord], summary="Recent jobs")

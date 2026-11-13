@@ -20,13 +20,20 @@ is not recorded as skipped when too old.
 ``audit(records, kinds, start, end)``: for every slot in [start, end) whether a scheduler job served it and how that job
 ended (done, failed, cancelled, still running, skipped) or that no record exists (missed). Records written before
 ``scheduled_for`` existed (migration twin_0002) are matched to the first slot at or before their submission, within
-the kind's slot interval and ``CATCH_UP``. Acceptance of #287: 14 consecutive days without a missed or skipped slot
-(``scripts/schedule_audit.py``, ``GET /api/jobs/schedule``).
+the kind's slot interval and ``CATCH_UP``.
+
+A slot the worker could not serve because it was not running is *off*, not missed or skipped: a skipped record whose
+reason starts with ``OFF_PREFIX`` (written by the catch-up), or a slot without a record inside an outage of the worker
+(``outages``: from its last activity before a start, which the catch-up records mark, to that start; with
+``down_since``, the worker's last heartbeat while it is down now, also from then to now). Missed and skipped then
+count only what went wrong while the worker ran (``SlotAudit.clean``). Acceptance of #287: 14 consecutive days without
+a missed, skipped or off slot (``scripts/schedule_audit.py``, ``GET /api/jobs/schedule``).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from bisect import bisect_left, bisect_right
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -40,6 +47,8 @@ SETTLE = timedelta(minutes=1)  # the audit leaves out the slots of the last minu
 SCHEDULER = "scheduler"
 CATCH_UP_BY = "scheduler (catch-up)"
 SKIPPED_BY = "scheduler (skipped)"
+#: Reason of a slot the catch-up records as skipped because the worker was not running (``catch_up_plan``).
+OFF_PREFIX = "Skipped: the worker was not running"
 
 Schedule = tuple[set[int] | None, set[int]]
 
@@ -204,14 +213,83 @@ def catch_up_plan(
                     kind.name,
                     slot,
                     "skip",
-                    f"Skipped: the worker was not running at {_ist(slot)}; it started {late:.0f} min later ({rule}).",
+                    f"{OFF_PREFIX} at {_ist(slot)}; it started {late:.0f} min later ({rule}).",
                 )
             )
     return out
 
 
+# -------------------------------------------------------------------------------------------------------- outages
+EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
+Interval = tuple[datetime, datetime]
+
+
+def _reason(row: Any) -> str:
+    return str(_get(row, "error") or _get(row, "message") or "")
+
+
+def is_off_skip(row: Any) -> bool:
+    """A record of a slot the catch-up skipped because the worker was not running."""
+    return _get(row, "submitted_by") == SKIPPED_BY and _reason(row).startswith(OFF_PREFIX)
+
+
+def activity_times(records: Iterable[Any]) -> list[datetime]:
+    """Times the worker is known to have run, in order: a job started, or the scheduler submitted a job (its cron entry,
+    the catch-up's late run, or a slot skipped because the previous job was still active). The catch-up's records of
+    slots skipped while the worker was off are written at its next start for earlier slots and do not count."""
+    out = []
+    for row in records:
+        started = _get(row, "started_at")
+        if started is not None:
+            out.append(utc(started))
+        if is_scheduler(row) and not is_off_skip(row):
+            out.append(utc(_get(row, "submitted_at")))
+    return sorted(out)
+
+
+def _merge(intervals: Iterable[Interval]) -> list[Interval]:
+    out: list[Interval] = []
+    for a, b in sorted(intervals):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def outages(
+    records: Iterable[Any], *, now: datetime | None = None, down_since: datetime | None = None
+) -> list[Interval]:
+    """Periods the worker was not running, from its job records, merged and in order.
+
+    Every start after a stop leaves records submitted at the start (the catch-up's late run of a slot, or slots it
+    records as skipped with ``OFF_PREFIX``); the outage before it began at the worker's last activity
+    (``activity_times``) before the start, or at ``EPOCH`` without one. ``down_since`` (the last heartbeat of a worker
+    that is down now) adds the period from then, or from the last activity when that is later, to ``now``."""
+    records = list(records)
+    acts = activity_times(records)
+    starts = sorted(
+        {utc(_get(r, "submitted_at")) for r in records if _get(r, "submitted_by") == CATCH_UP_BY or is_off_skip(r)}
+    )
+    found = []
+    for start in starts:
+        i = bisect_left(acts, start - SETTLE)  # the catch-up's own records are at the start
+        found.append((acts[i - 1] if i else EPOCH, start))
+    if down_since is not None and now is not None:
+        last = max([utc(down_since), *acts[-1:]])
+        if last < utc(now):
+            found.append((last, utc(now)))
+    return _merge(found)
+
+
+def within(t: datetime, intervals: Sequence[Interval]) -> bool:
+    """``t`` inside one of the (merged, ordered) intervals, ends excluded."""
+    i = bisect_right(intervals, (t, datetime.max.replace(tzinfo=UTC))) - 1
+    return i >= 0 and intervals[i][0] < t < intervals[i][1]
+
+
 # ---------------------------------------------------------------------------------------------------------- audit
-SLOT_STATES = ("done", "failed", "cancelled", "running", "skipped", "missed")
+SLOT_STATES = ("done", "failed", "cancelled", "running", "skipped", "missed", "off")
 
 
 @dataclass
@@ -225,7 +303,8 @@ class SlotAudit:
 
     @property
     def clean(self) -> bool:
-        """No slot missed or skipped (failed runs are runs; they are counted separately)."""
+        """No slot missed or skipped while the worker ran (failed runs are runs, and slots while the worker was off
+        are off; both are counted separately)."""
         return self.counts["missed"] == 0 and self.counts["skipped"] == 0
 
     def as_dict(self, limit: int = 50) -> dict[str, Any]:
@@ -245,18 +324,26 @@ def slot_state(row: Any | None) -> str:
         return "missed"
     status = _get(row, "status")
     if status == "cancelled" and _get(row, "submitted_by") == SKIPPED_BY:
-        return "skipped"
+        return "off" if is_off_skip(row) else "skipped"
     if status in ("queued", "running"):
         return "running"
     return str(status)
 
 
 def audit(
-    records: Iterable[Any], kinds: Iterable[Any], start: datetime, end: datetime, *, now: datetime | None = None
+    records: Iterable[Any],
+    kinds: Iterable[Any],
+    start: datetime,
+    end: datetime,
+    *,
+    now: datetime | None = None,
+    down_since: datetime | None = None,
 ) -> dict[str, SlotAudit]:
     """Per scheduled kind: the slots in [start, end) and what became of each (see the module notes). Slots less than
-    ``SETTLE`` before ``now`` are not counted (their job may not be recorded yet)."""
+    ``SETTLE`` before ``now`` are not counted (their job may not be recorded yet). A slot without a record inside an
+    outage of the worker (``outages``; ``down_since`` with ``now``: the worker is down now) is off, not missed."""
     records = list(records)
+    off = outages(records, now=now, down_since=down_since)
     end = min(utc(end), utc(now) - SETTLE) if now is not None else utc(end)
     out: dict[str, SlotAudit] = {}
     for kind in kinds:
@@ -268,6 +355,8 @@ def audit(
             res.expected += 1
             row = done.get(slot)
             state = slot_state(row)
+            if state == "missed" and within(slot, off):
+                state = "off"
             res.counts[state] += 1
             if state != "done":
                 res.problems.append(
@@ -287,22 +376,27 @@ __all__ = [
     "CATCH_UP_BY",
     "IST",
     "MAX_SKIPPED",
+    "OFF_PREFIX",
     "SCHEDULER",
     "SETTLE",
     "SKIPPED_BY",
     "SLOT_STATES",
     "Decision",
     "SlotAudit",
+    "activity_times",
     "audit",
     "catch_up_plan",
     "describe",
     "interval",
+    "is_off_skip",
     "is_scheduler",
     "last_slot",
     "next_slot",
+    "outages",
     "served",
     "slot_of",
     "slot_state",
     "slots",
     "utc",
+    "within",
 ]

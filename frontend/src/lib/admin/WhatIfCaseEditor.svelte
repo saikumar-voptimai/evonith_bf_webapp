@@ -148,7 +148,7 @@ or the STRATA forced blend (or the cheapest blend) and controls. Saves through t
 				<legend>Ferrous blend</legend>
 				<div class="modes" role="radiogroup" aria-label="Ferrous blend">
 					<label class="check"
-						><input type="radio" bind:group={mode} value="cheapest" /> Cheapest blend (Step 2)</label
+						><input type="radio" bind:group={mode} value="cheapest" /> Cheapest blend at the production</label
 					>
 					<label class="check"><input type="radio" bind:group={mode} value="forced" /> Forced blend</label>
 				</div>

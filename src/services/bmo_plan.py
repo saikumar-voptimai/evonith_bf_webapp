@@ -37,7 +37,7 @@ class BmoPlanDecision(BaseModel):
 
 
 class BmoPlanRun(BaseModel):
-    """A Step 2 run the page may show: its headline and the decision that applies."""
+    """A fixed-production run the page may show: its headline and the decision that applies."""
 
     id: str = Field(..., description="Run id (UUID)")
     job_id: str | None = Field(None, description="Job that produced the run")
@@ -59,7 +59,7 @@ class BmoPlanRun(BaseModel):
 
 
 class BmoImpliedProduction(BaseModel):
-    """The production implied by the latest Step 1 run: the cheapest production level under the day's limits."""
+    """The production implied by the latest cheapest-production run: the cheapest level under the day's limits."""
 
     production_t_d: float = Field(..., description="Hot metal of the cheapest level, t/d")
     run_id: str = Field(..., description="Run id (UUID)")
@@ -72,27 +72,30 @@ class BmoPlanBoard(BaseModel):
     """The runs the Blend Mix Optimiser page opens on."""
 
     read_at: datetime = Field(..., description="UTC")
-    implied: BmoImpliedProduction | None = Field(None, description="Latest ok Step 1 run; null while there is none")
+    implied: BmoImpliedProduction | None = Field(None, description="Latest ok cheapest-production run; null while none")
     shift_run: BmoPlanRun | None = Field(
-        None, description=f"Latest ok scheduled STRATA-ω Step 2 run of the last {SHIFT_RUN_MAX_AGE_H:g} h"
+        None, description=f"Latest ok scheduled STRATA-ω fixed-production run of the last {SHIFT_RUN_MAX_AGE_H:g} h"
     )
-    latest_run: BmoPlanRun | None = Field(None, description="Latest ok Step 2 run of any kind")
-    recent: list[BmoPlanRun] = Field(default_factory=list, description="Step 2 runs of the last day, newest first")
+    latest_run: BmoPlanRun | None = Field(None, description="Latest ok fixed-production run of any kind")
+    recent: list[BmoPlanRun] = Field(
+        default_factory=list, description="Fixed-production runs of the last day, newest first"
+    )
     slag_bands: list[BmoSlagBand] = Field(
         default_factory=plant_slag_bands, description="Plant p5–p95 bands of B2, T-basicity and IB4"
     )
 
 
 class BmoPlanRunParams(BaseModel):
-    """A run from the page's constraints: Step 2 at the chosen production (default), or Step 1 to recompute the
-    implied production. Both run with Fixed-ω on the day's calibration and the live yard; the limits are page 9's slag
-    window and charging capacity in the API's names; unset fields keep the saved operator inputs and the register."""
+    """A run from the page's constraints: fixed production at the chosen production (default), or the cheapest
+    production level to recompute the implied production. Both run with Fixed-ω on the day's calibration and the live
+    yard; the limits are page 9's slag window and charging capacity in the API's names; unset fields keep the saved
+    operator inputs and the register."""
 
     model_config = {"extra": "forbid"}
 
     mode: Literal["step2", "step1"] = Field("step2", description="step2: the plan at a production; step1: implied")
     production_t_d: float | None = Field(
-        None, ge=1500, le=3000, description="Step 2 hot-metal target, t/d (default: the current production)"
+        None, ge=1500, le=3000, description="Fixed-production target, t/d (default: the current production)"
     )
     limits: OptimiserLimits | None = Field(
         None, description="Slag window and charging limits instead of the saved ones"

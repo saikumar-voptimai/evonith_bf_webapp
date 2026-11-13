@@ -7,8 +7,8 @@ model, calibrated on recent stable shifts). The blast limit comes from BF-02's b
 band and default limit is in the fact register.
 
     Model check                          burnt coke against the energy and oxygen balances on recent shifts
-    Step 1 · cheapest production level   ore + flux + fuel per tHM against output under the day's limits
-    Step 2 · fixed production            cheapest blend at a target, next to the ore + flux-only answer
+    Cheapest production level   ore + flux + fuel per tHM against output under the day's limits
+    Fixed production            cheapest blend at a target, next to the ore + flux-only answer
     Maximum production                   blend and controls at the production ceiling
 
 Thin UI: the engine is utils.burden_engine, the adapters data.burden_engine, the parts ui.burden_optimiser.
@@ -45,8 +45,8 @@ from utils.burden_engine.scenarios import fuel_defaults, limit_labels, limits_fr
 from utils.coke_energy.weather import plan_blast_moisture
 
 MODES = {
-    "cheapest": "Step 1 · Cheapest production level",
-    "fixed": "Step 2 · Fixed production",
+    "cheapest": "Cheapest production level",
+    "fixed": "Fixed production",
     "max": "Maximum production",
 }
 
@@ -173,7 +173,7 @@ prices = {m["id"]: m["price"] for m in inputs["materials"]} | {f["id"]: f["price
 zero_stock = [names.get(k, k) for k, v in inputs["not_carried"].items() if v == "zero stock"]
 if zero_stock:
     st.caption("Selected but out of stock, so not offered: " + ", ".join(zero_stock) + ".")
-# Today's charged blend (last 24 h): the reference Step 2 is compared against. Live yard only.
+# Today's charged blend (last 24 h): the reference a fixed-production plan is compared against. Live yard only.
 today_blend = loaders.charged_blend(loaders.as_json(yard["materials"]), nonce) if yard_source == "live" else {}
 today_shares = dict(today_blend.get("shares") or {})
 
@@ -235,7 +235,7 @@ elif res["mode"] == "cheapest":
     render_plan_summary(final, f"{which}: {final['P_tday']:,.0f} t/d", flux_ids=flux_ids, today_t_day=today_t_day)
     render_omega_result(eng, final)
     render_plan_tabs(eng, final, "cheapest", names=names, prices=prices)
-    plan_label = f"{which.lower()} on the Step 1 frontier, {final['P_tday']:,.0f} t/d"
+    plan_label = f"{which.lower()} on the production frontier, {final['P_tday']:,.0f} t/d"
 else:
     final = res["result"]
     if final is None:

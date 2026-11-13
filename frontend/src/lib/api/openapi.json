@@ -1285,7 +1285,7 @@
         "type": "object"
       },
       "BmoImpliedProduction": {
-        "description": "The production implied by the latest Step 1 run: the cheapest production level under the day's limits.",
+        "description": "The production implied by the latest cheapest-production run: the cheapest level under the day's limits.",
         "properties": {
           "finished_at": {
             "description": "UTC",
@@ -1469,7 +1469,7 @@
                 "type": "null"
               }
             ],
-            "description": "Latest ok Step 1 run; null while there is none"
+            "description": "Latest ok cheapest-production run; null while none"
           },
           "latest_run": {
             "anyOf": [
@@ -1480,7 +1480,7 @@
                 "type": "null"
               }
             ],
-            "description": "Latest ok Step 2 run of any kind"
+            "description": "Latest ok fixed-production run of any kind"
           },
           "read_at": {
             "description": "UTC",
@@ -1489,7 +1489,7 @@
             "type": "string"
           },
           "recent": {
-            "description": "Step 2 runs of the last day, newest first",
+            "description": "Fixed-production runs of the last day, newest first",
             "items": {
               "$ref": "#/components/schemas/BmoPlanRun"
             },
@@ -1505,7 +1505,7 @@
                 "type": "null"
               }
             ],
-            "description": "Latest ok scheduled STRATA-\u03c9 Step 2 run of the last 24 h"
+            "description": "Latest ok scheduled STRATA-\u03c9 fixed-production run of the last 24 h"
           },
           "slag_bands": {
             "description": "Plant p5\u2013p95 bands of B2, T-basicity and IB4",
@@ -1575,7 +1575,7 @@
         "type": "object"
       },
       "BmoPlanRun": {
-        "description": "A Step 2 run the page may show: its headline and the decision that applies.",
+        "description": "A fixed-production run the page may show: its headline and the decision that applies.",
         "properties": {
           "certainty": {
             "anyOf": [
@@ -1734,7 +1734,7 @@
       },
       "BmoPlanRunParams": {
         "additionalProperties": false,
-        "description": "A run from the page's constraints: Step 2 at the chosen production (default), or Step 1 to recompute the\nimplied production. Both run with Fixed-\u03c9 on the day's calibration and the live yard; the limits are page 9's slag\nwindow and charging capacity in the API's names; unset fields keep the saved operator inputs and the register.",
+        "description": "A run from the page's constraints: fixed production at the chosen production (default), or the cheapest\nproduction level to recompute the implied production. Both run with Fixed-\u03c9 on the day's calibration and the live\nyard; the limits are page 9's slag window and charging capacity in the API's names; unset fields keep the saved\noperator inputs and the register.",
         "properties": {
           "limits": {
             "anyOf": [
@@ -1768,7 +1768,7 @@
                 "type": "null"
               }
             ],
-            "description": "Step 2 hot-metal target, t/d (default: the current production)",
+            "description": "Fixed-production target, t/d (default: the current production)",
             "title": "Production T D"
           }
         },
@@ -2882,6 +2882,14 @@
             ],
             "description": "Raw mass closure; null without a raw burnt coke"
           },
+          "excluded": {
+            "description": "Shifts with data for a balance left out as data errors (fuel record, ore moisture, listed), oldest first; in neither basis",
+            "items": {
+              "$ref": "#/components/schemas/BvcExcluded"
+            },
+            "title": "Excluded",
+            "type": "array"
+          },
           "first_day": {
             "anyOf": [
               {
@@ -3155,6 +3163,45 @@
           "skey"
         ],
         "title": "BvcClosurePoint",
+        "type": "object"
+      },
+      "BvcExcluded": {
+        "properties": {
+          "day": {
+            "description": "Shift date (IST)",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "fuel_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dry fuel rate of the shift's charge record, kg/tHM",
+            "title": "Fuel Kg Thm"
+          },
+          "reason": {
+            "description": "Data error that left the shift out of the balance",
+            "title": "Reason",
+            "type": "string"
+          },
+          "shift": {
+            "description": "Shift key, IST date and letter",
+            "title": "Shift",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shift",
+          "day",
+          "reason"
+        ],
+        "title": "BvcExcluded",
         "type": "object"
       },
       "BvcLag": {
@@ -12232,7 +12279,7 @@
             "type": "integer"
           },
           "clean": {
-            "description": "No slot missed or skipped",
+            "description": "No slot missed or skipped while the worker ran",
             "title": "Clean",
             "type": "boolean"
           },
@@ -12256,7 +12303,7 @@
             "type": "string"
           },
           "missed": {
-            "description": "Slots without any job record, count",
+            "description": "Slots without any job record while the worker ran, count",
             "title": "Missed",
             "type": "integer"
           },
@@ -12272,6 +12319,12 @@
             ],
             "description": "Next scheduled time (UTC)",
             "title": "Next Slot"
+          },
+          "off": {
+            "default": 0,
+            "description": "Slots not served because the worker was not running, count",
+            "title": "Off",
+            "type": "integer"
           },
           "problems": {
             "description": "The latest 50 slots not done, oldest first",
@@ -12292,7 +12345,7 @@
             "type": "string"
           },
           "skipped": {
-            "description": "Slots recorded as skipped (worker not running, previous job active), count",
+            "description": "Slots skipped while the worker ran (the previous job still active), count",
             "title": "Skipped",
             "type": "integer"
           },
@@ -16655,7 +16708,7 @@
       },
       "OptimiserLimits": {
         "additionalProperties": false,
-        "description": "Limits of a run that replace the fact register's defaults (ASM-11/12/13, FLOW-12) and the operator's saved slag\nlimits and charging. The fuel-rate band (BAND-01) is the register's and cannot be changed here. Unset fields keep\nthe default; the process rows apply to Step 1 and maximum production.",
+        "description": "Limits of a run that replace the fact register's defaults (ASM-11/12/13, FLOW-12) and the operator's saved slag\nlimits and charging. The fuel-rate band (BAND-01) is the register's and cannot be changed here. Unset fields keep\nthe default; the process rows apply to the cheapest production level and maximum production.",
         "properties": {
           "al2o3_max_pct": {
             "anyOf": [
@@ -17071,7 +17124,7 @@
             "title": "Finished At"
           },
           "frontier": {
-            "description": "Step 1: cheapest plan per level",
+            "description": "Cheapest production level: cheapest plan per level",
             "items": {
               "$ref": "#/components/schemas/FrontierPoint"
             },
@@ -17087,7 +17140,7 @@
                 "type": "null"
               }
             ],
-            "description": "Step 1: the highest production that is feasible"
+            "description": "Cheapest production level: the highest feasible production"
           },
           "lead": {
             "anyOf": [
@@ -17098,7 +17151,7 @@
                 "type": "null"
               }
             ],
-            "description": "Page 11's line over the plan (Step 2, maximum production)"
+            "description": "Page 11's line over the plan (fixed production, maximum production)"
           },
           "mode": {
             "enum": [
@@ -17126,7 +17179,7 @@
                 "type": "null"
               }
             ],
-            "description": "Step 2: ore + flux objective (page 9), same limits"
+            "description": "Fixed production: ore + flux objective (page 9), same limits"
           },
           "plan": {
             "anyOf": [
@@ -17148,7 +17201,7 @@
                 "type": "null"
               }
             ],
-            "description": "Step 2 target, t/d",
+            "description": "Fixed-production target, t/d",
             "title": "Production Target T D"
           },
           "run_id": {
@@ -17234,10 +17287,10 @@
                 "type": "null"
               }
             ],
-            "description": "Step 2: today's charged blend at the plan's production"
+            "description": "Fixed production: today's charged blend at the plan's production"
           },
           "value_of_limits": {
-            "description": "Step 2: each limit one step",
+            "description": "Fixed production: each limit one step",
             "items": {
               "$ref": "#/components/schemas/ValueOfLimit"
             },
@@ -17435,7 +17488,7 @@
                 "type": "null"
               }
             ],
-            "description": "Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)",
+            "description": "Cost of today's charged blend minus the plan's, Rs/tHM (fixed production, live yard)",
             "title": "Saving Rs Thm"
           },
           "started_at": {
@@ -17540,7 +17593,7 @@
             "description": "Limits instead of the register's and the saved ones"
           },
           "mode": {
-            "description": "step1: cheapest production level and the frontier; step2: cheapest blend at a fixed production, with fuel in the objective and the ore + flux-only answer (page 9's objective); max_production",
+            "description": "step1: cheapest production level and the frontier; step2: fixed production, the cheapest blend at a production target with fuel in the objective and the ore + flux-only answer (page 9's objective); max_production: maximum production. The mode names step1 / step2 are kept as identifiers only",
             "enum": [
               "step1",
               "step2",
@@ -17570,7 +17623,7 @@
                 "type": "null"
               }
             ],
-            "description": "Step 2 hot-metal target (default: the configured target of 2,270 t/d), t/d",
+            "description": "Hot-metal target of a fixed-production run (default: the configured target of 2,270 t/d), t/d",
             "title": "Production T D"
           },
           "risk_k": {
@@ -17749,7 +17802,7 @@
                 "type": "null"
               }
             ],
-            "description": "Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)",
+            "description": "Cost of today's charged blend minus the plan's, Rs/tHM (fixed production, live yard)",
             "title": "Saving Rs Thm"
           },
           "started_at": {
@@ -18482,7 +18535,7 @@
           },
           "process": {
             "default": false,
-            "description": "The process rows below apply (Step 1, maximum production)",
+            "description": "The process rows below apply (cheapest production level, maximum production)",
             "title": "Process",
             "type": "boolean"
           },
@@ -20567,7 +20620,7 @@
                 "type": "null"
               }
             ],
-            "description": "Where Step 2's production target came from",
+            "description": "Where the fixed-production target came from",
             "title": "Production Source"
           },
           "risk_k": {
@@ -20584,7 +20637,7 @@
           },
           "search_o2": {
             "default": false,
-            "description": "Oxygen searched up to its limit (Step 1, maximum production)",
+            "description": "Oxygen searched up to its limit (cheapest production level, maximum production)",
             "title": "Search O2",
             "type": "boolean"
           },
@@ -20938,7 +20991,7 @@
       "ScheduleAuditResponse": {
         "properties": {
           "clean": {
-            "description": "No slot of any kind missed or skipped in the period",
+            "description": "No slot of any kind missed or skipped in the period while the worker ran",
             "title": "Clean",
             "type": "boolean"
           },
@@ -20969,6 +21022,14 @@
             "format": "date-time",
             "title": "Start",
             "type": "string"
+          },
+          "worker_off": {
+            "description": "Periods the worker was not running, within the period, newest first",
+            "items": {
+              "$ref": "#/components/schemas/WorkerOutage"
+            },
+            "title": "Worker Off",
+            "type": "array"
           }
         },
         "required": [
@@ -23506,7 +23567,8 @@
               "cancelled",
               "running",
               "skipped",
-              "missed"
+              "missed",
+              "off"
             ],
             "title": "State",
             "type": "string"
@@ -29063,6 +29125,40 @@
         "title": "WhatIfRunSubmitted",
         "type": "object"
       },
+      "WorkerOutage": {
+        "properties": {
+          "end": {
+            "description": "Next start of the worker (UTC), or the period end while it is down",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "hours": {
+            "description": "Length within the period, h",
+            "title": "Hours",
+            "type": "number"
+          },
+          "ongoing": {
+            "default": false,
+            "description": "The worker is down now",
+            "title": "Ongoing",
+            "type": "boolean"
+          },
+          "start": {
+            "description": "Last activity of the worker before it stopped (UTC), or the period start",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "hours"
+        ],
+        "title": "WorkerOutage",
+        "type": "object"
+      },
       "WorkerStatus": {
         "properties": {
           "name": {
@@ -31702,7 +31798,7 @@
     },
     "/api/bmo/plan": {
       "get": {
-        "description": "The Step 2 runs the page opens on: the implied production (latest ok Step 1 run), the shift's scheduled STRATA-\u03c9\nrun of the last day, the latest ok Step 2 run of any kind and the last day's Step 2 runs, each with the decision\nthat applies. The plan of a run is GET /api/optimiser/runs/{run_id}/result; a decision is\nPOST /api/optimiser/runs/{run_id}/decision (supervisor).",
+        "description": "The fixed-production runs the page opens on: the implied production (latest ok cheapest-production run), the\nshift's scheduled STRATA-\u03c9 run of the last day, the latest ok fixed-production run of any kind and the last day's\nfixed-production runs, each with the decision that applies. The plan of a run is\nGET /api/optimiser/runs/{run_id}/result; a decision is POST /api/optimiser/runs/{run_id}/decision (supervisor).",
         "operationId": "bmo_plan_board",
         "responses": {
           "200": {
@@ -31744,7 +31840,7 @@
     },
     "/api/bmo/plan/runs": {
       "post": {
-        "description": "Queue ``optimiser.run`` with Fixed-\u03c9 on the day's calibration and the live yard: Step 2 at the given production\n(default: the current one) with page 9's slag window and charging limits, or Step 1 to recompute the implied\nproduction (the shift's scheduled run refines it). Follow the job with GET /api/optimiser/runs/{job id} or the\n``job.done`` event. A request equal to a queued or running one returns it.",
+        "description": "Queue ``optimiser.run`` with Fixed-\u03c9 on the day's calibration and the live yard: fixed production at the given\nproduction (default: the current one) with page 9's slag window and charging limits, or the cheapest production\nlevel to recompute the implied production (the shift's scheduled run refines it). Follow the job with\nGET /api/optimiser/runs/{job id} or the ``job.done`` event. A request equal to a queued or running one returns\nit.",
         "operationId": "bmo_start_plan_run",
         "requestBody": {
           "content": {
@@ -32893,7 +32989,7 @@
     },
     "/api/jobs/schedule": {
       "get": {
-        "description": "For every scheduled kind, the slots of the period and what became of each: done, failed, cancelled, still\nrunning, skipped (with the reason) or missed (no record). Clean = no slot missed or skipped.",
+        "description": "For every scheduled kind, the slots of the period and what became of each: done, failed, cancelled, still\nrunning, skipped (with the reason), missed (no record) or off (the worker was not running). Clean = no slot missed\nor skipped while the worker ran; the periods the worker was off are listed apart.",
         "operationId": "jobs_schedule_audit",
         "parameters": [
           {
@@ -33756,7 +33852,7 @@
     },
     "/api/optimiser/runs/{run_id}/result": {
       "get": {
-        "description": "Plan (blend, flux, cost split, coke \u00b1 \u03c3, fuel, slag, charging, process, shaft efficiency and certainty, binding\nlimits), Step 2's ore + flux-only plan and today's charged blend, Step 1's highest output and frontier, the value\nof limits, the critical assumptions and the network solves (``services.optimiser_results``).",
+        "description": "Plan (blend, flux, cost split, coke \u00b1 \u03c3, fuel, slag, charging, process, shaft efficiency and certainty, binding\nlimits), the fixed-production ore + flux-only plan and today's charged blend, the cheapest production level's\nhighest output and frontier, the value of limits, the critical assumptions and the network solves\n(``services.optimiser_results``).",
         "operationId": "optimiser_run_result",
         "parameters": [
           {

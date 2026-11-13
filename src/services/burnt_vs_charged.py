@@ -13,9 +13,11 @@ shift table (page 10's values, the table page 11's *Burnt against charged coke* 
     leak         step of (charged - raw burnt) and of top-gas H2 with RAFT unchanged (``utils.coke_energy.leak_check``
                  with ``utils.strata_flow.plant_effects.leak_for_gap``)
 
-on two bases: every balanced shift (the TRACE page's basis) and the stable shifts only. One basis reads every window
-of the record (about 4 s for 15 months of shifts on a laptop), so a request never computes it: ``twin.trace``
-builds it with the TRACE view every hour at :20 (``services.trace.refresh``) into
+on two bases: every balanced shift (the TRACE page's basis) and the stable shifts only. ``excluded`` lists the shifts
+with enough data for a balance that the pipeline left out as data errors (``pipeline.excluded_reasons``: the
+bad-shift list, an impossible ore moisture, a fuel record outside the plausible dry fuel rate), with the reason. One
+basis reads every window of the record (about 4 s for 15 months of shifts on a laptop), so a request never computes
+it: ``twin.trace`` builds it with the TRACE view every hour at :20 (``services.trace.refresh``) into
 ``src/storage/coke_energy/burnt_vs_charged.json`` and the admin API reads that file (``load``). Plain JSON: coke in
 kg/tHM dry, masses in t, H2 in % of the dry top gas, RAFT in deg C, blast moisture in g/Nm3, times UTC (ISO 8601),
 months and days as IST plant dates.
@@ -36,7 +38,7 @@ import pandas as pd
 from services.twin_views import number
 from utils.coke_energy import leak_check
 from utils.coke_energy import transit as tr
-from utils.coke_energy.pipeline import PipelineResult
+from utils.coke_energy.pipeline import PipelineResult, excluded_reasons, fuel_rate_kg_thm, valid_shift_mask
 from utils.memo import memo
 
 VERSION = 1
@@ -86,6 +88,23 @@ def shift_table(result: PipelineResult) -> pd.DataFrame:
     for src, col in SHIFT_INPUTS.items():
         T[col] = S[src].reindex(T.index).astype(float) if src in S else float("nan")
     return T
+
+
+def excluded(result: PipelineResult) -> list[dict[str, Any]]:
+    """The shifts with enough data for a balance that the pipeline left out as data errors, oldest first: shift key,
+    IST date, reason and the dry fuel rate of the record (kg/tHM)."""
+    S = result.S
+    if S is None or S.empty:
+        return []
+    try:
+        good = valid_shift_mask(S)
+    except (AttributeError, KeyError):
+        return []
+    S = S[good]
+    reasons = excluded_reasons(S, result.settings)
+    fuel = fuel_rate_kg_thm(S)
+    keys = sorted(k for k in reasons if k in S.index)
+    return [{"shift": k, "day": k[:10], "reason": reasons[k], "fuel_kg_thm": number(fuel.get(k))} for k in keys]
 
 
 def basis_table(T: pd.DataFrame, stable_only: bool) -> pd.DataFrame:
@@ -308,6 +327,7 @@ def build(result: PipelineResult, cfg: Mapping[str, Any] | None = None, *, now: 
         "built_at": utc_text(now),
         "windows": [{"window": label, "shifts": w, "hours": w * tr.SHIFT_H} for label, w in WINDOWS.items()],
         "leak_settings": settings.as_dict(),
+        "excluded": excluded(result),
         "bases": {name: analysis(basis_table(T, stable), settings) for name, stable in BASES.items()},
     }
 

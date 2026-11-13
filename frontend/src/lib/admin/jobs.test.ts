@@ -11,6 +11,7 @@ import {
 	limitStatus,
 	memoryText,
 	nearTimeout,
+	outageNote,
 	overallStatus,
 	readView,
 	reasonText,
@@ -166,17 +167,62 @@ describe('job kinds', () => {
 		]
 	} as unknown as JobStats;
 	const audit = {
-		kinds: [{ kind: 'twin.evaluate', missed: 2, clean: false, next_slot: '2026-10-29T05:40:00Z' }]
+		kinds: [
+			{
+				kind: 'twin.evaluate',
+				missed: 2,
+				skipped: 1,
+				off: 30,
+				clean: false,
+				next_slot: '2026-10-29T05:40:00Z'
+			}
+		]
 	} as unknown as ScheduleAudit;
 
 	it('joins the statistics and the schedule audit and leaves out idle unscheduled kinds', () => {
 		const rows = kindRows(stats, audit);
 		expect(rows.map((r) => r.kind)).toEqual(['twin.evaluate']);
-		expect(rows[0]).toMatchObject({ missed: 2, clean: false, p95: 1000, nextSlot: '2026-10-29T05:40:00Z' });
+		expect(rows[0]).toMatchObject({
+			missed: 2,
+			skipped: 1,
+			off: 30,
+			clean: false,
+			p95: 1000,
+			nextSlot: '2026-10-29T05:40:00Z'
+		});
 		expect(scheduleStatus(rows[0]!)).toEqual({ kind: 'warning', label: '2 missed, 1 skipped' });
 		expect(nearTimeout(rows[0]!)).toBe(true);
 		expect(scheduleStatus({ clean: true, missed: 0, skipped: 0 })).toEqual({ kind: 'ok', label: 'Clean' });
 		expect(scheduleStatus({ clean: null, missed: null, skipped: 0 })).toBeNull();
 		expect(kindRows(null, null)).toEqual([]);
+	});
+
+	it('shows slots the worker was off for as neutral, not as a warning', () => {
+		expect(scheduleStatus({ clean: true, missed: 0, skipped: 0, off: 1151 })).toEqual({
+			kind: 'stale',
+			label: 'Worker off · 1,151 slots'
+		});
+		expect(scheduleStatus({ clean: true, missed: 0, skipped: 0, off: 1 })?.label).toBe('Worker off · 1 slot');
+		expect(scheduleStatus({ clean: false, missed: 1, skipped: 0, off: 40 })).toEqual({
+			kind: 'warning',
+			label: '1 missed'
+		});
+	});
+
+	it('says how long the worker was off', () => {
+		expect(outageNote(null)).toBeNull();
+		expect(outageNote({ worker_off: [] } as unknown as ScheduleAudit)).toBeNull();
+		const audit = {
+			worker_off: [
+				{ start: '2026-11-13T10:00:00Z', end: '2026-11-13T13:30:00Z', hours: 3.5, ongoing: true },
+				{ start: '2026-11-12T20:30:00Z', end: '2026-11-13T02:00:00Z', hours: 5.5, ongoing: false }
+			]
+		} as unknown as ScheduleAudit;
+		expect(outageNote(audit)).toBe(
+			'The worker was not running for 9.0\u00a0h in this period (2 periods; down since 13 Nov 15:30 IST). ' +
+				'Slots in those periods are counted as worker off, not as missed or skipped.'
+		);
+		const one = { worker_off: [audit.worker_off![1]] } as unknown as ScheduleAudit;
+		expect(outageNote(one)).toContain('(one period; latest 13 Nov 02:00 to 13 Nov 07:30 IST)');
 	});
 });

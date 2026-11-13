@@ -673,10 +673,10 @@ export interface paths {
         };
         /**
          * The Blend Mix Optimiser plan board
-         * @description The Step 2 runs the page opens on: the implied production (latest ok Step 1 run), the shift's scheduled STRATA-ω
-         *     run of the last day, the latest ok Step 2 run of any kind and the last day's Step 2 runs, each with the decision
-         *     that applies. The plan of a run is GET /api/optimiser/runs/{run_id}/result; a decision is
-         *     POST /api/optimiser/runs/{run_id}/decision (supervisor).
+         * @description The fixed-production runs the page opens on: the implied production (latest ok cheapest-production run), the
+         *     shift's scheduled STRATA-ω run of the last day, the latest ok fixed-production run of any kind and the last day's
+         *     fixed-production runs, each with the decision that applies. The plan of a run is
+         *     GET /api/optimiser/runs/{run_id}/result; a decision is POST /api/optimiser/runs/{run_id}/decision (supervisor).
          */
         get: operations["bmo_plan_board"];
         put?: never;
@@ -698,10 +698,11 @@ export interface paths {
         put?: never;
         /**
          * Run the plan from the page's constraints
-         * @description Queue ``optimiser.run`` with Fixed-ω on the day's calibration and the live yard: Step 2 at the given production
-         *     (default: the current one) with page 9's slag window and charging limits, or Step 1 to recompute the implied
-         *     production (the shift's scheduled run refines it). Follow the job with GET /api/optimiser/runs/{job id} or the
-         *     ``job.done`` event. A request equal to a queued or running one returns it.
+         * @description Queue ``optimiser.run`` with Fixed-ω on the day's calibration and the live yard: fixed production at the given
+         *     production (default: the current one) with page 9's slag window and charging limits, or the cheapest production
+         *     level to recompute the implied production (the shift's scheduled run refines it). Follow the job with
+         *     GET /api/optimiser/runs/{job id} or the ``job.done`` event. A request equal to a queued or running one returns
+         *     it.
          */
         post: operations["bmo_start_plan_run"];
         delete?: never;
@@ -1037,7 +1038,8 @@ export interface paths {
         /**
          * Audit of the schedule
          * @description For every scheduled kind, the slots of the period and what became of each: done, failed, cancelled, still
-         *     running, skipped (with the reason) or missed (no record). Clean = no slot missed or skipped.
+         *     running, skipped (with the reason), missed (no record) or off (the worker was not running). Clean = no slot missed
+         *     or skipped while the worker ran; the periods the worker was off are listed apart.
          */
         get: operations["jobs_schedule_audit"];
         put?: never;
@@ -1279,8 +1281,9 @@ export interface paths {
         /**
          * The typed result of a run
          * @description Plan (blend, flux, cost split, coke ± σ, fuel, slag, charging, process, shaft efficiency and certainty, binding
-         *     limits), Step 2's ore + flux-only plan and today's charged blend, Step 1's highest output and frontier, the value
-         *     of limits, the critical assumptions and the network solves (``services.optimiser_results``).
+         *     limits), the fixed-production ore + flux-only plan and today's charged blend, the cheapest production level's
+         *     highest output and frontier, the value of limits, the critical assumptions and the network solves
+         *     (``services.optimiser_results``).
          */
         get: operations["optimiser_run_result"];
         put?: never;
@@ -2471,7 +2474,7 @@ export interface components {
         };
         /**
          * BmoImpliedProduction
-         * @description The production implied by the latest Step 1 run: the cheapest production level under the day's limits.
+         * @description The production implied by the latest cheapest-production run: the cheapest level under the day's limits.
          */
         BmoImpliedProduction: {
             /**
@@ -2564,9 +2567,9 @@ export interface components {
          * @description The runs the Blend Mix Optimiser page opens on.
          */
         BmoPlanBoard: {
-            /** @description Latest ok Step 1 run; null while there is none */
+            /** @description Latest ok cheapest-production run; null while none */
             implied?: components["schemas"]["BmoImpliedProduction"] | null;
-            /** @description Latest ok Step 2 run of any kind */
+            /** @description Latest ok fixed-production run of any kind */
             latest_run?: components["schemas"]["BmoPlanRun"] | null;
             /**
              * Read At
@@ -2576,10 +2579,10 @@ export interface components {
             read_at: string;
             /**
              * Recent
-             * @description Step 2 runs of the last day, newest first
+             * @description Fixed-production runs of the last day, newest first
              */
             recent?: components["schemas"]["BmoPlanRun"][];
-            /** @description Latest ok scheduled STRATA-ω Step 2 run of the last 24 h */
+            /** @description Latest ok scheduled STRATA-ω fixed-production run of the last 24 h */
             shift_run?: components["schemas"]["BmoPlanRun"] | null;
             /**
              * Slag Bands
@@ -2612,7 +2615,7 @@ export interface components {
         };
         /**
          * BmoPlanRun
-         * @description A Step 2 run the page may show: its headline and the decision that applies.
+         * @description A fixed-production run the page may show: its headline and the decision that applies.
          */
         BmoPlanRun: {
             /**
@@ -2690,9 +2693,10 @@ export interface components {
         };
         /**
          * BmoPlanRunParams
-         * @description A run from the page's constraints: Step 2 at the chosen production (default), or Step 1 to recompute the
-         *     implied production. Both run with Fixed-ω on the day's calibration and the live yard; the limits are page 9's slag
-         *     window and charging capacity in the API's names; unset fields keep the saved operator inputs and the register.
+         * @description A run from the page's constraints: fixed production at the chosen production (default), or the cheapest
+         *     production level to recompute the implied production. Both run with Fixed-ω on the day's calibration and the live
+         *     yard; the limits are page 9's slag window and charging capacity in the API's names; unset fields keep the saved
+         *     operator inputs and the register.
          */
         BmoPlanRunParams: {
             /** @description Slag window and charging limits instead of the saved ones */
@@ -2706,7 +2710,7 @@ export interface components {
             mode: "step2" | "step1";
             /**
              * Production T D
-             * @description Step 2 hot-metal target, t/d (default: the current production)
+             * @description Fixed-production target, t/d (default: the current production)
              */
             production_t_d?: number | null;
         };
@@ -3236,6 +3240,11 @@ export interface components {
             /** @description Raw mass closure; null without a raw burnt coke */
             closure?: components["schemas"]["BvcClosure"] | null;
             /**
+             * Excluded
+             * @description Shifts with data for a balance left out as data errors (fuel record, ore moisture, listed), oldest first; in neither basis
+             */
+            excluded?: components["schemas"]["BvcExcluded"][];
+            /**
              * First Day
              * @description First shift date (IST)
              */
@@ -3375,6 +3384,30 @@ export interface components {
              * @description End of the shift (UTC)
              */
             t: string;
+        };
+        /** BvcExcluded */
+        BvcExcluded: {
+            /**
+             * Day
+             * Format: date
+             * @description Shift date (IST)
+             */
+            day: string;
+            /**
+             * Fuel Kg Thm
+             * @description Dry fuel rate of the shift's charge record, kg/tHM
+             */
+            fuel_kg_thm?: number | null;
+            /**
+             * Reason
+             * @description Data error that left the shift out of the balance
+             */
+            reason: string;
+            /**
+             * Shift
+             * @description Shift key, IST date and letter
+             */
+            shift: string;
         };
         /** BvcLag */
         BvcLag: {
@@ -8035,7 +8068,7 @@ export interface components {
             cancelled: number;
             /**
              * Clean
-             * @description No slot missed or skipped
+             * @description No slot missed or skipped while the worker ran
              */
             clean: boolean;
             /**
@@ -8057,7 +8090,7 @@ export interface components {
             kind: string;
             /**
              * Missed
-             * @description Slots without any job record, count
+             * @description Slots without any job record while the worker ran, count
              */
             missed: number;
             /**
@@ -8065,6 +8098,12 @@ export interface components {
              * @description Next scheduled time (UTC)
              */
             next_slot?: string | null;
+            /**
+             * Off
+             * @description Slots not served because the worker was not running, count
+             * @default 0
+             */
+            off: number;
             /**
              * Problems
              * @description The latest 50 slots not done, oldest first
@@ -8082,7 +8121,7 @@ export interface components {
             schedule: string;
             /**
              * Skipped
-             * @description Slots recorded as skipped (worker not running, previous job active), count
+             * @description Slots skipped while the worker ran (the previous job still active), count
              */
             skipped: number;
             /** Title */
@@ -10069,7 +10108,7 @@ export interface components {
          * OptimiserLimits
          * @description Limits of a run that replace the fact register's defaults (ASM-11/12/13, FLOW-12) and the operator's saved slag
          *     limits and charging. The fuel-rate band (BAND-01) is the register's and cannot be changed here. Unset fields keep
-         *     the default; the process rows apply to Step 1 and maximum production.
+         *     the default; the process rows apply to the cheapest production level and maximum production.
          */
         OptimiserLimits: {
             /**
@@ -10242,12 +10281,12 @@ export interface components {
             finished_at?: string | null;
             /**
              * Frontier
-             * @description Step 1: cheapest plan per level
+             * @description Cheapest production level: cheapest plan per level
              */
             frontier?: components["schemas"]["FrontierPoint"][];
-            /** @description Step 1: the highest production that is feasible */
+            /** @description Cheapest production level: the highest feasible production */
             highest_output_plan?: components["schemas"]["PlanView"] | null;
-            /** @description Page 11's line over the plan (Step 2, maximum production) */
+            /** @description Page 11's line over the plan (fixed production, maximum production) */
             lead?: components["schemas"]["PlanLead"] | null;
             /**
              * Mode
@@ -10259,13 +10298,13 @@ export interface components {
              * @enum {string}
              */
             omega_mode: "strata" | "fixed";
-            /** @description Step 2: ore + flux objective (page 9), same limits */
+            /** @description Fixed production: ore + flux objective (page 9), same limits */
             ore_flux_plan?: components["schemas"]["PlanView"] | null;
             /** @description The plan the run reports */
             plan?: components["schemas"]["PlanView"] | null;
             /**
              * Production Target T D
-             * @description Step 2 target, t/d
+             * @description Fixed-production target, t/d
              */
             production_target_t_d?: number | null;
             /**
@@ -10300,11 +10339,11 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "infeasible" | "failed";
-            /** @description Step 2: today's charged blend at the plan's production */
+            /** @description Fixed production: today's charged blend at the plan's production */
             today_plan?: components["schemas"]["PlanView"] | null;
             /**
              * Value Of Limits
-             * @description Step 2: each limit one step
+             * @description Fixed production: each limit one step
              */
             value_of_limits?: components["schemas"]["ValueOfLimit"][];
             /** @description The yard the run read */
@@ -10396,7 +10435,7 @@ export interface components {
             result?: Record<string, unknown>;
             /**
              * Saving Rs Thm
-             * @description Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)
+             * @description Cost of today's charged blend minus the plan's, Rs/tHM (fixed production, live yard)
              */
             saving_rs_thm?: number | null;
             /**
@@ -10458,7 +10497,7 @@ export interface components {
             limits?: components["schemas"]["OptimiserLimits"] | null;
             /**
              * Mode
-             * @description step1: cheapest production level and the frontier; step2: cheapest blend at a fixed production, with fuel in the objective and the ore + flux-only answer (page 9's objective); max_production
+             * @description step1: cheapest production level and the frontier; step2: fixed production, the cheapest blend at a production target with fuel in the objective and the ore + flux-only answer (page 9's objective); max_production: maximum production. The mode names step1 / step2 are kept as identifiers only
              * @enum {string}
              */
             mode: "step1" | "step2" | "max_production";
@@ -10471,7 +10510,7 @@ export interface components {
             omega_mode: "strata" | "fixed";
             /**
              * Production T D
-             * @description Step 2 hot-metal target (default: the configured target of 2,270 t/d), t/d
+             * @description Hot-metal target of a fixed-production run (default: the configured target of 2,270 t/d), t/d
              */
             production_t_d?: number | null;
             /**
@@ -10556,7 +10595,7 @@ export interface components {
             requested_by: string;
             /**
              * Saving Rs Thm
-             * @description Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)
+             * @description Cost of today's charged blend minus the plan's, Rs/tHM (fixed production, live yard)
              */
             saving_rs_thm?: number | null;
             /**
@@ -10874,7 +10913,7 @@ export interface components {
             o2_flow_max_nm3h?: number | null;
             /**
              * Process
-             * @description The process rows below apply (Step 1, maximum production)
+             * @description The process rows below apply (cheapest production level, maximum production)
              * @default false
              */
             process: boolean;
@@ -12042,7 +12081,7 @@ export interface components {
             operator_inputs?: Record<string, unknown>;
             /**
              * Production Source
-             * @description Where Step 2's production target came from
+             * @description Where the fixed-production target came from
              */
             production_source?: string | null;
             /**
@@ -12052,7 +12091,7 @@ export interface components {
             risk_k?: number | null;
             /**
              * Search O2
-             * @description Oxygen searched up to its limit (Step 1, maximum production)
+             * @description Oxygen searched up to its limit (cheapest production level, maximum production)
              * @default false
              */
             search_o2: boolean;
@@ -12210,7 +12249,7 @@ export interface components {
         ScheduleAuditResponse: {
             /**
              * Clean
-             * @description No slot of any kind missed or skipped in the period
+             * @description No slot of any kind missed or skipped in the period while the worker ran
              */
             clean: boolean;
             /**
@@ -12233,6 +12272,11 @@ export interface components {
              * @description Start of the period (UTC)
              */
             start: string;
+            /**
+             * Worker Off
+             * @description Periods the worker was not running, within the period, newest first
+             */
+            worker_off?: components["schemas"]["WorkerOutage"][];
         };
         /** ServiceRow */
         ServiceRow: {
@@ -13502,7 +13546,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "failed" | "cancelled" | "running" | "skipped" | "missed";
+            state: "failed" | "cancelled" | "running" | "skipped" | "missed" | "off";
         };
         /** SnapshotWrite */
         SnapshotWrite: {
@@ -16348,6 +16392,32 @@ export interface components {
              */
             duplicate: boolean;
             job: components["schemas"]["JobRecord"];
+        };
+        /** WorkerOutage */
+        WorkerOutage: {
+            /**
+             * End
+             * Format: date-time
+             * @description Next start of the worker (UTC), or the period end while it is down
+             */
+            end: string;
+            /**
+             * Hours
+             * @description Length within the period, h
+             */
+            hours: number;
+            /**
+             * Ongoing
+             * @description The worker is down now
+             * @default false
+             */
+            ongoing: boolean;
+            /**
+             * Start
+             * Format: date-time
+             * @description Last activity of the worker before it stopped (UTC), or the period start
+             */
+            start: string;
         };
         /** WorkerStatus */
         WorkerStatus: {

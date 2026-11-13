@@ -1,19 +1,20 @@
 """Optimiser runs: on request (SV-1.6, #286) and on the schedule (SV-1.7, #287).
 
 optimiser.run     one run with the requested mode and settings (``POST /api/optimiser/runs``)
-optimiser.step2   06:15, 14:15, 22:15: Step 2 with STRATA-ω and Fixed-ω in parallel, two runs
-optimiser.step1   06:30, 14:30, 22:30: Step 1 with STRATA-ω
+optimiser.step2   06:15, 14:15, 22:15: fixed production with Fixed-ω and STRATA-ω in parallel, two runs
+optimiser.step1   06:30, 14:30, 22:30: cheapest production level with STRATA-ω
 optimiser.commentary  page 11's furnace commentary on a stored run (``POST /api/optimiser/runs/{id}/commentary``)
 
 Every case is page 11's default case (``services.optimiser.default_case``: live yard and prices, today's controls)
 on the day's calibration (``services.day_calibration``, made at 02:30; the live one while it is missing) unless a
 request asks for the live or the shipped one; a request may also name the reference yard, controls and limits
-(SV-3.2), and STRATA-ω plans carry their critical assumptions. Step 2 runs at the current production: the latest
-twin window's (at most 3 h old), else the median of the regime window. The cases are built in a thread, solved in
-the model-solve pool and stored in ``twin.optimiser_run``: ok, infeasible (the LP or a plausibility band refused the
-case, with the reason) or failed. A scheduled run whose yard or calibration fell back to the shipped reference (Neon
-or the plant data unavailable) is tried again after 5 min; the last try runs on the reference, labelled, as page 11
-does. Without a twin store the plans are returned in the job result only.
+(SV-3.2), and STRATA-ω plans carry their critical assumptions. The scheduled fixed-production runs take the
+configured target (2,270 t/d; user decision 11 Nov 2026); a request may name another. The kind and mode names step1 /
+step2 are identifiers only: the labels say cheapest production level and fixed production. The cases are built in a
+thread, solved in the model-solve pool and stored in ``twin.optimiser_run``: ok, infeasible (the LP or a plausibility
+band refused the case, with the reason) or failed. A scheduled run whose yard or calibration fell back to the shipped
+reference (Neon or the plant data unavailable) is tried again after 5 min; the last try runs on the reference,
+labelled, as page 11 does. Without a twin store the plans are returned in the job result only.
 """
 
 from __future__ import annotations
@@ -29,8 +30,7 @@ from services.store import twin_store
 from utils.burden_engine import BandError, Infeasible
 from worker.runtime import JobContext, TransientJobError, handles
 
-LABELS = {"step1": "Step 1, cheapest production level", "step2": "Step 2, fixed production", "max_production":
-          "maximum production"}  # fmt: skip
+LABELS = {"step1": "cheapest production level", "step2": "fixed production", "max_production": "maximum production"}
 OMEGA_LABELS = {"strata": "STRATA-ω", "fixed": "Fixed-ω"}
 HEADLINE = ("status", "production_t_d", "cost_rs_thm", "saving_rs_thm", "coke_kg_thm", "coke_sd_kg_thm",
             "fuel_rate_kg_thm", "certainty")  # fmt: skip
@@ -131,7 +131,7 @@ async def run(job: JobContext, params: OptimiserRunParams) -> dict[str, Any]:
 
 async def _scheduled_cases(job: JobContext, mode: str, omega_modes: tuple[str, ...]) -> list[optimiser.Case]:
     await job.progress(0.05, "Building the cases: yard, the day's calibration and today's controls", force=True)
-    # Step 2 at the configured target (2,270 t/d; user decision 11 Nov 2026), not the twin's current production
+    # Fixed production at the configured target (2,270 t/d; user decision 11 Nov 2026), not the twin's production
     production = (None, None, None)
     cases = [
         await asyncio.to_thread(_case, mode, omega_mode, production, calibration_basis="day")
@@ -150,7 +150,7 @@ async def step2(job: JobContext, params: NoParams) -> dict[str, Any]:
     cases = await _scheduled_cases(job, "step2", ("fixed", "strata"))
     target = cases[0].summary()["production_target_t_d"]
     out = await _run_cases(
-        job, cases, message=f"Optimising Step 2 at {target:.0f} t/d with Fixed-ω and STRATA-ω in parallel"
+        job, cases, message=f"Optimising fixed production at {target:.0f} t/d with Fixed-ω and STRATA-ω in parallel"
     )
     return out | {"production_t_d": target, "production_source": cases[0].production_source}
 
@@ -158,7 +158,7 @@ async def step2(job: JobContext, params: NoParams) -> dict[str, Any]:
 @handles("optimiser.step1")
 async def step1(job: JobContext, params: NoParams) -> dict[str, Any]:
     cases = await _scheduled_cases(job, "step1", ("strata",))
-    return await _run_cases(job, cases, message="Optimising Step 1 (cheapest production level) with STRATA-ω")
+    return await _run_cases(job, cases, message="Optimising the cheapest production level with STRATA-ω")
 
 
 def _store_commentary(values: dict[str, Any], job_record: dict[str, Any] | None) -> str:

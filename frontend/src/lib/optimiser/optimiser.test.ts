@@ -305,7 +305,7 @@ describe('slag breakup equals page 11', () => {
 	});
 });
 
-describe('Step 1 frontier and value of limits equal page 11', () => {
+describe('production frontier and value of limits equal page 11', () => {
 	it('cheapest and highest output, the cost of each extra tonne and what limits them', () => {
 		const v = frontierView(step1);
 		close(v.best!.production, exp1.best.P_tday);

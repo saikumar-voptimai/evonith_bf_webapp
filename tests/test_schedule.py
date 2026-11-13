@@ -181,7 +181,7 @@ def test_the_audit_gives_each_slot_its_state() -> None:
     res = sch.audit(records, [TWIN, STEP2], start, end)
     a = res["twin.evaluate"]
     assert a.expected == 6 and a.schedule == "every hour at :10"
-    assert a.counts == {"done": 2, "failed": 1, "cancelled": 0, "running": 1, "skipped": 1, "missed": 1}
+    assert a.counts == {"done": 2, "failed": 1, "cancelled": 0, "running": 1, "skipped": 1, "missed": 1, "off": 0}
     assert [(p["slot"], p["state"]) for p in a.problems] == [
         (ist("2026-10-27 11:10"), "failed"),
         (ist("2026-10-27 12:10"), "skipped"),
@@ -193,6 +193,59 @@ def test_the_audit_gives_each_slot_its_state() -> None:
     assert step2.expected == 1 and step2.counts["missed"] == 1  # 14:15
     clean = sch.audit([rec(TWIN, ist("2026-10-27 10:10"))], [TWIN], start, ist("2026-10-27 11:00"))
     assert clean["twin.evaluate"].clean and clean["twin.evaluate"].as_dict()["done"] == 1
+
+
+def _worker_off_records() -> list[dict]:
+    """The worker served forecast.si to 10:00, was off from just after it and started again at 12:32: the catch-up ran
+    12:30 late and recorded 12:00-12:25 (and twin.evaluate 12:10) as skipped because it was not running; 10:05-11:55
+    have no record (more slots than the catch-up records). After the start 12:35 and 12:45 ran, 12:40 has no record."""
+
+    def ran(kind, slot, by="scheduler", submitted=None):
+        submitted = submitted or slot + timedelta(seconds=0.2)
+        return rec(kind, slot, by=by, submitted=submitted, started_at=submitted + timedelta(seconds=1))
+
+    start = ist("2026-10-27 12:32")
+    off = f"{sch.OFF_PREFIX} at ...; it started ... later."
+    records = [ran(SI, ist(f"2026-10-27 {t}")) for t in ("09:50", "09:55", "10:00", "12:35", "12:45")]
+    records.append(ran(SI, ist("2026-10-27 12:30"), by=sch.CATCH_UP_BY, submitted=start))
+    records += [
+        rec(SI, ist("2026-10-27 12:00") + 5 * M * i, status="cancelled", by=sch.SKIPPED_BY, submitted=start, error=off)
+        for i in range(6)
+    ]
+    records.append(
+        rec(TWIN, ist("2026-10-27 12:10"), status="cancelled", by=sch.SKIPPED_BY, submitted=start, error=off)
+    )
+    return records
+
+
+def test_slots_while_the_worker_was_off_are_off_not_missed_or_skipped() -> None:
+    records = _worker_off_records()
+    assert sch.outages(records) == [(ist("2026-10-27 10:00") + timedelta(seconds=1.2), ist("2026-10-27 12:32"))]
+    res = sch.audit(records, [SI, TWIN], ist("2026-10-27 09:50"), ist("2026-10-27 12:50"))
+    si, twin = res["forecast.si"], res["twin.evaluate"]
+    assert si.expected == 36
+    assert si.counts == {"done": 6, "failed": 0, "cancelled": 0, "running": 0, "skipped": 0, "missed": 1, "off": 29}
+    assert [p["slot"] for p in si.problems if p["state"] == "missed"] == [ist("2026-10-27 12:40")]
+    assert not si.clean  # 12:40 was missed while the worker ran
+    assert twin.counts["off"] == 3 and twin.counts["missed"] == 0 and twin.clean  # 10:10, 11:10 without a record
+    assert sch.is_off_skip(records[-1]) and not sch.is_off_skip(rec(TWIN, ist("2026-10-27 13:10")))
+
+
+def test_a_worker_down_now_is_off_from_its_last_heartbeat() -> None:
+    records = _worker_off_records()
+    now = ist("2026-10-27 13:30")
+    off = sch.outages(records, now=now, down_since=ist("2026-10-27 12:46"))
+    assert off[-1] == (ist("2026-10-27 12:46"), now) and len(off) == 2
+    res = sch.audit(records, [SI], ist("2026-10-27 12:50"), now, now=now, down_since=ist("2026-10-27 12:46"))
+    assert res["forecast.si"].counts["off"] == 8 and res["forecast.si"].counts["missed"] == 0  # 12:50-13:25
+    without = sch.audit(records, [SI], ist("2026-10-27 12:50"), now, now=now)  # heartbeat unknown
+    assert without["forecast.si"].counts["missed"] == 8
+
+
+def test_the_catch_up_names_the_worker_off() -> None:
+    plan = sch.catch_up_plan([TWIN], [], ist("2026-10-27 13:30"), since=ist("2026-10-27 11:00"))
+    assert [d.action for d in plan] == ["submit", "skip", "skip"]  # 13:10 runs late; 12:10 and 11:10 are off
+    assert all(d.reason.startswith(sch.OFF_PREFIX) for d in plan if d.action == "skip")
 
 
 def test_the_audit_leaves_out_slots_of_the_last_minute() -> None:

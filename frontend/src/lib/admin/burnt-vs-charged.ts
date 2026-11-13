@@ -24,6 +24,7 @@ export type LeakCheck = Schemas['LeakCheck'];
 export type LeakStep = Schemas['LeakStep'];
 export type LeakShift = Schemas['LeakShift'];
 export type LeakModel = Schemas['LeakModel'];
+export type BvcExcluded = Schemas['BvcExcluded'];
 
 export type Basis = 'all' | 'stable';
 export type Signal = LeakStep['key'];
@@ -287,4 +288,87 @@ export function leakSeries(leak: LeakCheck | null | undefined, key: Signal): Tim
 export function recentMark(leak: LeakCheck | null | undefined): TimeAnnotation[] {
 	const first = leak?.shifts.find((s) => s.period === 'recent');
 	return first ? [{ t: Date.parse(first.start), label: 'Recent days' }] : [];
+}
+
+// ------------------------------------------------------------------------------------------- excluded shifts
+/** Consecutive shifts left out for the same kind of data error. */
+export interface ExcludedRun {
+	first: string;
+	last: string;
+	shifts: number;
+	/** 'fuel record', 'ore moisture' or 'listed' */
+	cause: string;
+	fuelMin: number | null;
+	fuelMax: number | null;
+}
+
+const LETTERS = ['A', 'B', 'C'] as const;
+
+/** The shift after `2026-10-16_C` is `2026-10-17_A`. */
+export function nextShiftKey(key: string): string {
+	const [day = '', letter = ''] = key.split('_');
+	const i = LETTERS.indexOf(letter as (typeof LETTERS)[number]);
+	if (i >= 0 && i < LETTERS.length - 1) return `${day}_${LETTERS[i + 1]}`;
+	const d = new Date(`${day}T00:00:00Z`);
+	d.setUTCDate(d.getUTCDate() + 1);
+	return `${d.toISOString().slice(0, 10)}_A`;
+}
+
+function cause(reason: string): string {
+	if (reason.startsWith('fuel record')) return 'fuel record';
+	if (reason.startsWith('ore moisture')) return 'ore moisture';
+	return 'listed';
+}
+
+/** The excluded shifts (oldest first) as runs of consecutive shifts with the same cause. */
+export function excludedRuns(rows: readonly BvcExcluded[] | null | undefined): ExcludedRun[] {
+	const runs: ExcludedRun[] = [];
+	for (const row of rows ?? []) {
+		const c = cause(row.reason);
+		const fuel = isNumber(row.fuel_kg_thm) ? row.fuel_kg_thm : null;
+		const prev = runs[runs.length - 1];
+		if (prev && prev.cause === c && nextShiftKey(prev.last) === row.shift) {
+			prev.last = row.shift;
+			prev.shifts += 1;
+			if (fuel !== null) {
+				prev.fuelMin = prev.fuelMin === null ? fuel : Math.min(prev.fuelMin, fuel);
+				prev.fuelMax = prev.fuelMax === null ? fuel : Math.max(prev.fuelMax, fuel);
+			}
+		} else {
+			runs.push({ first: row.shift, last: row.shift, shifts: 1, cause: c, fuelMin: fuel, fuelMax: fuel });
+		}
+	}
+	return runs;
+}
+
+function shiftText(key: string): string {
+	const [day = '', letter = ''] = key.split('_');
+	return `${formatDay(day)} ${letter}`;
+}
+
+/** `16 Oct 2026 B – 21 Oct 2026 B, 16 shifts, fuel record 792–920 kg/tHM` */
+export function excludedRunText(run: ExcludedRun): string {
+	const span =
+		run.first === run.last ? shiftText(run.first) : `${shiftText(run.first)} – ${shiftText(run.last)}`;
+	const count = run.shifts === 1 ? 'one shift' : `${formatNumber(run.shifts)} shifts`;
+	const fuel =
+		run.cause === 'fuel record' && run.fuelMin !== null && run.fuelMax !== null
+			? run.fuelMin === run.fuelMax
+				? ` ${formatQuantity(run.fuelMin, 0, 'kg/tHM')}`
+				: ` ${formatNumber(run.fuelMin, 0)}–${formatQuantity(run.fuelMax, 0, 'kg/tHM')}`
+			: '';
+	return `${span}, ${count}, ${run.cause}${fuel}`;
+}
+
+/** One line over the page: how many shifts the pipeline left out as data errors and where; null when none. */
+export function excludedNote(rows: readonly BvcExcluded[] | null | undefined): string | null {
+	const runs = excludedRuns(rows);
+	if (!runs.length) return null;
+	const total = runs.reduce((n, r) => n + r.shifts, 0);
+	return (
+		`${formatNumber(total)} shift${total === 1 ? '' : 's'} with a data error are left out of both bases ` +
+		`(dry fuel rate of the record outside the plausible band, an impossible ore moisture, or listed): ` +
+		runs.map(excludedRunText).join('; ') +
+		'.'
+	);
 }

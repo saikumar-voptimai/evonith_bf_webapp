@@ -160,6 +160,13 @@ class LeakCheck(BaseModel):
     settings: LeakSettings
 
 
+class BvcExcluded(BaseModel):
+    shift: str = Field(..., description="Shift key, IST date and letter")
+    day: date = Field(..., description="Shift date (IST)")
+    reason: str = Field(..., description="Data error that left the shift out of the balance")
+    fuel_kg_thm: float | None = Field(None, description="Dry fuel rate of the shift's charge record, kg/tHM")
+
+
 class BurntVsCharged(BaseModel):
     job_kind: str = Field(trace.JOB_KIND, description="Job kind that builds the analysis")
     built_at: datetime = Field(..., description="Time of the build (UTC)")
@@ -177,6 +184,11 @@ class BurntVsCharged(BaseModel):
     lag: BvcLag
     closure: BvcClosure | None = Field(None, description="Raw mass closure; null without a raw burnt coke")
     leak: LeakCheck
+    excluded: list[BvcExcluded] = Field(
+        default_factory=list,
+        description="Shifts with data for a balance left out as data errors (fuel record, ore moisture, listed), oldest "
+        "first; in neither basis",
+    )
 
 
 @router.get("", response_model=BurntVsCharged, summary="Burnt against charged coke")
@@ -208,4 +220,5 @@ def burnt_vs_charged(
         lag=part["lag"],
         closure=part["closure"],
         leak={**part["leak"], "settings": stored["leak_settings"]},
+        excluded=stored.get("excluded", []),
     )

@@ -60,7 +60,7 @@ class OptimiserRunSummary(BaseModel):
     production_t_d: float | None = Field(None, description="Hot metal of the plan, t/d")
     cost_rs_thm: float | None = Field(None, description="Ore + flux + fuel − slag credit of the plan, Rs/tHM")
     saving_rs_thm: float | None = Field(
-        None, description="Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)"
+        None, description="Cost of today's charged blend minus the plan's, Rs/tHM (fixed production, live yard)"
     )
     coke_kg_thm: float | None = Field(None, description="Coke rate of the plan as charged (wet), kg/tHM")
     coke_sd_kg_thm: float | None = Field(None, description="1 sigma of the coke rate, kg/tHM dry (STRATA-ω)")
@@ -185,8 +185,9 @@ def _run_row(store: TwinStore, run_id: str) -> Any:
 @router.get("/runs/{run_id}/result", response_model=OptimiserResult, summary="The typed result of a run")
 def run_result(run_id: str, store: Annotated[TwinStore, Depends(twin_store)]) -> OptimiserResult:
     """Plan (blend, flux, cost split, coke ± σ, fuel, slag, charging, process, shaft efficiency and certainty, binding
-    limits), Step 2's ore + flux-only plan and today's charged blend, Step 1's highest output and frontier, the value
-    of limits, the critical assumptions and the network solves (``services.optimiser_results``)."""
+    limits), the fixed-production ore + flux-only plan and today's charged blend, the cheapest production level's
+    highest output and frontier, the value of limits, the critical assumptions and the network solves
+    (``services.optimiser_results``)."""
     return result_view(_run_row(store, run_id))
 
 

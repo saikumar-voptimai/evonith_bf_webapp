@@ -237,7 +237,9 @@ class PlanLimits(BaseModel):
     top_gas_min_c: float | None = Field(None, description="Top-gas temperature, lower limit, °C")
     fuel_min_kg_thm: float | None = Field(None, description="Fuel rate, lower edge of BAND-01, kg/tHM")
     fuel_max_kg_thm: float | None = Field(None, description="Fuel rate, upper edge of BAND-01, kg/tHM")
-    process: bool = Field(False, description="The process rows below apply (Step 1, maximum production)")
+    process: bool = Field(
+        False, description="The process rows below apply (cheapest production level, maximum production)"
+    )
     hot_blast_pressure_max_bar_g: float | None = Field(None, description="Hot-blast pressure limit, bar g")
     dp_max_bar: float | None = Field(None, description="Pressure drop limit, bar")
     top_pressure_min_bar_g: float | None = Field(None, description="Top pressure, lower limit, bar g")
@@ -402,9 +404,11 @@ class RunCase(BaseModel):
     )
     certainty_filter: str | None = Field(None, description="STRATA-ω certainty filter: any, low, medium, high")
     risk_k: float | None = Field(None, description="STRATA-ω risk aversion k (cost + k × σ), dimensionless")
-    search_o2: bool = Field(False, description="Oxygen searched up to its limit (Step 1, maximum production)")
+    search_o2: bool = Field(
+        False, description="Oxygen searched up to its limit (cheapest production level, maximum production)"
+    )
     auto: bool = Field(False, description="Auto mode's three decision settings were run as well")
-    production_source: str | None = Field(None, description="Where Step 2's production target came from")
+    production_source: str | None = Field(None, description="Where the fixed-production target came from")
     today_window: str | None = Field(None, description="When today's charged blend was charged (IST)")
     yard_message: str | None = Field(None, description="Why the reference yard stands in (empty: the live yard)")
     operator_inputs: dict[str, Any] = Field(
@@ -495,24 +499,36 @@ class OptimiserResult(BaseModel):
     started_at: datetime | None = Field(None, description="UTC")
     finished_at: datetime | None = Field(None, description="UTC")
     run_s: float | None = Field(None, description="Duration of the run, s")
-    production_target_t_d: float | None = Field(None, description="Step 2 target, t/d")
+    production_target_t_d: float | None = Field(None, description="Fixed-production target, t/d")
     yard_source: str | None = Field(None, description="live or reference")
     calibration: dict[str, Any] = Field(default_factory=dict, description="Calibration source, window, ω and basis")
     certainty: str | None = Field(None, description="Certainty tier of the plan: High, Medium, Low, Investigate")
     plan: PlanView | None = Field(None, description="The plan the run reports")
-    ore_flux_plan: PlanView | None = Field(None, description="Step 2: ore + flux objective (page 9), same limits")
-    today_plan: PlanView | None = Field(None, description="Step 2: today's charged blend at the plan's production")
+    ore_flux_plan: PlanView | None = Field(
+        None, description="Fixed production: ore + flux objective (page 9), same limits"
+    )
+    today_plan: PlanView | None = Field(
+        None, description="Fixed production: today's charged blend at the plan's production"
+    )
     saving_rs_thm: float | None = Field(None, description="Today's charged blend minus the plan, Rs/tHM")
     saving_lakh_rs_d: float | None = Field(None, description="The saving at the plan's production, lakh Rs/d")
-    highest_output_plan: PlanView | None = Field(None, description="Step 1: the highest production that is feasible")
-    frontier: list[FrontierPoint] = Field(default_factory=list, description="Step 1: cheapest plan per level")
-    value_of_limits: list[ValueOfLimit] = Field(default_factory=list, description="Step 2: each limit one step")
+    highest_output_plan: PlanView | None = Field(
+        None, description="Cheapest production level: the highest feasible production"
+    )
+    frontier: list[FrontierPoint] = Field(
+        default_factory=list, description="Cheapest production level: cheapest plan per level"
+    )
+    value_of_limits: list[ValueOfLimit] = Field(
+        default_factory=list, description="Fixed production: each limit one step"
+    )
     critical_assumptions: list[CriticalAssumption] = Field(
         default_factory=list, description="Coke effect of each critical assumption of a STRATA-ω plan, largest first"
     )
     critical_assumptions_error: str | None = Field(None, description="Why the sensitivity is missing")
     solves: NetworkSolves | None = Field(None, description="STRATA-Flow network solves behind the plan")
-    lead: PlanLead | None = Field(None, description="Page 11's line over the plan (Step 2, maximum production)")
+    lead: PlanLead | None = Field(
+        None, description="Page 11's line over the plan (fixed production, maximum production)"
+    )
     case: RunCase | None = Field(None, description="The case the run was solved for")
     yard: RunYard | None = Field(None, description="The yard the run read")
 
@@ -1036,7 +1052,7 @@ def result_view(row: Any) -> OptimiserResult:
     elif engine_mode == "cheapest":
         plan = res.get("best")
         if plan is not None:
-            view["plan"] = plan_view(plan, f"Cheapest output on the Step 1 frontier, {plan['P_tday']:,.0f} t/d",
+            view["plan"] = plan_view(plan, f"Cheapest output on the production frontier, {plan['P_tday']:,.0f} t/d",
                                      names, kinds, prices)  # fmt: skip
         if res.get("top") is not None:
             top = res["top"]

@@ -83,6 +83,9 @@ class PipelineSettings:
     min_shifts: int = 10
     bad_shifts: tuple[str, ...] = ("2026-10-07_C",)
     max_ore_moisture_pct: float = 15.0
+    # Dry fuel rate of a shift's charge record (coke + nut coke + PCI, kg/tHM) outside this band = a record error
+    # (``fuel_rate_kg_thm``); None = no check (the web model had none)
+    fuel_rate_valid_kg_thm: tuple[float, float] | None = None
     # ((Al2O3 %, superheat degC) at the low end, (Al2O3 %, superheat degC) at the high end); None = web constant 40 degC
     slag_superheat: tuple[tuple[float, float], tuple[float, float]] | None = None
     # calibration of the burnt-coke offset and of omega / Q_LZ / Q_UZ / r_H: "median" (web) or "exponential" (tracker)
@@ -95,6 +98,9 @@ class PipelineSettings:
             raise ValueError(f"calibration {self.calibration!r}: one of {', '.join(CALIBRATION_METHODS)}")
         if not self.half_life_days > 0:
             raise ValueError("half_life_days must be positive")
+        band = self.fuel_rate_valid_kg_thm
+        if band is not None and not 0 < band[0] < band[1]:
+            raise ValueError(f"fuel_rate_valid_kg_thm {band}: low and high, 0 < low < high")
 
     @property
     def calibration_min_shifts(self) -> int:
@@ -121,11 +127,19 @@ class PipelineSettings:
             min_shifts=int(cfg.get("rolling_min_shifts", cls.min_shifts)),
             bad_shifts=tuple(cfg.get("bad_shifts", cls.bad_shifts) or ()),
             max_ore_moisture_pct=float(cfg.get("max_ore_moisture_pct", cls.max_ore_moisture_pct)),
+            fuel_rate_valid_kg_thm=_band_from_config(cfg.get("fuel_rate_valid_kg_thm")),
             slag_superheat=_superheat_from_config(cfg.get("slag_superheat")),
             calibration=str(tracker.get("method", cls.calibration)),
             half_life_days=float(tracker.get("half_life_days", cls.half_life_days)),
             tracker_min_shifts=int(tracker.get("min_shifts", cls.tracker_min_shifts)),
         )
+
+
+def _band_from_config(value: Any) -> tuple[float, float] | None:
+    if value is None:
+        return None
+    lo, hi = value
+    return (float(lo), float(hi))
 
 
 def _superheat_from_config(block: Mapping[str, Any] | None) -> tuple[tuple[float, float], tuple[float, float]] | None:
@@ -179,13 +193,45 @@ def valid_shift_mask(S: pd.DataFrame) -> pd.Series:
             S.chem_pct_fe.notna() & S.slag_pct_al2o3.notna() & S.dpr_dc_dust_kgthm.notna() & (S.COKE_CALC_MT > 0))
 
 
-def excluded_shifts(S: pd.DataFrame, settings: PipelineSettings) -> set[str]:
-    """Shifts with a known data error: the web BAD list plus an ore-moisture reading that cannot be real."""
+FUEL_COLUMNS = ("COKE_DRY", "NUT_DRY", "PCI_DRY")
 
-    bad = set(settings.bad_shifts)
+
+def fuel_rate_kg_thm(S: pd.DataFrame) -> pd.Series:
+    """Dry fuel rate of each shift's charge record, kg/tHM: (coke + nut coke + PCI, dry t) / hot metal (t) x 1000.
+
+    NaN where a fuel or the production is missing. A blast furnace at BF-02's output runs between about 490 and 630
+    kg/tHM (balanced shifts Aug 2025 - Nov 2026 without the record errors); a rate far outside that band is a
+    weighing record that is stuck or missing (16-21 Oct 2026: PCI 420-470 kg/tHM against about 200 after the stop of
+    15 Oct; 31 Oct - 5 Dec 2025: charged coke 140-220 kg/tHM against 250-280 in the DPR), not a furnace state."""
+
+    if any(c not in S.columns for c in (*FUEL_COLUMNS, "PRODUCTIONTONNESPERHR")):
+        return pd.Series(np.nan, index=S.index, dtype=float)
+    hm = S["PRODUCTIONTONNESPERHR"].where(S["PRODUCTIONTONNESPERHR"] > 0)
+    return (S["COKE_DRY"] + S["NUT_DRY"] + S["PCI_DRY"]) / hm * 1000.0
+
+
+def excluded_reasons(S: pd.DataFrame, settings: PipelineSettings) -> dict[str, str]:
+    """Shifts with a known data error and the reason: the web BAD list, an ore-moisture reading that cannot be real,
+    and a fuel record outside ``settings.fuel_rate_valid_kg_thm`` (``fuel_rate_kg_thm``). The first reason holds."""
+
+    out = {k: "listed as a data error (bad_shifts)" for k in settings.bad_shifts}
     if "ORE_TM%" in S.columns:
-        bad |= set(S.index[S["ORE_TM%"] > settings.max_ore_moisture_pct])
-    return bad
+        tm = S["ORE_TM%"]
+        for k, v in tm[tm > settings.max_ore_moisture_pct].items():
+            out.setdefault(str(k), f"ore moisture {v:.1f} % above {settings.max_ore_moisture_pct:g} %")
+    band = settings.fuel_rate_valid_kg_thm
+    if band is not None:
+        lo, hi = band
+        fuel = fuel_rate_kg_thm(S)
+        for k, v in fuel[(fuel < lo) | (fuel > hi)].items():
+            out.setdefault(str(k), f"fuel record {v:.0f} kg/tHM dry, outside {lo:g}-{hi:g} kg/tHM")
+    return out
+
+
+def excluded_shifts(S: pd.DataFrame, settings: PipelineSettings) -> set[str]:
+    """Shifts with a known data error (``excluded_reasons``)."""
+
+    return set(excluded_reasons(S, settings))
 
 
 # Per-shift memo. Values are never mutated by the callers (rows go into DataFrames, cases are deep-copied).
