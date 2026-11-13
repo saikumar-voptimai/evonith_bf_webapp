@@ -28,6 +28,32 @@ coke_energy:
     half_life_days: 3.0
     min_shifts: 4
 
+  # Coke basis of the per-shift calibration (omega, Q_LZ, Q_UZ, r_H) and of TRACE's offset (user decision 13 Nov 2026,
+  # claude/coke_tracking_plan.md; src/utils/coke_energy/coke_tracking.py). charged (the web model): the coke of the
+  # shift's own charges. tracked: the coke of the charges whose ore melts in the shift, on the shift's hot metal
+  # (K_charged x coke:ferrous of the charges melting / coke:ferrous of the shift's charges); the blast air of the
+  # calibration is closed again at that coke. Path of a charge: as-charged volume from the bulk densities below; the
+  # ore melts between the cohesive-zone top and bottom, cz_top_m3 = 13.0 reference charges of 23.5 m3 and cz_bottom_m3 =
+  # cz_top_m3 + 0.9 h of passage at 5.9 charges/h (SV-1.3, momentum model 6.5); ages = depth / trailing median charged
+  # volume per hour (2025-26: 2.2 and 3.1 h), carried on the blast-oxygen clock, which stops below blast_on_nm3h.
+  # Offline test (2023-24, Jan-Apr 2025, Aug 2025-Nov 2026): independent error of the coke per stable shift -2.9 to
+  # -4.4 %; FORGE - TRACE SD per stable shift -0.4 to 0.0 %; omega step scatter -2.4 to +3.5 % (gate -10 %, not met).
+  # Branch feature/262_coke_tracking runs the tracked basis for a live comparison; charged restores the web model.
+  coke_tracking:
+    basis: tracked
+    # Bulk density = apparent density x (1 - voidage); voidage from the mean size of the plant's size analyses
+    # (Aug 2025 - Nov 2026) with the correlations of Jiao, Shu & Yu, Metals 2025, 15, 1048, t/m3.
+    bulk_density_t_m3: {coke: 0.493, nut_coke: 0.541, sinter: 2.00, pellet: 2.10, lump_ore: 2.32, flux: 1.55}
+    cz_top_m3: 305.5
+    cz_bottom_m3: 430.3
+    rate_days: 14             # trailing window of the charged-volume and blast-oxygen rates, d
+    blast_on_nm3h: 60000      # blast below this: the column does not move
+    charge_offset_h: 1.0      # hourly charge row HH = charges dumped in [HH - 1 h, HH)
+    tag_offset_h: 0.5         # process tags of row HH = mean over [HH - 0.5 h, HH + 0.5 h)
+    fill_h: 3                 # record gaps up to this length interpolated, h
+    parcels_per_hour: 6
+    min_cover: 0.8            # share of the expected melting weight a shift needs for a tracked coke
+
   # Blast moisture (DATA-04, DATA-11). The cold blast is ambient air (no steam injection on BF-02). Default
   # open_meteo (STRATA 1.5, 25 Oct 2026): daily mean RH at Wardha from Open-Meteo mapped linearly onto 7-21 g/Nm3,
   # no smoothing; validated on the top-gas H2 response (+0.041 pt H2 per g/Nm3 in 2026, +0.038 in 2023-24). Days after

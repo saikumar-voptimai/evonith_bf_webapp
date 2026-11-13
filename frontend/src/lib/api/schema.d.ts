@@ -3704,9 +3704,14 @@ export interface components {
             k_burnt?: number | null;
             /**
              * K Charged
-             * @description Coke charged (the calibration's basis), kg/tHM
+             * @description Coke charged (the calibration's basis when coke_basis is charged), kg/tHM
              */
             k_charged?: number | null;
+            /**
+             * K Tracked
+             * @description Coke tracked (the calibration's basis when coke_basis is tracked), kg/tHM
+             */
+            k_tracked?: number | null;
             /**
              * Omega
              * @description Shaft efficiency calibrated on the shift, dimensionless
@@ -5767,6 +5772,12 @@ export interface components {
         /** ForgeCalibration */
         ForgeCalibration: {
             /**
+             * Coke Basis
+             * @description Coke the shift calibrations rest on: charged or tracked
+             * @default charged
+             */
+            coke_basis: string;
+            /**
              * Complete
              * @description The window holds at least min_shifts stable shifts
              */
@@ -6261,6 +6272,11 @@ export interface components {
              * @description Oxygen-balance model, kg/tHM
              */
             k_obal?: number | null;
+            /**
+             * K Tracked
+             * @description Coke tracked: coke of the charges whose ore melts in the shift, on its hot metal (dry), kg/tHM
+             */
+            k_tracked?: number | null;
             /** @description FORGE line: omega, heat losses and r_H at their calibration */
             model?: components["schemas"]["RistLine"] | null;
             /**
@@ -6385,6 +6401,11 @@ export interface components {
              */
             k_obal?: number | null;
             /**
+             * K Tracked
+             * @description Coke tracked: coke of the charges whose ore melts in the shift, on its hot metal (dry), kg/tHM
+             */
+            k_tracked?: number | null;
+            /**
              * Omega Fixed
              * @description Shaft efficiency FORGE used (its calibration), dimensionless
              */
@@ -6485,6 +6506,12 @@ export interface components {
              * @description When the twin.forge job stored the view (UTC)
              */
             built_at: string;
+            /**
+             * Coke Basis
+             * @description Coke the shift calibrations rest on: charged or tracked
+             * @default charged
+             */
+            coke_basis: string;
             /**
              * Job Id
              * @description Job that stored it
@@ -15055,6 +15082,12 @@ export interface components {
         /** TraceCorrection */
         TraceCorrection: {
             /**
+             * Coke Basis
+             * @description Coke the correction is calibrated on: charged or tracked
+             * @default charged
+             */
+            coke_basis: string;
+            /**
              * Half Life Days
              * @description Half-life of the tracker's weights, d
              */
@@ -15077,7 +15110,7 @@ export interface components {
             n_shifts: number;
             /**
              * Offset
-             * @description Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
+             * @description Correction: charged (or tracked, on the tracked basis) − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
              */
             offset?: number | null;
             /**
@@ -15112,7 +15145,7 @@ export interface components {
         TraceCorrectionShift: {
             /**
              * Gap
-             * @description Charged − raw burnt coke, kg/tHM
+             * @description Basis (charged, or tracked on the tracked basis) − raw burnt coke, kg/tHM
              */
             gap?: number | null;
             /**
@@ -15125,6 +15158,11 @@ export interface components {
              * @description Coke charged (dry), kg/tHM
              */
             k_charged?: number | null;
+            /**
+             * K Tracked
+             * @description Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the window's hot metal, kg/tHM
+             */
+            k_tracked?: number | null;
             /**
              * Skey
              * @description Shift key of a stable shift in the window
@@ -15227,7 +15265,7 @@ export interface components {
         TraceLatestHour: {
             /**
              * Burnt Offset
-             * @description Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
+             * @description Correction: charged (or tracked, on the tracked basis) − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
              */
             burnt_offset?: number | null;
             /**
@@ -15251,6 +15289,11 @@ export interface components {
              * @description Coke charged (dry), kg/tHM
              */
             k_charged?: number | null;
+            /**
+             * K Tracked
+             * @description Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the window's hot metal, kg/tHM
+             */
+            k_tracked?: number | null;
             /**
              * Label
              * @description Shift key when the window is a shift, else the IST end time
@@ -15318,7 +15361,7 @@ export interface components {
         TraceSeriesRow: {
             /**
              * Burnt Offset
-             * @description Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
+             * @description Correction: charged (or tracked, on the tracked basis) − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
              */
             burnt_offset?: number | null;
             /**
@@ -15342,6 +15385,11 @@ export interface components {
              * @description Coke charged (dry), kg/tHM
              */
             k_charged?: number | null;
+            /**
+             * K Tracked
+             * @description Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the window's hot metal, kg/tHM
+             */
+            k_tracked?: number | null;
             /**
              * Label
              * @description Shift key, IST date or IST window end
@@ -15371,6 +15419,12 @@ export interface components {
         };
         /** TraceSettings */
         TraceSettings: {
+            /**
+             * Coke Basis
+             * @description Coke of the calibration and of the offset: charged or tracked
+             * @default charged
+             */
+            coke_basis: string;
             /**
              * Half Life Days
              * @description Half-life of the tracker's weights, d
@@ -15402,7 +15456,7 @@ export interface components {
         TraceShift: {
             /**
              * Burnt Offset
-             * @description Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
+             * @description Correction: charged (or tracked, on the tracked basis) − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
              */
             burnt_offset?: number | null;
             /**
@@ -15431,6 +15485,11 @@ export interface components {
              * @description Coke charged (dry), kg/tHM
              */
             k_charged?: number | null;
+            /**
+             * K Tracked
+             * @description Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the window's hot metal, kg/tHM
+             */
+            k_tracked?: number | null;
             /**
              * Prod Th
              * @description Production, t/h

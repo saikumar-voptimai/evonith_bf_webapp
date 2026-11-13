@@ -55,9 +55,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from utils.coke_energy.bf_balance import DEFAULTS, solve_coke
+from utils.coke_energy.bf_balance import DEFAULTS, calibrate_loss, solve_coke
 from utils.coke_energy.build_shifts import build_shift_inputs
 from utils.coke_energy.burnt import k_burnt
+from utils.coke_energy.coke_tracking import TrackingSettings, tracked_for_windows
 from utils.coke_energy.rist import TZ, calibrate_2z, solve_2z
 from utils.coke_energy.run_shifts import case_from_shift, shift_balance
 from utils.coke_energy.whatif import stable_mask
@@ -89,12 +90,22 @@ class PipelineSettings:
     calibration: str = "median"
     half_life_days: float = 3.0
     tracker_min_shifts: int = 4
+    # coke tracking (coke_tracking.py): the coke of the per-shift calibration and of the burnt-coke offset is the coke
+    # charged in the shift ("charged", the web's) or the coke of the charges melting in it ("tracked")
+    tracking: TrackingSettings = field(default_factory=TrackingSettings)
 
     def __post_init__(self) -> None:
         if self.calibration not in CALIBRATION_METHODS:
             raise ValueError(f"calibration {self.calibration!r}: one of {', '.join(CALIBRATION_METHODS)}")
         if not self.half_life_days > 0:
             raise ValueError("half_life_days must be positive")
+
+    @property
+    def coke_basis(self) -> str:
+        """Coke of the calibration and of TRACE's offset: "charged" or "tracked" (settings stored before the field
+        existed: charged)."""
+        tracking = getattr(self, "tracking", None)
+        return tracking.basis if tracking is not None else "charged"
 
     @property
     def calibration_min_shifts(self) -> int:
@@ -125,6 +136,7 @@ class PipelineSettings:
             calibration=str(tracker.get("method", cls.calibration)),
             half_life_days=float(tracker.get("half_life_days", cls.half_life_days)),
             tracker_min_shifts=int(tracker.get("min_shifts", cls.tracker_min_shifts)),
+            tracking=TrackingSettings.from_config(cfg.get("coke_tracking")),
         )
 
 
@@ -260,6 +272,49 @@ def _with_dates(R: pd.DataFrame) -> pd.DataFrame:
     return R.assign(stable=stable_mask(R), date=pd.to_datetime(R.sdate), t_mid=shift_midpoints(R.sdate, R["shift"]))
 
 
+def basis_columns(R: pd.DataFrame) -> tuple[str, str]:
+    """(coke, reconciled air) columns of the calibration: the basis columns when ``add_tracked_coke`` ran, else the
+    charged coke and its reconciled air."""
+    if "coke_kgthm_basis" in R.columns and "V_air_basis" in R.columns:
+        return "coke_kgthm_basis", "V_air_basis"
+    return "coke_kgthm_dry", "V_air_reconciled"
+
+
+def add_tracked_coke(R: pd.DataFrame, fd: pd.DataFrame, settings: PipelineSettings, cases: Cases,
+                     params: Mapping[str, dict] | None = None, fps: Mapping[str, str] | None = None,
+                     starts: pd.Series | None = None) -> pd.DataFrame:
+    """Columns ``coke_kgthm_tracked`` (coke_tracking.py; NaN where the record does not cover the melting),
+    ``coke_kgthm_basis`` and ``V_air_basis``: the coke and the reconciled air of the calibration. On the tracked basis
+    the air is closed again at the tracked coke (``calibrate_loss`` at the shift's measured eta CO, as
+    ``shift_balance`` closes it at the charged coke); a shift without tracked coke keeps its charged coke.
+
+    ``starts``: first hourly row of each shift's window (default: the shift's start from its date and letter)."""
+
+    R = R.copy()
+    if starts is None:
+        starts = shift_midpoints(R.sdate, R["shift"]) - pd.Timedelta(hours=SHIFT_HOURS / 2)
+    R["coke_kgthm_tracked"] = tracked_for_windows(fd, starts, R.coke_kgthm_dry, settings.tracking).reindex(R.index)
+    if settings.coke_basis != "tracked":
+        R["coke_kgthm_basis"] = R.coke_kgthm_dry
+        R["V_air_basis"] = R.V_air_reconciled
+        return R
+    K = R.coke_kgthm_tracked.where(R.coke_kgthm_tracked.notna(), R.coke_kgthm_dry)
+    V = {}
+    for key, rb in R.iterrows():
+        p = _p(params, key)
+        fp = _fp(fps, key)
+        mkey = None if fp is None else ("reclose_air", fp, p["slag_T_above_HM"], rb.eta_H2, rb.eta_CO, K[key])
+        try:
+            V[key] = _memo(mkey, lambda: calibrate_loss(_case(cases, key, rb.eta_H2), K[key], p, eta_CO=rb.eta_CO / 100)[1])
+        except Exception:  # noqa: BLE001 - as the balance: a shift whose air does not close keeps its charged basis
+            V[key] = np.nan
+    V = pd.Series(V, dtype=float).reindex(R.index)
+    ok = np.isfinite(V)
+    R["coke_kgthm_basis"] = K.where(ok, R.coke_kgthm_dry)
+    R["V_air_basis"] = V.where(ok, R.V_air_reconciled)
+    return R
+
+
 def rolling_pool_median(pool: pd.DataFrame, target_dates: pd.Series, cols: list[str], window_days: int,
                         min_shifts: int) -> pd.DataFrame:
     """For each target date d, the median of ``cols`` over pool rows dated in [d - window_days, d).
@@ -373,10 +428,12 @@ def calibrate_shifts(cases: Cases, R: pd.DataFrame, p: Mapping[str, Any], T_R: f
 
     ``p`` applies to every shift unless ``params`` gives each shift its own."""
 
+    kcol, vcol = basis_columns(R)
+
     def one(key: str, rb: pd.Series) -> dict | None:
         case = _case(cases, key, rb.eta_H2)
         try:
-            cal = calibrate_2z(case, rb.coke_kgthm_dry, rb.V_air_reconciled, rb.eta_CO / 100,
+            cal = calibrate_2z(case, rb[kcol], rb[vcol], rb.eta_CO / 100,
                                params[key] if params is not None else p, T_R=T_R)
         except Exception:  # noqa: BLE001 - the web skipped (and printed) such shifts
             return None
@@ -388,7 +445,7 @@ def calibrate_shifts(cases: Cases, R: pd.DataFrame, p: Mapping[str, Any], T_R: f
 
     rows = []
     tz = tuple(sorted(TZ.items()))
-    for key, rb in R[["eta_H2", "coke_kgthm_dry", "V_air_reconciled", "eta_CO", "prod_th"]].iterrows():
+    for key, rb in R[["eta_H2", kcol, vcol, "eta_CO", "prod_th"]].iterrows():
         fp = _fp(fps, key)
         superheat = (params[key] if params is not None else p)["slag_T_above_HM"]
         mkey = None if fp is None else ("calibrate_2z", fp, superheat, *rb.to_numpy().tolist(), T_R, tz)
@@ -434,7 +491,8 @@ def burnt_coke(S: pd.DataFrame, R: pd.DataFrame, settings: PipelineSettings, cas
         rows.append(dict(skey=key, K_act=rb.coke_kgthm_dry, K_burnt=Kb, V_meter=rb.blast_air_nm3thm, V_rec=rb.V_air_reconciled,
                          hm_t=rb.hm_t, prod_th=rb.prod_th, O_chk=chk))
     B = pd.DataFrame(rows).set_index("skey")
-    B["gap"] = B.K_act - B.K_burnt                   # + = coke charged ahead of what the blast burnt
+    B["K_basis"] = R[basis_columns(R)[0]].reindex(B.index)
+    B["gap"] = B.K_basis - B.K_burnt                 # + = coke (charged or tracked) ahead of what the blast burnt
     B["dK_per_pct_air"] = (B.K_burnt - B.K_act) / (100 * (B.V_meter / B.V_rec - 1))
     Rs = _with_dates(R).join(B[["gap"]])
     # the offset's name keeps the web's "14"; its value follows settings.calibration (median or tracker)
@@ -491,6 +549,9 @@ def shift_table(R: pd.DataFrame, P: pd.DataFrame, B: pd.DataFrame, Z: pd.DataFra
     T["stable"] = stable_mask(R)
     T["provisional"] = T.sdate.dt.date.isin(set(provisional_dates))
     T["K_charged"] = R.coke_kgthm_dry
+    if "coke_kgthm_tracked" in R.columns:
+        T["K_tracked"] = R.coke_kgthm_tracked
+    T["K_basis"] = R[basis_columns(R)[0]]
     T["K_obal"] = P["K_roll"]
     T["K_energy"] = O2["K_2z"]
     T["K_burnt"] = B["K_burnt_corr"]
@@ -541,6 +602,7 @@ def run_pipeline(fd: pd.DataFrame, m10: pd.DataFrame, hm: pd.DataFrame, dpr: pd.
             empty = pd.DataFrame()
             return PipelineResult(S, R, empty, empty, empty, empty, empty, settings, errors)
         cases = build_cases(S, R.index, fps)
+        R = add_tracked_coke(R, fd, settings, cases, params, fps)
         P = oxygen_balance_model(S, R, settings, cases, fps, params)
         B = burnt_coke(S, R, settings, cases, fps, params)
         Z = calibrate_shifts(cases, R, dict(DEFAULTS), fps=fps, params=params)

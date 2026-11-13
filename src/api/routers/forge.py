@@ -41,6 +41,7 @@ class ForgeViewInfo(BaseModel):
     min_shifts: int = Field(..., description="Stable shifts a calibration needs, count")
     stats_days: int = Field(..., description="Trailing window of the statistics, days")
     rist_days: int = Field(..., description="Stable shifts drawn in the Rist diagram: those of these last days, days")
+    coke_basis: str = Field("charged", description="Coke the shift calibrations rest on: charged or tracked")
 
 
 class ForgeStats(BaseModel):
@@ -65,6 +66,10 @@ class ForgeShift(BaseModel):
     )
     k_obal: float | None = Field(None, description="Oxygen-balance model at the analyser's eta CO, kg/tHM")
     k_charged: float | None = Field(None, description="Coke charged, kg/tHM")
+    k_tracked: float | None = Field(
+        None,
+        description="Coke tracked: coke of the charges whose ore melts in the shift, on its hot metal (dry), kg/tHM",
+    )
     error: float | None = Field(None, description="FORGE − burnt coke, kg/tHM")
     omega_fixed: float | None = Field(None, description="Shaft efficiency FORGE used (its calibration), dimensionless")
     omega_shift: float | None = Field(None, description="Shaft efficiency calibrated on the shift, dimensionless")
@@ -136,6 +141,10 @@ class ForgeRistFrame(BaseModel):
     k_forge: float | None = Field(None, description="FORGE, kg/tHM")
     k_obal: float | None = Field(None, description="Oxygen-balance model, kg/tHM")
     k_charged: float | None = Field(None, description="Coke charged, kg/tHM")
+    k_tracked: float | None = Field(
+        None,
+        description="Coke tracked: coke of the charges whose ore melts in the shift, on its hot metal (dry), kg/tHM",
+    )
 
 
 class ForgeRist(BaseModel):
@@ -156,7 +165,12 @@ class CalibrationShift(BaseModel):
     q_uz_gj_h: float | None = Field(None, description="Upper-zone heat loss calibrated on the shift, GJ/h")
     r_h: float | None = Field(None, description="Hydrogen reduction share calibrated on the shift, dimensionless")
     k_burnt: float | None = Field(None, description="Burnt coke, kg/tHM")
-    k_charged: float | None = Field(None, description="Coke charged (the calibration's basis), kg/tHM")
+    k_charged: float | None = Field(
+        None, description="Coke charged (the calibration's basis when coke_basis is charged), kg/tHM"
+    )
+    k_tracked: float | None = Field(
+        None, description="Coke tracked (the calibration's basis when coke_basis is tracked), kg/tHM"
+    )
     weight: float | None = Field(
         None,
         description="Share of the shift in the calibrated omega (sums to 1 over the shifts with one), dimensionless",
@@ -172,6 +186,7 @@ class ForgeCalibration(BaseModel):
         "weighted by 0.5^(age / half-life) over the stable shifts that ended before the target shift began",
     )
     half_life_days: float | None = Field(None, description="Half-life of the exponential weights, days")
+    coke_basis: str = Field("charged", description="Coke the shift calibrations rest on: charged or tracked")
     target_shift: str | None = Field(None, description="Shift the calibration is for, YYYY-MM-DD_A|B|C")
     window_start: date = Field(..., description="First IST day of the window")
     window_end: date = Field(..., description="Last IST day with a shift in the window")

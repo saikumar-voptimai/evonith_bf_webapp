@@ -59,7 +59,13 @@ STORE_PATH = Path(__file__).resolve().parents[1] / "storage" / "coke_energy" / "
 STALE_AFTER_S = 2 * 3600.0
 SHIFT = pd.Timedelta(hours=8)
 #: Pipeline shift-table column -> view field.
-FIELDS = {"K_burnt": "k_burnt", "K_burnt_raw": "k_burnt_raw", "burnt_offset": "burnt_offset", "K_charged": "k_charged"}
+FIELDS = {
+    "K_burnt": "k_burnt",
+    "K_burnt_raw": "k_burnt_raw",
+    "burnt_offset": "burnt_offset",
+    "K_charged": "k_charged",
+    "K_tracked": "k_tracked",
+}
 #: Snapshot field or quantity -> view field (the twin's window values of the same quantities).
 HOUR_FIELDS = {"k_trace": "k_burnt", "k_burnt_raw_kg_thm": "k_burnt_raw", "burnt_offset_kg_thm": "burnt_offset"}
 #: Agreement bases of the page -> label of the window in ``transit.WINDOWS``.
@@ -143,7 +149,7 @@ def day_rows(T: pd.DataFrame) -> list[dict[str, Any]]:
     value over the day's three shifts (``accuracy.window_means`` with w = 3; null when a shift lacks the value)."""
     if T is None or T.empty:
         return []
-    cols = list(FIELDS)
+    cols = [c for c in FIELDS if c in T.columns]
     means = {c: window_means(T, 3, [c]) for c in cols}
     index = means[cols[0]].index
     rows = []
@@ -156,6 +162,7 @@ def day_rows(T: pd.DataFrame) -> list[dict[str, Any]]:
                 "start": utc_text(start),
                 "end": utc_text(start + 3 * SHIFT),
                 "n_shifts": int(means["K_burnt_raw"].loc[t_mid, "n"]),
+                **{f: None for c, f in FIELDS.items() if c not in cols},
                 **{FIELDS[c]: number(means[c].loc[t_mid, c]) for c in cols},
             }
         )
@@ -181,7 +188,8 @@ def oxygen_inputs(row: pd.Series) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------------------------- correction
 def correction(T: pd.DataFrame, settings: PipelineSettings) -> dict[str, Any] | None:
     """The correction of the latest shift that has one: the offset (pipeline ``burnt_offset``), its window and the
-    stable shifts it runs over with their (charged - raw burnt) and share (``pipeline.calibration_pool``: the shifts
+    stable shifts it runs over with their (basis - raw burnt) and share (the basis is the charged coke, or the tracked
+    coke with ``coke_tracking.basis: tracked``; ``pipeline.calibration_pool``: the shifts
     dated in [d - window_days, d) with equal shares for the median; for the tracker the shifts that ended before the
     shift began, at most window_days old, weight 0.5 ** (age / half-life))."""
     if T is None or T.empty or "burnt_offset" not in T:
@@ -199,11 +207,13 @@ def correction(T: pd.DataFrame, settings: PipelineSettings) -> dict[str, Any] | 
             "date": pd.to_datetime(stable["sdate"]).dt.normalize(),
             "t_mid": mids,
             "K_charged": stable["K_charged"],
+            "K_basis": stable["K_basis"] if "K_basis" in stable else stable["K_charged"],
+            "K_tracked": stable["K_tracked"] if "K_tracked" in stable else float("nan"),
             "K_burnt_raw": stable["K_burnt_raw"],
         },
         index=stable.index,
     )
-    candidates["gap"] = candidates["K_charged"] - candidates["K_burnt_raw"]
+    candidates["gap"] = candidates["K_basis"] - candidates["K_burnt_raw"]
     pool = calibration_pool(candidates, day, t_mid, settings, value_col="gap")
     tracker = settings.calibration != "median"
     span = pd.Timedelta(days=settings.window_days)
@@ -213,6 +223,7 @@ def correction(T: pd.DataFrame, settings: PipelineSettings) -> dict[str, Any] | 
         "offset": number(have.loc[skey, "burnt_offset"]),
         "method": settings.calibration,
         "half_life_days": float(settings.half_life_days) if tracker else None,
+        "coke_basis": settings.coke_basis,
         "window_start": f"{first:%Y-%m-%d}",
         "window_end": f"{day:%Y-%m-%d}",
         "window_days": int(settings.window_days),
@@ -223,6 +234,7 @@ def correction(T: pd.DataFrame, settings: PipelineSettings) -> dict[str, Any] | 
                 "skey": str(k),
                 "start": utc_text(pd.Timestamp(r["t_mid"]) - SHIFT / 2),
                 "k_charged": number(r["K_charged"]),
+                "k_tracked": number(r["K_tracked"]),
                 "k_burnt_raw": number(r["K_burnt_raw"]),
                 "gap": number(r["gap"]),
                 "weight": number(r["weight"]),
@@ -382,6 +394,7 @@ def build_view(data: ce.PageData, cfg: Mapping[str, Any], *, now: pd.Timestamp |
             "min_shifts": int(settings.calibration_min_shifts),
             "method": settings.calibration,
             "half_life_days": float(settings.half_life_days) if settings.calibration != "median" else None,
+            "coke_basis": settings.coke_basis,
             "history_start": str(settings.history_start),
         },
         "sources": {
@@ -486,7 +499,7 @@ def shift_series(view: Mapping[str, Any], start: datetime, end: datetime) -> lis
             "stable": r["stable"],
             "status": None,
             "n_shifts": 1,
-            **{f: r[f] for f in FIELDS.values()},
+            **{f: r.get(f) for f in FIELDS.values()},
         }
         for r in _between(view.get("shifts") or [], start, end)
     ]
@@ -501,7 +514,7 @@ def day_series(view: Mapping[str, Any], start: datetime, end: datetime) -> list[
             "stable": None,
             "status": None,
             "n_shifts": r["n_shifts"],
-            **{f: r[f] for f in FIELDS.values()},
+            **{f: r.get(f) for f in FIELDS.values()},
         }
         for r in _between(view.get("days") or [], start, end)
     ]
@@ -510,7 +523,7 @@ def day_series(view: Mapping[str, Any], start: datetime, end: datetime) -> list[
 def hour_series(snapshots: Sequence[Any]) -> list[dict[str, Any]]:
     """Hourly TRACE from the twin's stored windows (8 h ending at each full hour), oldest first."""
     rows = twin_views.series_rows(
-        snapshots, resolution="hour", quantities=["k_burnt_raw_kg_thm", "burnt_offset_kg_thm"]
+        snapshots, resolution="hour", quantities=["k_burnt_raw_kg_thm", "burnt_offset_kg_thm", "k_tracked_kg_thm"]
     )
     out = []
     for r in rows:
@@ -528,6 +541,7 @@ def hour_series(snapshots: Sequence[Any]) -> list[dict[str, Any]]:
                 "k_burnt_raw": q.get("k_burnt_raw_kg_thm"),
                 "burnt_offset": q.get("burnt_offset_kg_thm"),
                 "k_charged": r["k_charged"],
+                "k_tracked": q.get("k_tracked_kg_thm"),
             }
         )
     return out

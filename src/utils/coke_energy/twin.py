@@ -11,10 +11,13 @@ from the pipeline table:
     K_TRACE    coke the metered blast burnt (oxygen balance at the analyser's eta CO) plus the calibrated
                (charged - burnt) of the pool                                          = pipeline ``K_burnt``
     K_FORGE    two-zone balance with omega, Q_LZ, Q_UZ, r_H at their calibration       = pipeline ``K_energy``
-    omega_imp  two-zone calibration of W on the reconciled basis (charged coke, O-balance air, analyser eta CO)
+    omega_imp  two-zone calibration of W on the reconciled basis (the calibration's coke, its O-balance air,
+               analyser eta CO; coke charged, or tracked with ``coke_tracking.basis: tracked``)
                                                                                       = pipeline ``omega_shift``
     omega_cal  the calibrated omega that K_FORGE uses                                 = pipeline ``omega_fixed``
     K_charged  dry coke charged per tonne of hot metal                                = pipeline ``K_charged``
+    K_tracked  the coke of the charges melting in W per tonne of hot metal (coke_tracking.py; quantity
+               ``k_tracked_kg_thm``)                                                  = pipeline ``K_tracked``
     K_STRATA   the K_FORGE balance with omega = omega_STRATA, STRATA 1.5 for the window's blend and operation
                against the stable shifts dated in the 14 days before (``utils.burden_engine.strata_window``: anchor A
                = those shifts with omega_A = omega_cal, network
@@ -42,8 +45,10 @@ import pandas as pd
 from utils.burden_engine import strata_window
 from utils.burden_engine.strata_network import solve_stats
 from utils.coke_energy import burden_column, hmt_forecast
+from utils.coke_energy.bf_balance import calibrate_loss
 from utils.coke_energy.build_shifts import build_shift_inputs, window_key
 from utils.coke_energy.burnt import k_burnt
+from utils.coke_energy.coke_tracking import tracked_for_windows
 from utils.coke_energy.pipeline import (
     PipelineResult,
     PipelineSettings,
@@ -209,6 +214,23 @@ def _pool_calibration(
     return out
 
 
+def window_tracked(fd: pd.DataFrame, window: Window, k_charged: float, settings: PipelineSettings) -> float | None:
+    """K_tracked of the window (None when the record does not cover its melting); the record is cut at
+    ``rate_days`` + 7 days before the window, which leaves the trailing rates at the window unchanged."""
+    f = fd
+    if "time" in fd.columns:
+        cut = pd.Timestamp(window.start) - pd.Timedelta(days=settings.tracking.rate_days + 7)
+        f = fd[pd.to_datetime(fd["time"]) >= cut]
+    k = tracked_for_windows(
+        f,
+        pd.Series({window.key: window.start}),
+        pd.Series({window.key: k_charged}),
+        settings.tracking,
+        hours=window.hours,
+    )
+    return _num(k.get(window.key))
+
+
 def _too_few(settings: PipelineSettings) -> str:
     n, days = settings.calibration_min_shifts, settings.window_days
     return f"fewer than {n} stable shifts in the {days} days before the window"
@@ -286,9 +308,22 @@ def evaluate_window(
         ev.k_trace = float(k_raw + offset)
         ev.quantities["burnt_offset_kg_thm"] = offset
 
-    # omega_imp: two-zone calibration of the window on the reconciled basis.
+    # omega_imp: two-zone calibration of the window on the reconciled basis (the pipeline's coke basis).
+    k_cal, v_cal = rb.coke_kgthm_dry, rb.V_air_reconciled
+    k_trk = window_tracked(fd, window, float(rb.coke_kgthm_dry), settings)
+    if k_trk is not None:
+        ev.quantities["k_tracked_kg_thm"] = k_trk
+    if settings.coke_basis == "tracked" and k_trk is not None:
+        try:
+            v_trk = calibrate_loss(_case(cases, key, rb.eta_H2), k_trk, p, eta_CO=rb.eta_CO / 100)[1]
+            if np.isfinite(v_trk):
+                k_cal, v_cal = k_trk, v_trk
+        except Exception as exc:  # noqa: BLE001 - as the pipeline: the window keeps its charged basis
+            ev.notes.append(f"tracked coke: air not closed at {k_trk:.1f} kg/tHM ({exc}); charged basis used")
+    elif settings.coke_basis == "tracked":
+        ev.notes.append("tracked coke: the record does not cover the window's melting; charged basis used")
     try:
-        cal = calibrate_2z(_case(cases, key, rb.eta_H2), rb.coke_kgthm_dry, rb.V_air_reconciled, rb.eta_CO / 100, p)
+        cal = calibrate_2z(_case(cases, key, rb.eta_H2), k_cal, v_cal, rb.eta_CO / 100, p)
         ev.omega_imp = _num(cal["omega"])
         ev.quantities.update(
             q_lz_gj_h=float(cal["Q_LZ"] * rb.prod_th / 1000),

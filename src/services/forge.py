@@ -53,6 +53,8 @@ NUMERIC = (
     "K_burnt",
     "K_obal",
     "K_charged",
+    "K_tracked",
+    "K_basis",
     "omega_fixed",
     "Q_LZ_GJh_fixed",
     "Q_UZ_GJh_fixed",
@@ -167,6 +169,7 @@ def build_view(
             "calibration": settings.calibration,
             "half_life_days": float(settings.half_life_days),
             "tracker_min_shifts": int(settings.tracker_min_shifts),
+            "coke_basis": settings.coke_basis,
             "history_start": str(settings.history_start),
             "predict_from": str(settings.predict_from),
             "stats_days": forge_settings.stats_days,
@@ -307,6 +310,7 @@ class StoredView:
             "min_shifts": int(s.get("min_shifts", 10)),
             "stats_days": int(s.get("stats_days", ForgeSettings.stats_days)),
             "rist_days": int(s.get("rist_days", ForgeSettings.rist_days)),
+            "coke_basis": str(s.get("coke_basis", "charged")),
         }
 
 
@@ -370,6 +374,7 @@ def shift_views(rows: pd.DataFrame) -> list[dict[str, Any]]:
         "k_burnt": rows.K_burnt,
         "k_obal": rows.K_obal,
         "k_charged": rows.K_charged,
+        "k_tracked": rows.K_tracked,
         "error": error,
         "omega_fixed": rows.omega_fixed,
         "omega_shift": rows.omega_shift,
@@ -474,6 +479,7 @@ def rist(stored: StoredView, start: date | None = None, end: date | None = None)
                 "k_forge": number(row.K_energy),
                 "k_obal": number(row.K_obal),
                 "k_charged": number(row.K_charged),
+                "k_tracked": number(row.K_tracked),
             }
         )
     days = [f["day"] for f in frames]
@@ -487,7 +493,7 @@ def rist(stored: StoredView, start: date | None = None, end: date | None = None)
 
 def calibration_pool(T: pd.DataFrame) -> pd.DataFrame:
     """The stable shifts with their own calibration, as ``energy_balance_model`` pools them (``date`` = shift date)."""
-    pool = T.loc[T.stable, ["sdate", "t_mid", "K_burnt", "K_charged", *CALIBRATION.values()]]
+    pool = T.loc[T.stable, ["sdate", "t_mid", "K_burnt", "K_charged", "K_tracked", *CALIBRATION.values()]]
     return pool.rename(columns={v: k for k, v in CALIBRATION.items()}).assign(date=pool["sdate"])
 
 
@@ -551,6 +557,7 @@ def calibration(stored: StoredView, day: date | None = None) -> dict[str, Any]:
         "day": day,
         "method": settings.calibration,
         "half_life_days": None if settings.calibration == "median" else float(settings.half_life_days),
+        "coke_basis": str(stored.settings.get("coke_basis", "charged")),
         "target_shift": f"{target_day:%Y-%m-%d}_{letter}",
         "window_start": lo.date(),
         "window_end": last.date(),
@@ -573,6 +580,7 @@ def calibration(stored: StoredView, day: date | None = None) -> dict[str, Any]:
                 "r_h": number(r["r_H"]),
                 "k_burnt": number(r["K_burnt"]),
                 "k_charged": number(r["K_charged"]),
+                "k_tracked": number(r["K_tracked"]),
                 "weight": number(r["weight"]),
             }
             for k, r in used.iterrows()

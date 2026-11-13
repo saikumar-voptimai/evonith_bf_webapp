@@ -30,10 +30,15 @@ LATEST_HOUR_LOOKBACK = timedelta(hours=48)
 K_BURNT = "Burnt coke, calibrated: raw + the correction (TRACE), kg/tHM"
 K_RAW = "Burnt coke, raw: oxygen balance at the metered blast air and the analyser's ηCO (GBC), kg/tHM"
 OFFSET = (
-    "Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights "
-    "0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM"
+    "Correction: charged (or tracked, on the tracked basis) − raw burnt calibrated over the stable shifts before the "
+    "shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), "
+    "kg/tHM"
 )
 K_CHARGED = "Coke charged (dry), kg/tHM"
+K_TRACKED = (
+    "Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the "
+    "window's hot metal, kg/tHM"
+)
 
 
 class TraceShift(BaseModel):
@@ -47,6 +52,7 @@ class TraceShift(BaseModel):
     k_burnt_raw: float | None = Field(None, description=K_RAW)
     burnt_offset: float | None = Field(None, description=OFFSET)
     k_charged: float | None = Field(None, description=K_CHARGED)
+    k_tracked: float | None = Field(None, description=K_TRACKED)
     hm_t: float | None = Field(None, description="Hot metal of the shift, t")
     prod_th: float | None = Field(None, description="Production, t/h")
 
@@ -90,14 +96,18 @@ class TraceLatestHour(BaseModel):
     k_burnt_raw: float | None = Field(None, description=K_RAW)
     burnt_offset: float | None = Field(None, description=OFFSET)
     k_charged: float | None = Field(None, description=K_CHARGED)
+    k_tracked: float | None = Field(None, description=K_TRACKED)
 
 
 class TraceCorrectionShift(BaseModel):
     skey: str = Field(..., description="Shift key of a stable shift in the window")
     start: datetime = Field(..., description="Shift start (UTC)")
     k_charged: float | None = Field(None, description=K_CHARGED)
+    k_tracked: float | None = Field(None, description=K_TRACKED)
     k_burnt_raw: float | None = Field(None, description=K_RAW)
-    gap: float | None = Field(None, description="Charged − raw burnt coke, kg/tHM")
+    gap: float | None = Field(
+        None, description="Basis (charged, or tracked on the tracked basis) − raw burnt coke, kg/tHM"
+    )
     weight: float | None = Field(
         None, description="Share of the shift in the correction (sums to 1 over the shifts with a gap), dimensionless"
     )
@@ -108,6 +118,7 @@ class TraceCorrection(BaseModel):
     offset: float | None = Field(None, description=OFFSET)
     method: str = Field("median", description="median (web, 14 days by date) or exponential (tracker)")
     half_life_days: float | None = Field(None, description="Half-life of the tracker's weights, d")
+    coke_basis: str = Field("charged", description="Coke the correction is calibrated on: charged or tracked")
     window_start: date = Field(..., description="First shift date of the window (IST)")
     window_end: date = Field(..., description="Date the window ends before, the shift's date (IST)")
     window_days: int = Field(..., description="Length of the window, d")
@@ -121,6 +132,7 @@ class TraceSettings(BaseModel):
     min_shifts: int = Field(..., description="Stable shifts the correction needs, count")
     method: str = Field("median", description="Calibration of the correction: median or exponential")
     half_life_days: float | None = Field(None, description="Half-life of the tracker's weights, d")
+    coke_basis: str = Field("charged", description="Coke of the calibration and of the offset: charged or tracked")
     history_start: str = Field(..., description="First date the pipeline balances (IST)")
 
 
@@ -165,6 +177,7 @@ class TraceSeriesRow(BaseModel):
     k_burnt_raw: float | None = Field(None, description=K_RAW)
     burnt_offset: float | None = Field(None, description=OFFSET)
     k_charged: float | None = Field(None, description=K_CHARGED)
+    k_tracked: float | None = Field(None, description=K_TRACKED)
 
 
 class TraceSeries(BaseModel):

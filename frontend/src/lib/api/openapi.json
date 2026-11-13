@@ -3831,8 +3831,20 @@
                 "type": "null"
               }
             ],
-            "description": "Coke charged (the calibration's basis), kg/tHM",
+            "description": "Coke charged (the calibration's basis when coke_basis is charged), kg/tHM",
             "title": "K Charged"
+          },
+          "k_tracked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke tracked (the calibration's basis when coke_basis is tracked), kg/tHM",
+            "title": "K Tracked"
           },
           "omega": {
             "anyOf": [
@@ -7770,6 +7782,12 @@
       },
       "ForgeCalibration": {
         "properties": {
+          "coke_basis": {
+            "default": "charged",
+            "description": "Coke the shift calibrations rest on: charged or tracked",
+            "title": "Coke Basis",
+            "type": "string"
+          },
           "complete": {
             "description": "The window holds at least min_shifts stable shifts",
             "title": "Complete",
@@ -8712,6 +8730,18 @@
             "description": "Oxygen-balance model, kg/tHM",
             "title": "K Obal"
           },
+          "k_tracked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke tracked: coke of the charges whose ore melts in the shift, on its hot metal (dry), kg/tHM",
+            "title": "K Tracked"
+          },
           "model": {
             "anyOf": [
               {
@@ -8968,6 +8998,18 @@
             "description": "Oxygen-balance model at the analyser's eta CO, kg/tHM",
             "title": "K Obal"
           },
+          "k_tracked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke tracked: coke of the charges whose ore melts in the shift, on its hot metal (dry), kg/tHM",
+            "title": "K Tracked"
+          },
           "omega_fixed": {
             "anyOf": [
               {
@@ -9174,6 +9216,12 @@
             "description": "When the twin.forge job stored the view (UTC)",
             "format": "date-time",
             "title": "Built At",
+            "type": "string"
+          },
+          "coke_basis": {
+            "default": "charged",
+            "description": "Coke the shift calibrations rest on: charged or tracked",
+            "title": "Coke Basis",
             "type": "string"
           },
           "job_id": {
@@ -26524,6 +26572,12 @@
       },
       "TraceCorrection": {
         "properties": {
+          "coke_basis": {
+            "default": "charged",
+            "description": "Coke the correction is calibrated on: charged or tracked",
+            "title": "Coke Basis",
+            "type": "string"
+          },
           "half_life_days": {
             "anyOf": [
               {
@@ -26561,7 +26615,7 @@
                 "type": "null"
               }
             ],
-            "description": "Correction: charged \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
+            "description": "Correction: charged (or tracked, on the tracked basis) \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
             "title": "Offset"
           },
           "pool": {
@@ -26618,7 +26672,7 @@
                 "type": "null"
               }
             ],
-            "description": "Charged \u2212 raw burnt coke, kg/tHM",
+            "description": "Basis (charged, or tracked on the tracked basis) \u2212 raw burnt coke, kg/tHM",
             "title": "Gap"
           },
           "k_burnt_raw": {
@@ -26644,6 +26698,18 @@
             ],
             "description": "Coke charged (dry), kg/tHM",
             "title": "K Charged"
+          },
+          "k_tracked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the window's hot metal, kg/tHM",
+            "title": "K Tracked"
           },
           "skey": {
             "description": "Shift key of a stable shift in the window",
@@ -26812,7 +26878,7 @@
                 "type": "null"
               }
             ],
-            "description": "Correction: charged \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
+            "description": "Correction: charged (or tracked, on the tracked basis) \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
             "title": "Burnt Offset"
           },
           "end": {
@@ -26856,6 +26922,18 @@
             ],
             "description": "Coke charged (dry), kg/tHM",
             "title": "K Charged"
+          },
+          "k_tracked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the window's hot metal, kg/tHM",
+            "title": "K Tracked"
           },
           "label": {
             "description": "Shift key when the window is a shift, else the IST end time",
@@ -26989,7 +27067,7 @@
                 "type": "null"
               }
             ],
-            "description": "Correction: charged \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
+            "description": "Correction: charged (or tracked, on the tracked basis) \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
             "title": "Burnt Offset"
           },
           "end": {
@@ -27033,6 +27111,18 @@
             ],
             "description": "Coke charged (dry), kg/tHM",
             "title": "K Charged"
+          },
+          "k_tracked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the window's hot metal, kg/tHM",
+            "title": "K Tracked"
           },
           "label": {
             "description": "Shift key, IST date or IST window end",
@@ -27092,6 +27182,12 @@
       },
       "TraceSettings": {
         "properties": {
+          "coke_basis": {
+            "default": "charged",
+            "description": "Coke of the calibration and of the offset: charged or tracked",
+            "title": "Coke Basis",
+            "type": "string"
+          },
           "half_life_days": {
             "anyOf": [
               {
@@ -27145,7 +27241,7 @@
                 "type": "null"
               }
             ],
-            "description": "Correction: charged \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
+            "description": "Correction: charged (or tracked, on the tracked basis) \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
             "title": "Burnt Offset"
           },
           "end": {
@@ -27201,6 +27297,18 @@
             ],
             "description": "Coke charged (dry), kg/tHM",
             "title": "K Charged"
+          },
+          "k_tracked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke tracked (dry): the coke of the charges whose ore melts in the window (cohesive zone, blast clock) on the window's hot metal, kg/tHM",
+            "title": "K Tracked"
           },
           "prod_th": {
             "anyOf": [
