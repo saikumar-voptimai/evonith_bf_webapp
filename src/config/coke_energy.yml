@@ -36,8 +36,8 @@ coke_energy:
   # ore melts between the cohesive-zone top and bottom, cz_top_m3 = 13.0 reference charges of 23.5 m3 and cz_bottom_m3 =
   # cz_top_m3 + 0.9 h of passage at 5.9 charges/h (SV-1.3, momentum model 6.5); ages = depth / trailing median charged
   # volume per hour (2025-26: 2.2 and 3.1 h), carried on the blast-oxygen clock, which stops below blast_on_nm3h.
-  # Offline test (2023-24, Jan-Apr 2025, Aug 2025-Nov 2026): independent error of the coke per stable shift -2.9 to
-  # -4.4 %; FORGE - TRACE SD per stable shift -0.4 to 0.0 %; omega step scatter -2.4 to +3.5 % (gate -10 %, not met).
+  # Offline test (2023-24, Jan-Apr 2025, Aug 2025-Nov 2026): independent error of the coke per stable shift -2.8 to
+  # -3.7 %; FORGE - TRACE SD per stable shift -0.4 to 0.0 %; omega step scatter -2.4 to +3.5 % (gate -10 %, not met).
   # Branch feature/262_coke_tracking runs the tracked basis for a live comparison; charged restores the web model.
   coke_tracking:
     basis: tracked

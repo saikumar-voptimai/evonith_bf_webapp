@@ -23,8 +23,8 @@ window of the window [s, e) of hourly rows is [s - 0.5 h, e - 0.5 h).
 Tests on the plant record (13 Nov 2026; claude/coke_tracking_plan.md section 7). Clock: the charge-volume clock
 (cumulative charged volume) placed the ages with more scatter than the blast clock (independent error of the tracked
 coke 8.0 against 7.3 kg/tHM per stable shift, 2025-26). Independent error per stable shift (three-cornered hat with raw
-burnt coke and FORGE, detrended), charged -> tracked: 9.2 -> 8.8 kg/tHM (Aug 2025 - Nov 2026, 622 shifts), 7.5 -> 7.3
-(2023-24, 1,197) and 8.0 -> 7.7 (Jan - Apr 2025, 204). Calibration on the tracked coke: FORGE - TRACE SD per stable
+burnt coke and FORGE, detrended), charged -> tracked: 9.0 -> 8.7 kg/tHM (Aug 2025 - Nov 2026, 611 shifts), 7.5 -> 7.3
+(2023-24, 1,194) and 8.0 -> 7.7 (Jan - Apr 2025, 204). Calibration on the tracked coke: FORGE - TRACE SD per stable
 shift -0.4 % (Dec 2025 - Nov 2026), -0.2 % (Oct - Nov 2026), 0.0 % (2023-24, Jan - Apr 2025); shift-to-shift scatter
 of the calibrated omega +3.5 %, -2.4 %, 0.0 %, +0.8 % (acceptance gate: -10 %). The tracker averages the basis over
 about 17 stable shifts (effective sample at a 3-day half-life), which removes most of the timing error the tracked coke
