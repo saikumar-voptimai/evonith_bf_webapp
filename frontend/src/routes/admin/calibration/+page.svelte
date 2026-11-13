@@ -410,7 +410,9 @@
 							</li>
 						{/each}
 					</ul>
-					<div class="mask-scroll">
+					<!-- It scrolls sideways on a phone, so it takes keyboard focus (axe: scrollable-region-focusable). -->
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<div class="mask-scroll" tabindex="0" role="region" aria-label="Mask by day and shift">
 						<table class="mask">
 							<caption class="sr-only">Stable-shift mask of the calibration window, oldest day first</caption>
 							<thead>

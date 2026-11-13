@@ -1112,7 +1112,8 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   icon and word, `updatedAt` on live panels, units on every readout joined by a no-break space (`formatQuantity`),
   chemical labels with Unicode subscripts (SiO₂). New nav pages go into `frontend/src/lib/nav.ts` and the audit's
   `ROUTES` (`frontend/scripts/ui-audit.mjs`; `mocked: false` audits the error state, any other unmocked /api read
-  fails). Check with `make audit-ui` (axe-core, three viewports, console errors). An `$effect` that starts a
+  fails). Check with `make audit-ui` (axe-core, four viewports including a 390 px phone, horizontal overflow, console
+  errors; layout rules for the phone in `frontend/DESIGN.md` section 3, rule 10). An `$effect` that starts a
   controller or a load calls it in `untrack(...)`: a synchronous read and write of `$state` restarts the effect
   (effect_update_depth_exceeded); `bind:` never targets an undefined entry of a prop with a fallback.
 - Charts in the SPA: `#lib/charts/` (`TimeSeriesChart`, `ScatterChart`, `BarChart`, `DonutChart`, `RistDiagram`;

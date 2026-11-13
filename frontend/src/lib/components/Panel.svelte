@@ -139,6 +139,8 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 		font-size: var(--vo-fs-label);
 		color: var(--vo-text-muted);
 	}
+	/* Side and actions wrap and may shrink to the panel's width: a row of controls that cannot wrap is as wide as
+	   all of them together and pushes the page sideways on a phone (Furnace status, FurnaceMind, 13 Nov 2026). */
 	.side {
 		display: flex;
 		align-items: center;
@@ -147,10 +149,17 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 		gap: var(--vo-space-3);
 		margin-left: auto;
 		min-height: 24px;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: flex-end;
 		gap: var(--vo-space-2);
+		min-width: 0;
+		max-width: 100%;
 	}
 	.body {
 		flex: 1;
@@ -169,6 +178,14 @@ context, the data age and actions. `tone="cream"` highlights the region (the pla
 	@media (max-width: 767px) {
 		header {
 			padding: var(--vo-space-4) var(--vo-space-4) 0;
+		}
+		/* Under the heading on a phone: start at the left edge, where the eye returns, not at the right. */
+		.side,
+		.actions {
+			justify-content: flex-start;
+		}
+		.side {
+			margin-left: 0;
 		}
 		.body {
 			padding: var(--vo-space-3) var(--vo-space-4) var(--vo-space-4);

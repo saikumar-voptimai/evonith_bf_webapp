@@ -129,8 +129,11 @@ time, duration and model, a status when the model was unavailable, and the feedb
 		text-transform: uppercase;
 		color: var(--vo-accent-ink);
 	}
+	/* One column that may shrink below its widest child: an `auto` track grows to the longest unbreakable line (a
+	   dataset name) and pushed every answer past the chat's right edge on a phone (13 Nov 2026). */
 	.answer {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--vo-space-2);
 		min-width: 0;
 	}
@@ -160,6 +163,7 @@ time, duration and model, a status when the model was unavailable, and the feedb
 		cursor: pointer;
 	}
 	.artifact span {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

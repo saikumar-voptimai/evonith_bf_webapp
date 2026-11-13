@@ -109,6 +109,12 @@ pill 999. Layout: sidebar 260 px (collapsed 68 px), page header 64 px minimum, g
    section (the Blend Simulator: Blend, Slag balance, Limits and process, Frontier, Commentary, Yard and inputs,
    Facts and assumptions), never a single scroll of every panel. Side lists become a strip above the content when
    they would take the content's width (the Shift reports list at every size).
+10. Nothing pushes the page sideways on a 390 px phone; only a table or a tab strip scrolls inside itself. A row of
+    controls wraps (`flex-wrap: wrap`, as the Panel's actions do); a one-column grid is `minmax(0, 1fr)`, since an
+    `auto` track grows to its longest unbreakable line; a text that must not wrap gets `max-width: 100%` with an
+    ellipsis, and status text such as `Freshness` wraps rather than running out of its tile. Three such defects
+    reached the phone on 13 Nov 2026 (Furnace status and FurnaceMind headers, FurnaceMind answers, Live Twin tiles);
+    the UI audit now measures every page at 390×844.
 
 Product-family conventions taken from the reference: tracked upper-case section labels (sidebar sections, eyebrows
 of highlighted panels and of the sign-in page); page header "Group / Title" with a one-line subtitle; highlighted
@@ -240,8 +246,8 @@ lining and zone dividers to the decimal; `tests/test_chart_fixtures.py` fails wh
 - `pnpm test`: token contrast, palette gates, chart option builders (scales, shifts, annotations, bands, end labels,
   identity line, bars, donut folding), Rist and schematic parity, formatting (`formatQuantity`, ranges, signs),
   parsing, sorting, toast timers, input and period validation.
-- `pnpm build && pnpm audit:ui`: axe-core (WCAG 2.2 AA and best practice) on every page at the three viewports and on
-  the catalogue at 390×844, horizontal overflow, keyboard and dialog behaviour, chart render budget, legend toggle and
+- `pnpm build && pnpm audit:ui`: axe-core (WCAG 2.2 AA and best practice) on every page at 1920×1080, 1366×768,
+  768×1024 and 390×844, horizontal overflow, keyboard and dialog behaviour, chart render budget, legend toggle and
   table view, schematic zone highlight and compact list, sign-in, role guard and sign-out; screenshots in `.audit/`.
   Needs Playwright with Chromium.
 

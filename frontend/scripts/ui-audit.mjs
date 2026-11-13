@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * UI audit of the built SPA (SV-0.5, #274; sign-in SV-0.4, #273): axe-core on every page at 1920x1080, 1366x768 and
- * 768x1024, horizontal overflow, keyboard and dialog behaviour, sign-in, role guard and sign-out, and screenshots.
+ * UI audit of the built SPA (SV-0.5, #274; sign-in SV-0.4, #273): axe-core on every page at 1920x1080, 1366x768,
+ * 768x1024 and 390x844, horizontal overflow, keyboard and dialog behaviour, sign-in, role guard and sign-out, and
+ * screenshots.
  *
  *   pnpm build && pnpm audit:ui                 # serves build/ with `vite preview`
  *   pnpm audit:ui --base http://127.0.0.1:5173  # audits a running server instead
@@ -61,10 +62,13 @@ const OPTIMISER = JSON.parse(
 const PORT = 4179;
 let base = arg('base', null);
 
+// The phone width is a page viewport like the others (13 Nov 2026): measured only on the catalogue before, a panel
+// header of controls that did not wrap pushed Furnace status and FurnaceMind sideways on a phone unnoticed.
 const VIEWPORTS = [
 	{ name: '1920x1080', width: 1920, height: 1080 },
 	{ name: '1366x768', width: 1366, height: 768 },
-	{ name: '768x1024', width: 768, height: 1024 }
+	{ name: '768x1024', width: 768, height: 1024 },
+	{ name: '390x844', width: 390, height: 844 }
 ];
 // `/` redirects to /status (SV-7.2, #325) and is checked below, not listed here: every entry must land on its path.
 const ROUTES = [

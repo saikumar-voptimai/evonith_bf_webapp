@@ -85,6 +85,7 @@ then newest first.
 	}
 	.message {
 		font-size: var(--vo-fs-body);
+		overflow-wrap: anywhere;
 	}
 	.muted {
 		font-size: var(--vo-fs-label);

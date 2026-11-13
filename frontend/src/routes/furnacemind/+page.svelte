@@ -368,8 +368,10 @@
 			max-height: none;
 		}
 	}
+	/* minmax(0, 1fr): the column follows the log's width, not the longest unbreakable line of a message. */
 	.messages {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--vo-space-4);
 		margin: 0;
 		padding: 0;
@@ -390,7 +392,9 @@
 	}
 	.answer {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--vo-space-2);
+		min-width: 0;
 	}
 	.status {
 		display: flex;

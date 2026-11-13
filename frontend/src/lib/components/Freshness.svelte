@@ -38,14 +38,20 @@ Age of the data behind a panel or tile: `Updated 3 min ago`, `Delayed, updated 4
 </span>
 
 <style>
+	/* One line where it fits; in a narrow tile on a phone the words wrap instead of running past the tile (a
+	   never-wrapping "Delayed, updated 16 min ago" widened the Live Twin page to 418 px at 390, 13 Nov 2026). */
 	.fresh {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
+		max-width: 100%;
+		min-width: 0;
 		font-size: var(--vo-fs-label);
 		font-weight: 500;
 		color: var(--vo-text-muted);
-		white-space: nowrap;
+	}
+	.fresh > :global(svg) {
+		flex: none;
 	}
 	.warning {
 		color: var(--vo-warning);

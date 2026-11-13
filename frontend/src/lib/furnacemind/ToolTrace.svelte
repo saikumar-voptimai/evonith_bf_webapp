@@ -104,6 +104,7 @@ result returned to the model, with a status (Running, Done, Failed, No result).
 		margin: 0;
 		padding: 0 var(--vo-space-3) var(--vo-space-3) 2.2em;
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--vo-space-3);
 	}
 	.head {
@@ -114,6 +115,7 @@ result returned to the model, with a status (Running, Done, Failed, No result).
 	}
 	.name {
 		font-weight: 600;
+		overflow-wrap: anywhere;
 	}
 	.k {
 		margin-top: var(--vo-space-1);
