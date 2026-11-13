@@ -151,12 +151,12 @@ export function cokeSeries(rows: TraceSeriesRow[], resolution: Resolution): Time
 	];
 }
 
-/** The 14-day correction (calibrated − raw) over the same windows. */
+/** The correction (calibrated − raw) over the same windows. */
 export function correctionSeries(rows: TraceSeriesRow[], resolution: Resolution): TimeSeries[] {
 	return [
 		{
 			id: 'offset',
-			label: '14-day correction',
+			label: 'Correction',
 			short: 'Correction',
 			colour: 'series-trace',
 			points: pointsOf(rows, (r) => r.burnt_offset, resolutionInfo(resolution).stepMs)
@@ -347,17 +347,33 @@ export function change(
 	return isNumber(latest) && isNumber(previous) ? latest - previous : null;
 }
 
-/** `12 May 2026 to 25 May 2026`: the shift dates of the correction window (its end date is exclusive). */
-export function windowText(c: Pick<TraceCorrection, 'window_start' | 'window_end'>): string {
-	return `${formatDay(c.window_start)} to ${formatDay(addDays(c.window_end, -1))}`;
+/** `12 May 2026 to 25 May 2026`: the shift dates of the correction window. Median: the end date (the shift's date)
+ * is exclusive; tracker: the window ends with the shift, so earlier shifts of its date count. */
+export function windowText(c: Pick<TraceCorrection, 'window_start' | 'window_end' | 'method'>): string {
+	const last = c.method === 'exponential' ? c.window_end : addDays(c.window_end, -1);
+	return `${formatDay(c.window_start)} to ${formatDay(last)}`;
 }
 
-/** `In the window; the median needs 10`: the note under the pool size of the correction. */
-export function poolText(c: Pick<TraceCorrection, 'min_shifts'>): string {
-	return `In the window; the median needs ${formatNumber(c.min_shifts)}`;
+/** `In the window; the median needs 10` (web) or `In the window; the correction needs 4` (tracker). */
+export function poolText(c: Pick<TraceCorrection, 'min_shifts' | 'method'>): string {
+	const what = c.method === 'exponential' ? 'the correction' : 'the median';
+	return `In the window; ${what} needs ${formatNumber(c.min_shifts)}`;
 }
 
-/** `2026-10-26_C` → `C, 26 Oct` with no-break spaces: a shift in a table row of the 14-day window, never wrapped. */
+/** How the correction is formed, under the panel's title. */
+export function correctionNote(
+	c: Pick<TraceCorrection, 'method' | 'half_life_days' | 'window_days'> | null | undefined
+): string {
+	if (c?.method === 'exponential') {
+		return (
+			`Charged − raw burnt coke over the stable shifts that ended before the shift, at most ${formatNumber(c.window_days)} days old, ` +
+			`weighted by age (half-life ${formatNumber(c.half_life_days ?? null, 0)} days); TRACE = raw + correction.`
+		);
+	}
+	return 'Median of charged − raw burnt coke over the stable shifts of the 14 days before the shift’s date; TRACE = raw + correction.';
+}
+
+/** `2026-10-26_C` → `C, 26 Oct` with no-break spaces: a shift in a table row of the correction window, never wrapped. */
 export function shiftShort(skey: string): string {
 	const [day, letter] = skey.split('_') as [string, string | undefined];
 	return `${letter ?? '?'}, ${formatDay(day).replace(/ \d{4}$/, '')}`.replace(/ /g, UNIT_SPACE);

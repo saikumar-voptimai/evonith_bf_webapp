@@ -889,7 +889,8 @@ export interface paths {
         };
         /**
          * FORGE calibration and its shifts
-         * @description Medians of omega, Q_LZ, Q_UZ and r_H over the stable shifts of the 14 days before ``day`` and those shifts.
+         * @description omega, Q_LZ, Q_UZ and r_H of FORGE's calibration for a shift (the A shift of ``day``; by default the next shift)
+         *     and the stable shifts it rests on, each with its share.
          */
         get: operations["forge_calibration"];
         put?: never;
@@ -1604,7 +1605,7 @@ export interface paths {
         };
         /**
          * TRACE: latest shift and hour, correction, feeds
-         * @description The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day
+         * @description The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the
          *     correction and the age of every source at the build of the view (the view's own age in age_s).
          */
         get: operations["trace_summary"];
@@ -3737,6 +3738,11 @@ export interface components {
              * @description Middle of the shift (UTC)
              */
             t_mid: string;
+            /**
+             * Weight
+             * @description Share of the shift in the calibrated omega (sums to 1 over the shifts with one), dimensionless
+             */
+            weight?: number | null;
         };
         /**
          * ChargedCokeForecastData
@@ -5768,9 +5774,20 @@ export interface components {
             /**
              * Day
              * Format: date
-             * @description IST day the calibration applies to
+             * @description IST day of the target shift
              */
             day: string;
+            /**
+             * Half Life Days
+             * @description Half-life of the exponential weights, days
+             */
+            half_life_days?: number | null;
+            /**
+             * Method
+             * @description median: over the stable shifts dated in the window days before the day (web); exponential: weighted by 0.5^(age / half-life) over the stable shifts that ended before the target shift began
+             * @default median
+             */
+            method: string;
             /**
              * Min Shifts
              * @description Stable shifts the calibration needs, count
@@ -5788,22 +5805,22 @@ export interface components {
             n_shifts: number;
             /**
              * Omega Cal
-             * @description Median shaft efficiency, dimensionless
+             * @description Calibrated shaft efficiency, dimensionless
              */
             omega_cal?: number | null;
             /**
              * Q Lz Gj H
-             * @description Median lower-zone heat loss, GJ/h
+             * @description Calibrated lower-zone heat loss, GJ/h
              */
             q_lz_gj_h?: number | null;
             /**
              * Q Uz Gj H
-             * @description Median upper-zone heat loss, GJ/h
+             * @description Calibrated upper-zone heat loss, GJ/h
              */
             q_uz_gj_h?: number | null;
             /**
              * R H
-             * @description Median hydrogen reduction share, dimensionless
+             * @description Calibrated hydrogen reduction share, dimensionless
              */
             r_h?: number | null;
             /**
@@ -5811,6 +5828,11 @@ export interface components {
              * @description The stable shifts of the window, oldest first
              */
             shifts: components["schemas"]["CalibrationShift"][];
+            /**
+             * Target Shift
+             * @description Shift the calibration is for, YYYY-MM-DD_A|B|C
+             */
+            target_shift?: string | null;
             view: components["schemas"]["ForgeViewInfo"];
             /**
              * Window Days
@@ -5820,7 +5842,7 @@ export interface components {
             /**
              * Window End
              * Format: date
-             * @description Last IST day of the window (the day before)
+             * @description Last IST day with a shift in the window
              */
             window_end: string;
             /**
@@ -6239,7 +6261,7 @@ export interface components {
              * @description Oxygen-balance model, kg/tHM
              */
             k_obal?: number | null;
-            /** @description FORGE line: omega, heat losses and r_H at the 14-day medians */
+            /** @description FORGE line: omega, heat losses and r_H at their calibration */
             model?: components["schemas"]["RistLine"] | null;
             /**
              * P Actual
@@ -6344,7 +6366,7 @@ export interface components {
             error?: number | null;
             /**
              * K Burnt
-             * @description Burnt coke (TRACE): metered blast less the 14-day offset, kg/tHM
+             * @description Burnt coke (TRACE): metered blast plus the calibrated charged − burnt offset, kg/tHM
              */
             k_burnt?: number | null;
             /**
@@ -6354,7 +6376,7 @@ export interface components {
             k_charged?: number | null;
             /**
              * K Forge
-             * @description FORGE: two-zone balance at the 14-day medians, kg/tHM
+             * @description FORGE: two-zone balance at its calibration, kg/tHM
              */
             k_forge?: number | null;
             /**
@@ -6364,7 +6386,7 @@ export interface components {
             k_obal?: number | null;
             /**
              * Omega Fixed
-             * @description Shaft efficiency FORGE used (14-day median), dimensionless
+             * @description Shaft efficiency FORGE used (its calibration), dimensionless
              */
             omega_fixed?: number | null;
             /**
@@ -7202,7 +7224,7 @@ export interface components {
             check: components["schemas"]["HmtCheck"];
             /**
              * Cold Tap C
-             * @description A tap below it is cold, °C
+             * @description A tap below it is cold, °C: the lower edge of BAND-02 unless configured
              */
             cold_tap_c: number;
             /**
@@ -9726,7 +9748,7 @@ export interface components {
             band_low?: number | null;
             /**
              * Omega Cal
-             * @description 14-day median shaft efficiency, dimensionless
+             * @description Calibrated shaft efficiency (FORGE's), dimensionless
              */
             omega_cal?: number | null;
             /**
@@ -12438,7 +12460,7 @@ export interface components {
             k_charged?: number | null;
             /**
              * K Forge
-             * @description Two-zone balance at the 14-day medians (FORGE), kg/tHM dry
+             * @description Two-zone balance at its calibration (FORGE), kg/tHM dry
              */
             k_forge?: number | null;
             /**
@@ -12571,7 +12593,7 @@ export interface components {
             k_charged?: number | null;
             /**
              * K Forge
-             * @description Two-zone balance at the 14-day medians (FORGE), kg/tHM dry
+             * @description Two-zone balance at its calibration (FORGE), kg/tHM dry
              */
             k_forge?: number | null;
             /**
@@ -15033,8 +15055,19 @@ export interface components {
         /** TraceCorrection */
         TraceCorrection: {
             /**
+             * Half Life Days
+             * @description Half-life of the tracker's weights, d
+             */
+            half_life_days?: number | null;
+            /**
+             * Method
+             * @description median (web, 14 days by date) or exponential (tracker)
+             * @default median
+             */
+            method: string;
+            /**
              * Min Shifts
-             * @description Stable shifts the median needs, count
+             * @description Stable shifts the correction needs, count
              */
             min_shifts: number;
             /**
@@ -15044,7 +15077,7 @@ export interface components {
             n_shifts: number;
             /**
              * Offset
-             * @description 14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM
+             * @description Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
              */
             offset?: number | null;
             /**
@@ -15103,6 +15136,11 @@ export interface components {
              * @description Shift start (UTC)
              */
             start: string;
+            /**
+             * Weight
+             * @description Share of the shift in the correction (sums to 1 over the shifts with a gap), dimensionless
+             */
+            weight?: number | null;
         };
         /** TraceFeed */
         TraceFeed: {
@@ -15189,7 +15227,7 @@ export interface components {
         TraceLatestHour: {
             /**
              * Burnt Offset
-             * @description 14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM
+             * @description Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
              */
             burnt_offset?: number | null;
             /**
@@ -15200,7 +15238,7 @@ export interface components {
             end: string;
             /**
              * K Burnt
-             * @description Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM
+             * @description Burnt coke, calibrated: raw + the correction (TRACE), kg/tHM
              */
             k_burnt?: number | null;
             /**
@@ -15280,7 +15318,7 @@ export interface components {
         TraceSeriesRow: {
             /**
              * Burnt Offset
-             * @description 14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM
+             * @description Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
              */
             burnt_offset?: number | null;
             /**
@@ -15291,7 +15329,7 @@ export interface components {
             end: string;
             /**
              * K Burnt
-             * @description Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM
+             * @description Burnt coke, calibrated: raw + the correction (TRACE), kg/tHM
              */
             k_burnt?: number | null;
             /**
@@ -15334,10 +15372,21 @@ export interface components {
         /** TraceSettings */
         TraceSettings: {
             /**
+             * Half Life Days
+             * @description Half-life of the tracker's weights, d
+             */
+            half_life_days?: number | null;
+            /**
              * History Start
              * @description First date the pipeline balances (IST)
              */
             history_start: string;
+            /**
+             * Method
+             * @description Calibration of the correction: median or exponential
+             * @default median
+             */
+            method: string;
             /**
              * Min Shifts
              * @description Stable shifts the correction needs, count
@@ -15353,7 +15402,7 @@ export interface components {
         TraceShift: {
             /**
              * Burnt Offset
-             * @description 14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM
+             * @description Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM
              */
             burnt_offset?: number | null;
             /**
@@ -15369,7 +15418,7 @@ export interface components {
             hm_t?: number | null;
             /**
              * K Burnt
-             * @description Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM
+             * @description Burnt coke, calibrated: raw + the correction (TRACE), kg/tHM
              */
             k_burnt?: number | null;
             /**
@@ -15702,7 +15751,7 @@ export interface components {
             k_charged?: number | null;
             /**
              * K Forge
-             * @description Two-zone balance at the 14-day medians, kg/tHM dry
+             * @description Two-zone balance at its calibration (FORGE), kg/tHM dry
              */
             k_forge?: number | null;
             /**
@@ -15717,12 +15766,12 @@ export interface components {
             k_strata_sd?: number | null;
             /**
              * K Trace
-             * @description Burnt coke, oxygen balance + 14-day offset, kg/tHM dry
+             * @description Burnt coke, oxygen balance + calibrated offset, kg/tHM dry
              */
             k_trace?: number | null;
             /**
              * Omega Cal
-             * @description 14-day median shaft efficiency, dimensionless
+             * @description Calibrated shaft efficiency (FORGE's), dimensionless
              */
             omega_cal?: number | null;
             /**
@@ -15787,7 +15836,7 @@ export interface components {
             k_charged?: number | null;
             /**
              * K Forge
-             * @description Two-zone balance at the 14-day medians, kg/tHM dry
+             * @description Two-zone balance at its calibration (FORGE), kg/tHM dry
              */
             k_forge?: number | null;
             /**
@@ -15802,12 +15851,12 @@ export interface components {
             k_strata_sd?: number | null;
             /**
              * K Trace
-             * @description Burnt coke, oxygen balance + 14-day offset, kg/tHM dry
+             * @description Burnt coke, oxygen balance + calibrated offset, kg/tHM dry
              */
             k_trace?: number | null;
             /**
              * Omega Cal
-             * @description 14-day median omega (the anchor of FORGE and STRATA), dimensionless
+             * @description Calibrated omega (FORGE's, the anchor of STRATA), dimensionless
              */
             omega_cal?: number | null;
             /**
@@ -18518,7 +18567,7 @@ export interface operations {
     forge_calibration: {
         parameters: {
             query?: {
-                /** @description IST day it applies to (default: the day after the latest balanced shift) */
+                /** @description IST day of the target shift (median: the whole day; tracker: its A shift). Default: the day after the latest balanced shift (median) or the shift after it (tracker) */
                 day?: string | null;
             };
             header?: never;

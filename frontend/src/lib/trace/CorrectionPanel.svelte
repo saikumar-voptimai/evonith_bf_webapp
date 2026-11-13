@@ -1,8 +1,8 @@
 <!--
 @component
-The 14-day correction of TRACE (SV-1.10, #290): the latest shift's offset (median of charged − raw burnt coke over the
-stable shifts of the 14 days before the shift's date), its window and pool, the stable shifts it runs over, and the
-correction over the chosen period. Values from `GET /api/trace` (correction) and `/api/trace/series` (history).
+The correction of TRACE (SV-1.10, #290): the latest shift's offset (charged − raw burnt coke over the stable shifts
+before the shift: weighted by age, half-life 3 days, or the web's 14-day median), its window and pool, the stable shifts
+it runs over with their shares, and the correction over the chosen period. Values from `GET /api/trace` (correction) and `/api/trace/series` (history).
 -->
 <script lang="ts">
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
@@ -14,6 +14,7 @@ correction over the chosen period. Values from `GET /api/trace` (correction) and
 	import Panel from '../components/Panel.svelte';
 	import type { Column } from '../components/table.ts';
 	import {
+		correctionNote,
 		correctionSeries,
 		hasValues,
 		KG,
@@ -62,14 +63,23 @@ correction over the chosen period. Values from `GET /api/trace` (correction) and
 		{ key: 'skey', label: 'Shift', sortable: false, format: (r) => shiftShort(r.skey) },
 		{ key: 'k_charged', label: 'Charged', unit: KG, numeric: true, digits: 1, sortable: false },
 		{ key: 'k_burnt_raw', label: 'Raw', unit: KG, numeric: true, digits: 1, sortable: false },
-		{ key: 'gap', label: 'Gap', unit: KG, numeric: true, digits: 1, sortable: false }
+		{ key: 'gap', label: 'Gap', unit: KG, numeric: true, digits: 1, sortable: false },
+		{
+			key: 'weight',
+			label: 'Share',
+			unit: '%',
+			numeric: true,
+			digits: 1,
+			sortable: false,
+			value: (r) => (typeof r.weight === 'number' ? 100 * r.weight : null)
+		}
 	];
 </script>
 
 <Panel
-	title="14-day correction"
+	title="Correction"
 	icon={SlidersHorizontal}
-	note="Median of charged − raw burnt coke over the stable shifts of the 14 days before the shift’s date; TRACE = raw + correction."
+	note={correctionNote(correction)}
 	updatedAt={correction ? builtAt : undefined}
 	warnAfterMin={VIEW_WARN_MIN}
 	staleAfterMin={VIEW_STALE_MIN}
@@ -84,7 +94,7 @@ correction over the chosen period. Values from `GET /api/trace` (correction) and
 		<div class="pad">
 			<EmptyState
 				title="No correction yet"
-				message="A shift has a correction once its 14-day window holds enough stable shifts; no shift of the view has one yet."
+				message="A shift has a correction once enough stable shifts precede it; no shift of the view has one yet."
 				compact
 			/>
 		</div>
@@ -121,7 +131,7 @@ correction over the chosen period. Values from `GET /api/trace` (correction) and
 				<EmptyState title="No correction in this period" message="Choose another period above." compact />
 			{:else}
 				<TimeSeriesChart
-					title="14-day correction, {period}"
+					title="Correction, {period}"
 					{series}
 					unit={KG}
 					digits={1}
@@ -133,7 +143,7 @@ correction over the chosen period. Values from `GET /api/trace` (correction) and
 		</div>
 		<div class="pad">
 			<DataTable
-				caption="Stable shifts of the window, newest first; gap = charged − raw burnt coke"
+				caption="Stable shifts of the window, newest first; gap = charged − raw burnt coke; share = weight in the correction"
 				showCaption
 				rows={pool}
 				{columns}

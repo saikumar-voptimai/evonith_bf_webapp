@@ -7,9 +7,21 @@ reproduced here, in the same order and with the same arithmetic:
     run_shifts.py        run_shift_balances      R    measured-gas balance and reconciled basis, every valid shift
     rolling_predict.py   oxygen_balance_model    P    eta CO fixed at the analyser's value, heat-loss allowance U from
                                                       the previous 14 days
-    burnt.py             burnt_coke              B    coke the metered blast burnt, less the 14-day (charged - burnt)
+    burnt.py             burnt_coke              B    coke the metered blast burnt, plus the calibrated (charged - burnt)
     twozone_shifts.py    calibrate_shifts,       Z    two-zone calibration of every shift (omega, Q_LZ, Q_UZ, r_H)
-                         energy_balance_model    O2   omega, Q_LZ, Q_UZ, r_H fixed at their 14-day medians
+                         energy_balance_model    O2   omega, Q_LZ, Q_UZ, r_H fixed at their calibration
+
+Calibration of the burnt-coke offset and of the energy model (``PipelineSettings.calibration``):
+
+    median       the web scripts: median over the stable shifts dated in the ``window_days`` before the shift's date,
+                 at least ``min_shifts`` of them (``rolling_pool_median``); the dataclass default
+    exponential  the tracker (user decision 12 Nov 2026; ``coke_energy.yml``): mean over the stable shifts that ended
+                 before the shift began and are at most ``window_days`` old, each weighted 0.5 ** (age / half-life),
+                 age between the shifts' midpoints, at least ``tracker_min_shifts`` of them (``rolling_pool_tracker``).
+                 Half-life 3 d: on the stable shifts of 2026 FORGE - TRACE SD 6.9 -> 6.4 kg/tHM, TRACE against 3-day
+                 charged coke SD 4.7 -> 3.7 (claude/model_check_oct_nov_2026.md, section 6.2)
+
+The heat-loss allowance U of the oxygen-balance model stays on the 14-day median in both modes.
 
 ``case_from_shift`` is the slow part of a shift (a wide row read field by field), and the web scripts rebuilt the same
 case in every step. Here each shift's case is built once (``build_cases``) and every step gets a deep copy, so the
@@ -17,7 +29,7 @@ results are identical (``calibrate_shifts`` is ``twozone_shifts.calibrate_all`` 
 equal). A completed shift's inputs do not change, so every per-shift result is also memoised in-process, keyed by a
 fingerprint of the shift's input row and the step's parameters: a refresh recomputes only new or revised shifts.
 
-Every prediction is out of sample: its calibration is the median over STABLE shifts on EARLIER dates. The web scripts
+Every prediction is out of sample: its calibration comes from STABLE shifts that ended before it began. The web scripts
 predicted stable shifts only; here every balanced shift gets a prediction (the page needs the latest shift even when it
 was not steady), from the same calibration pool, so the stable-shift numbers are identical to the web's
 (tests/test_coke_energy_pipeline.py checks this against the vendored ``rolling_predict``).
@@ -54,11 +66,16 @@ Cases = Mapping[str, dict]
 
 # Hours from the shift date to the middle of the shift (C runs 22:00-06:00, so its middle is 02:00 next day).
 SHIFT_MID_HOURS = {"A": 10, "B": 18, "C": 26}
+SHIFT_HOURS = 8.0
+# A pool shift enters the tracker when its midpoint lies at least this long before the target's: for 8-hour shifts and
+# windows, the pool shift ended before the target began (6 min of tolerance).
+TRACKER_MIN_AGE_H = SHIFT_HOURS - 0.1
+CALIBRATION_METHODS = ("median", "exponential")
 
 
 @dataclass(frozen=True)
 class PipelineSettings:
-    """Rolling-window choices the web scripts hard-coded; defaults are the web values."""
+    """Rolling-window choices the web scripts hard-coded; defaults are the web values (``calibration`` "median")."""
 
     history_start: str = "2025-08-01"
     predict_from: str = "2025-12-01"
@@ -68,11 +85,35 @@ class PipelineSettings:
     max_ore_moisture_pct: float = 15.0
     # ((Al2O3 %, superheat degC) at the low end, (Al2O3 %, superheat degC) at the high end); None = web constant 40 degC
     slag_superheat: tuple[tuple[float, float], tuple[float, float]] | None = None
+    # calibration of the burnt-coke offset and of omega / Q_LZ / Q_UZ / r_H: "median" (web) or "exponential" (tracker)
+    calibration: str = "median"
+    half_life_days: float = 3.0
+    tracker_min_shifts: int = 4
+
+    def __post_init__(self) -> None:
+        if self.calibration not in CALIBRATION_METHODS:
+            raise ValueError(f"calibration {self.calibration!r}: one of {', '.join(CALIBRATION_METHODS)}")
+        if not self.half_life_days > 0:
+            raise ValueError("half_life_days must be positive")
+
+    @property
+    def calibration_min_shifts(self) -> int:
+        """Stable shifts the calibration of a shift needs (median: ``min_shifts``, tracker: ``tracker_min_shifts``)."""
+        return self.min_shifts if self.calibration == "median" else self.tracker_min_shifts
+
+    @property
+    def calibration_label(self) -> str:
+        """The calibration in words, for notes and views."""
+        if self.calibration == "median":
+            return f"median over the stable shifts of the {self.window_days} days before"
+        return (f"exponentially weighted mean (half-life {self.half_life_days:g} d) over the stable shifts of the "
+                f"{self.window_days} days before")
 
     @classmethod
     def from_config(cls, cfg: Mapping[str, Any]) -> "PipelineSettings":
         """Build from the ``coke_energy`` block of ``coke_energy.yml``."""
 
+        tracker = dict(cfg.get("calibration_tracker") or {})
         return cls(
             history_start=str(cfg.get("history_start", cls.history_start)),
             predict_from=str(cfg.get("predict_from", cls.predict_from)),
@@ -81,6 +122,9 @@ class PipelineSettings:
             bad_shifts=tuple(cfg.get("bad_shifts", cls.bad_shifts) or ()),
             max_ore_moisture_pct=float(cfg.get("max_ore_moisture_pct", cls.max_ore_moisture_pct)),
             slag_superheat=_superheat_from_config(cfg.get("slag_superheat")),
+            calibration=str(tracker.get("method", cls.calibration)),
+            half_life_days=float(tracker.get("half_life_days", cls.half_life_days)),
+            tracker_min_shifts=int(tracker.get("min_shifts", cls.tracker_min_shifts)),
         )
 
 
@@ -207,8 +251,13 @@ def run_shift_balances(S: pd.DataFrame, keys: pd.Index, fps: Mapping[str, str] |
     return R, errors
 
 
+def shift_midpoints(sdate: pd.Series, shift: pd.Series) -> pd.Series:
+    """Middle of each shift (IST, tz-naive) from its date and letter; NaT for a letter other than A, B, C."""
+    return pd.to_datetime(sdate) + pd.to_timedelta(shift.map(SHIFT_MID_HOURS), unit="h")
+
+
 def _with_dates(R: pd.DataFrame) -> pd.DataFrame:
-    return R.assign(stable=stable_mask(R), date=pd.to_datetime(R.sdate))
+    return R.assign(stable=stable_mask(R), date=pd.to_datetime(R.sdate), t_mid=shift_midpoints(R.sdate, R["shift"]))
 
 
 def rolling_pool_median(pool: pd.DataFrame, target_dates: pd.Series, cols: list[str], window_days: int,
@@ -232,6 +281,76 @@ def rolling_pool_median(pool: pd.DataFrame, target_dates: pd.Series, cols: list[
                 warnings.simplefilter("ignore", RuntimeWarning)
                 out[i] = np.nanmedian(block, axis=0)
     return pd.DataFrame(out, index=target_dates.index, columns=[c + "_roll" for c in cols])
+
+
+def tracker_weights(age_h: np.ndarray, window_days: float, half_life_days: float) -> np.ndarray:
+    """Weight of pool shifts ``age_h`` hours (midpoint to midpoint) before a target: 0.5 ** (age / half-life) when the
+    shift ended before the target began and is at most ``window_days`` old, else 0."""
+    age_h = np.asarray(age_h, dtype=float)
+    inside = (age_h >= TRACKER_MIN_AGE_H) & (age_h <= 24.0 * window_days)
+    with np.errstate(invalid="ignore"):
+        return np.where(inside, 0.5 ** (age_h / (24.0 * half_life_days)), 0.0)
+
+
+def rolling_pool_tracker(pool: pd.DataFrame, target_times: pd.Series, cols: list[str], window_days: float,
+                         half_life_days: float, min_shifts: int) -> pd.DataFrame:
+    """For each target time t (a shift's or window's midpoint), the weighted mean of ``cols`` over the pool rows with
+    the weights of ``tracker_weights`` (pool midpoints in column ``t_mid``). Each column needs at least ``min_shifts``
+    rows with a value and a weight; NaN otherwise."""
+
+    pool = pool.sort_values("t_mid")
+    ptimes = pool["t_mid"].to_numpy(dtype="datetime64[ns]")
+    values = pool[cols].to_numpy(dtype=float)
+    have = np.isfinite(values)
+    filled = np.where(have, values, 0.0)
+    out = np.full((len(target_times), len(cols)), np.nan)
+    for i, t in enumerate(pd.to_datetime(target_times).to_numpy(dtype="datetime64[ns]")):
+        if np.isnat(t):
+            continue
+        w = tracker_weights((t - ptimes) / np.timedelta64(1, "h"), window_days, half_life_days)
+        wv = w[:, None] * have
+        n = ((w > 0)[:, None] & have).sum(axis=0)
+        total = wv.sum(axis=0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = (wv * filled).sum(axis=0) / total
+        out[i] = np.where((n >= min_shifts) & (total > 0), mean, np.nan)
+    return pd.DataFrame(out, index=target_times.index, columns=[c + "_roll" for c in cols])
+
+
+def calibration_values(pool: pd.DataFrame, target: pd.DataFrame, cols: list[str],
+                       settings: PipelineSettings) -> pd.DataFrame:
+    """The calibration of ``cols`` for each target row (``<col>_roll``), by ``settings.calibration``.
+
+    ``pool``: stable shifts with ``date``, ``t_mid`` and ``cols``; ``target``: rows with ``date`` (median: the pool's
+    dates before it) and ``t_mid`` (tracker: the pool's shifts that ended before it began)."""
+    if settings.calibration == "median":
+        return rolling_pool_median(pool, target["date"], cols, settings.window_days, settings.min_shifts)
+    return rolling_pool_tracker(pool, target["t_mid"], cols, settings.window_days, settings.half_life_days,
+                                settings.tracker_min_shifts)
+
+
+def calibration_pool(pool: pd.DataFrame, date: Any, t_mid: Any, settings: PipelineSettings,
+                     value_col: str | None = None) -> pd.DataFrame:
+    """The pool rows the calibration of one target uses, oldest first, with ``age_h`` (target midpoint minus the row's,
+    h) and ``weight``: the row's share of the calibration, summing to 1 over the rows with a ``value_col`` (all rows
+    without it). Median: every stable shift dated in the window, equal shares; tracker: the shifts of
+    ``tracker_weights``."""
+    t = pd.Timestamp(t_mid)
+    if settings.calibration == "median":
+        day = pd.Timestamp(date).normalize()
+        used = pool[(pool["date"] >= day - pd.Timedelta(days=settings.window_days)) & (pool["date"] < day)].copy()
+        raw = pd.Series(1.0, index=used.index)
+    else:
+        age = (t - pd.to_datetime(pool["t_mid"])) / pd.Timedelta(hours=1)
+        w = pd.Series(tracker_weights(age.to_numpy(dtype=float), settings.window_days, settings.half_life_days),
+                      index=pool.index)
+        used = pool[w > 0].copy()
+        raw = w[w > 0]
+    used["age_h"] = (t - pd.to_datetime(used["t_mid"])) / pd.Timedelta(hours=1)
+    counted = raw.where(used[value_col].notna(), 0.0) if value_col is not None else raw
+    total = float(counted.sum())
+    used["weight"] = counted / total if total > 0 else np.nan
+    return used.sort_values("t_mid")
 
 
 def build_cases(S: pd.DataFrame, keys: pd.Index, fps: Mapping[str, str] | None = None) -> dict[str, dict]:
@@ -318,7 +437,8 @@ def burnt_coke(S: pd.DataFrame, R: pd.DataFrame, settings: PipelineSettings, cas
     B["gap"] = B.K_act - B.K_burnt                   # + = coke charged ahead of what the blast burnt
     B["dK_per_pct_air"] = (B.K_burnt - B.K_act) / (100 * (B.V_meter / B.V_rec - 1))
     Rs = _with_dates(R).join(B[["gap"]])
-    B["offset14"] = rolling_pool_median(Rs[Rs.stable], Rs["date"], ["gap"], settings.window_days, settings.min_shifts)["gap_roll"]
+    # the offset's name keeps the web's "14"; its value follows settings.calibration (median or tracker)
+    B["offset14"] = calibration_values(Rs[Rs.stable], Rs, ["gap"], settings)["gap_roll"]
     B["K_burnt_corr"] = B.K_burnt + B.offset14
     return B
 
@@ -326,12 +446,13 @@ def burnt_coke(S: pd.DataFrame, R: pd.DataFrame, settings: PipelineSettings, cas
 def energy_balance_model(S: pd.DataFrame, R: pd.DataFrame, Z: pd.DataFrame, settings: PipelineSettings,
                          cases: Cases | None = None, fps: Mapping[str, str] | None = None,
                          params: Mapping[str, dict] | None = None) -> pd.DataFrame:
-    """Two-zone coke with omega, Q_LZ, Q_UZ, r_H at their 14-day medians (twozone_shifts.py ``__main__``)."""
+    """Two-zone coke with omega, Q_LZ, Q_UZ, r_H at their calibration (twozone_shifts.py ``__main__``; the web's 14-day
+    medians, or the tracker, per ``settings.calibration``)."""
 
     cases = cases if cases is not None else build_cases(S, R.index)
     Rs = _with_dates(R).join(Z, rsuffix="_2z")
     cols = ["omega", "Q_LZ_GJh", "Q_UZ_GJh", "r_H"]
-    Rs = Rs.join(rolling_pool_median(Rs[Rs.stable], Rs["date"], cols, settings.window_days, settings.min_shifts))
+    Rs = Rs.join(calibration_values(Rs[Rs.stable], Rs, cols, settings))
     out = []
     cols = ["date", "prod_th", "coke_kgthm_dry", "eta_CO", "T_top", "blast_air_nm3thm",
             "omega_roll", "Q_LZ_GJh_roll", "Q_UZ_GJh_roll", "r_H_roll"]

@@ -1,5 +1,5 @@
 """FORGE page (SV-1.11, #291): FORGE against burnt coke per shift with page 10's statistics, the Rist diagram of the
-stable shifts and the 14-day calibration.
+stable shifts and the calibration (tracker or 14-day median, ``services.forge.calibration``).
 
 Every route reads the view the ``twin.forge`` job stores hourly (``services.forge``); none runs the pipeline or a
 balance. Coke rates are kg/tHM dry, heat losses GJ/h, Rist coordinates oxygen atoms per Fe atom (O/Fe) against the
@@ -59,12 +59,14 @@ class ForgeShift(BaseModel):
     t_mid: datetime = Field(..., description="Middle of the shift (UTC)")
     stable: bool = Field(..., description="Passed the stability filter")
     provisional: bool = Field(..., description="Balanced on a DPR carried forward")
-    k_forge: float | None = Field(None, description="FORGE: two-zone balance at the 14-day medians, kg/tHM")
-    k_burnt: float | None = Field(None, description="Burnt coke (TRACE): metered blast less the 14-day offset, kg/tHM")
+    k_forge: float | None = Field(None, description="FORGE: two-zone balance at its calibration, kg/tHM")
+    k_burnt: float | None = Field(
+        None, description="Burnt coke (TRACE): metered blast plus the calibrated charged − burnt offset, kg/tHM"
+    )
     k_obal: float | None = Field(None, description="Oxygen-balance model at the analyser's eta CO, kg/tHM")
     k_charged: float | None = Field(None, description="Coke charged, kg/tHM")
     error: float | None = Field(None, description="FORGE − burnt coke, kg/tHM")
-    omega_fixed: float | None = Field(None, description="Shaft efficiency FORGE used (14-day median), dimensionless")
+    omega_fixed: float | None = Field(None, description="Shaft efficiency FORGE used (its calibration), dimensionless")
     omega_shift: float | None = Field(None, description="Shaft efficiency calibrated on the shift, dimensionless")
 
 
@@ -126,7 +128,7 @@ class ForgeRistFrame(BaseModel):
     t_r: float = Field(..., description="Temperature of the thermal reserve zone, °C")
     y_w: float = Field(..., description="O/Fe of wüstite, O/Fe")
     actual: RistLine = Field(..., description="Shift line: calibrated on burnt coke, the reconciled blast, eta CO")
-    model: RistLine | None = Field(None, description="FORGE line: omega, heat losses and r_H at the 14-day medians")
+    model: RistLine | None = Field(None, description="FORGE line: omega, heat losses and r_H at their calibration")
     p_actual: tuple[float, float] | None = Field(None, description="Pivot of the shift's lower-zone heat balance, O/C")
     p_model: tuple[float, float] | None = Field(None, description="Pivot of FORGE's lower-zone heat balance, O/C")
     ideal: RistIdeal | None = Field(None, description="Heat-balanced line through P and W (omega = 1)")
@@ -155,22 +157,33 @@ class CalibrationShift(BaseModel):
     r_h: float | None = Field(None, description="Hydrogen reduction share calibrated on the shift, dimensionless")
     k_burnt: float | None = Field(None, description="Burnt coke, kg/tHM")
     k_charged: float | None = Field(None, description="Coke charged (the calibration's basis), kg/tHM")
+    weight: float | None = Field(
+        None,
+        description="Share of the shift in the calibrated omega (sums to 1 over the shifts with one), dimensionless",
+    )
 
 
 class ForgeCalibration(BaseModel):
     view: ForgeViewInfo
-    day: date = Field(..., description="IST day the calibration applies to")
+    day: date = Field(..., description="IST day of the target shift")
+    method: str = Field(
+        "median",
+        description="median: over the stable shifts dated in the window days before the day (web); exponential: "
+        "weighted by 0.5^(age / half-life) over the stable shifts that ended before the target shift began",
+    )
+    half_life_days: float | None = Field(None, description="Half-life of the exponential weights, days")
+    target_shift: str | None = Field(None, description="Shift the calibration is for, YYYY-MM-DD_A|B|C")
     window_start: date = Field(..., description="First IST day of the window")
-    window_end: date = Field(..., description="Last IST day of the window (the day before)")
+    window_end: date = Field(..., description="Last IST day with a shift in the window")
     window_days: int = Field(..., description="Window length, days")
     min_shifts: int = Field(..., description="Stable shifts the calibration needs, count")
     n_shifts: int = Field(..., description="Stable shifts in the window, count")
     n_calibrated: int = Field(..., description="Of them with a two-zone calibration, count")
     complete: bool = Field(..., description="The window holds at least min_shifts stable shifts")
-    omega_cal: float | None = Field(None, description="Median shaft efficiency, dimensionless")
-    q_lz_gj_h: float | None = Field(None, description="Median lower-zone heat loss, GJ/h")
-    q_uz_gj_h: float | None = Field(None, description="Median upper-zone heat loss, GJ/h")
-    r_h: float | None = Field(None, description="Median hydrogen reduction share, dimensionless")
+    omega_cal: float | None = Field(None, description="Calibrated shaft efficiency, dimensionless")
+    q_lz_gj_h: float | None = Field(None, description="Calibrated lower-zone heat loss, GJ/h")
+    q_uz_gj_h: float | None = Field(None, description="Calibrated upper-zone heat loss, GJ/h")
+    r_h: float | None = Field(None, description="Calibrated hydrogen reduction share, dimensionless")
     shifts: list[CalibrationShift] = Field(..., description="The stable shifts of the window, oldest first")
 
 
@@ -219,8 +232,13 @@ def rist(
 def calibration(
     stored: Annotated[forge.StoredView, Depends(_view)],
     day: Annotated[
-        date | None, Query(description="IST day it applies to (default: the day after the latest balanced shift)")
+        date | None,
+        Query(
+            description="IST day of the target shift (median: the whole day; tracker: its A shift). Default: the day "
+            "after the latest balanced shift (median) or the shift after it (tracker)"
+        ),
     ] = None,
 ) -> ForgeCalibration:
-    """Medians of omega, Q_LZ, Q_UZ and r_H over the stable shifts of the 14 days before ``day`` and those shifts."""
+    """omega, Q_LZ, Q_UZ and r_H of FORGE's calibration for a shift (the A shift of ``day``; by default the next shift)
+    and the stable shifts it rests on, each with its share."""
     return ForgeCalibration(view=stored.info(), **forge.calibration(stored, day))

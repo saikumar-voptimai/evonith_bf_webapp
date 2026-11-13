@@ -3892,6 +3892,18 @@
             "format": "date-time",
             "title": "T Mid",
             "type": "string"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the shift in the calibrated omega (sums to 1 over the shifts with one), dimensionless",
+            "title": "Weight"
           }
         },
         "required": [
@@ -7764,9 +7776,27 @@
             "type": "boolean"
           },
           "day": {
-            "description": "IST day the calibration applies to",
+            "description": "IST day of the target shift",
             "format": "date",
             "title": "Day",
+            "type": "string"
+          },
+          "half_life_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Half-life of the exponential weights, days",
+            "title": "Half Life Days"
+          },
+          "method": {
+            "default": "median",
+            "description": "median: over the stable shifts dated in the window days before the day (web); exponential: weighted by 0.5^(age / half-life) over the stable shifts that ended before the target shift began",
+            "title": "Method",
             "type": "string"
           },
           "min_shifts": {
@@ -7793,7 +7823,7 @@
                 "type": "null"
               }
             ],
-            "description": "Median shaft efficiency, dimensionless",
+            "description": "Calibrated shaft efficiency, dimensionless",
             "title": "Omega Cal"
           },
           "q_lz_gj_h": {
@@ -7805,7 +7835,7 @@
                 "type": "null"
               }
             ],
-            "description": "Median lower-zone heat loss, GJ/h",
+            "description": "Calibrated lower-zone heat loss, GJ/h",
             "title": "Q Lz Gj H"
           },
           "q_uz_gj_h": {
@@ -7817,7 +7847,7 @@
                 "type": "null"
               }
             ],
-            "description": "Median upper-zone heat loss, GJ/h",
+            "description": "Calibrated upper-zone heat loss, GJ/h",
             "title": "Q Uz Gj H"
           },
           "r_h": {
@@ -7829,7 +7859,7 @@
                 "type": "null"
               }
             ],
-            "description": "Median hydrogen reduction share, dimensionless",
+            "description": "Calibrated hydrogen reduction share, dimensionless",
             "title": "R H"
           },
           "shifts": {
@@ -7840,6 +7870,18 @@
             "title": "Shifts",
             "type": "array"
           },
+          "target_shift": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift the calibration is for, YYYY-MM-DD_A|B|C",
+            "title": "Target Shift"
+          },
           "view": {
             "$ref": "#/components/schemas/ForgeViewInfo"
           },
@@ -7849,7 +7891,7 @@
             "type": "integer"
           },
           "window_end": {
-            "description": "Last IST day of the window (the day before)",
+            "description": "Last IST day with a shift in the window",
             "format": "date",
             "title": "Window End",
             "type": "string"
@@ -8679,7 +8721,7 @@
                 "type": "null"
               }
             ],
-            "description": "FORGE line: omega, heat losses and r_H at the 14-day medians"
+            "description": "FORGE line: omega, heat losses and r_H at their calibration"
           },
           "p_actual": {
             "anyOf": [
@@ -8887,7 +8929,7 @@
                 "type": "null"
               }
             ],
-            "description": "Burnt coke (TRACE): metered blast less the 14-day offset, kg/tHM",
+            "description": "Burnt coke (TRACE): metered blast plus the calibrated charged \u2212 burnt offset, kg/tHM",
             "title": "K Burnt"
           },
           "k_charged": {
@@ -8911,7 +8953,7 @@
                 "type": "null"
               }
             ],
-            "description": "FORGE: two-zone balance at the 14-day medians, kg/tHM",
+            "description": "FORGE: two-zone balance at its calibration, kg/tHM",
             "title": "K Forge"
           },
           "k_obal": {
@@ -8935,7 +8977,7 @@
                 "type": "null"
               }
             ],
-            "description": "Shaft efficiency FORGE used (14-day median), dimensionless",
+            "description": "Shaft efficiency FORGE used (its calibration), dimensionless",
             "title": "Omega Fixed"
           },
           "omega_shift": {
@@ -10529,7 +10571,7 @@
             "$ref": "#/components/schemas/HmtCheck"
           },
           "cold_tap_c": {
-            "description": "A tap below it is cold, \u00b0C",
+            "description": "A tap below it is cold, \u00b0C: the lower edge of BAND-02 unless configured",
             "title": "Cold Tap C",
             "type": "number"
           },
@@ -15833,7 +15875,7 @@
                 "type": "null"
               }
             ],
-            "description": "14-day median shaft efficiency, dimensionless",
+            "description": "Calibrated shaft efficiency (FORGE's), dimensionless",
             "title": "Omega Cal"
           },
           "omega_imp": {
@@ -21423,7 +21465,7 @@
                 "type": "null"
               }
             ],
-            "description": "Two-zone balance at the 14-day medians (FORGE), kg/tHM dry",
+            "description": "Two-zone balance at its calibration (FORGE), kg/tHM dry",
             "title": "K Forge"
           },
           "k_strata": {
@@ -21670,7 +21712,7 @@
                 "type": "null"
               }
             ],
-            "description": "Two-zone balance at the 14-day medians (FORGE), kg/tHM dry",
+            "description": "Two-zone balance at its calibration (FORGE), kg/tHM dry",
             "title": "K Forge"
           },
           "k_strata": {
@@ -26482,8 +26524,26 @@
       },
       "TraceCorrection": {
         "properties": {
+          "half_life_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Half-life of the tracker's weights, d",
+            "title": "Half Life Days"
+          },
+          "method": {
+            "default": "median",
+            "description": "median (web, 14 days by date) or exponential (tracker)",
+            "title": "Method",
+            "type": "string"
+          },
           "min_shifts": {
-            "description": "Stable shifts the median needs, count",
+            "description": "Stable shifts the correction needs, count",
             "title": "Min Shifts",
             "type": "integer"
           },
@@ -26501,7 +26561,7 @@
                 "type": "null"
               }
             ],
-            "description": "14-day correction: median of charged \u2212 raw burnt over the stable shifts of the 14 days before, kg/tHM",
+            "description": "Correction: charged \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
             "title": "Offset"
           },
           "pool": {
@@ -26595,6 +26655,18 @@
             "format": "date-time",
             "title": "Start",
             "type": "string"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the shift in the correction (sums to 1 over the shifts with a gap), dimensionless",
+            "title": "Weight"
           }
         },
         "required": [
@@ -26740,7 +26812,7 @@
                 "type": "null"
               }
             ],
-            "description": "14-day correction: median of charged \u2212 raw burnt over the stable shifts of the 14 days before, kg/tHM",
+            "description": "Correction: charged \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
             "title": "Burnt Offset"
           },
           "end": {
@@ -26758,7 +26830,7 @@
                 "type": "null"
               }
             ],
-            "description": "Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM",
+            "description": "Burnt coke, calibrated: raw + the correction (TRACE), kg/tHM",
             "title": "K Burnt"
           },
           "k_burnt_raw": {
@@ -26917,7 +26989,7 @@
                 "type": "null"
               }
             ],
-            "description": "14-day correction: median of charged \u2212 raw burnt over the stable shifts of the 14 days before, kg/tHM",
+            "description": "Correction: charged \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
             "title": "Burnt Offset"
           },
           "end": {
@@ -26935,7 +27007,7 @@
                 "type": "null"
               }
             ],
-            "description": "Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM",
+            "description": "Burnt coke, calibrated: raw + the correction (TRACE), kg/tHM",
             "title": "K Burnt"
           },
           "k_burnt_raw": {
@@ -27020,9 +27092,27 @@
       },
       "TraceSettings": {
         "properties": {
+          "half_life_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Half-life of the tracker's weights, d",
+            "title": "Half Life Days"
+          },
           "history_start": {
             "description": "First date the pipeline balances (IST)",
             "title": "History Start",
+            "type": "string"
+          },
+          "method": {
+            "default": "median",
+            "description": "Calibration of the correction: median or exponential",
+            "title": "Method",
             "type": "string"
           },
           "min_shifts": {
@@ -27055,7 +27145,7 @@
                 "type": "null"
               }
             ],
-            "description": "14-day correction: median of charged \u2212 raw burnt over the stable shifts of the 14 days before, kg/tHM",
+            "description": "Correction: charged \u2212 raw burnt calibrated over the stable shifts before the shift (tracker: weights 0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM",
             "title": "Burnt Offset"
           },
           "end": {
@@ -27085,7 +27175,7 @@
                 "type": "null"
               }
             ],
-            "description": "Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM",
+            "description": "Burnt coke, calibrated: raw + the correction (TRACE), kg/tHM",
             "title": "K Burnt"
           },
           "k_burnt_raw": {
@@ -27744,7 +27834,7 @@
                 "type": "null"
               }
             ],
-            "description": "Two-zone balance at the 14-day medians, kg/tHM dry",
+            "description": "Two-zone balance at its calibration (FORGE), kg/tHM dry",
             "title": "K Forge"
           },
           "k_strata": {
@@ -27780,7 +27870,7 @@
                 "type": "null"
               }
             ],
-            "description": "Burnt coke, oxygen balance + 14-day offset, kg/tHM dry",
+            "description": "Burnt coke, oxygen balance + calibrated offset, kg/tHM dry",
             "title": "K Trace"
           },
           "omega_cal": {
@@ -27792,7 +27882,7 @@
                 "type": "null"
               }
             ],
-            "description": "14-day median shaft efficiency, dimensionless",
+            "description": "Calibrated shaft efficiency (FORGE's), dimensionless",
             "title": "Omega Cal"
           },
           "omega_imp": {
@@ -27914,7 +28004,7 @@
                 "type": "null"
               }
             ],
-            "description": "Two-zone balance at the 14-day medians, kg/tHM dry",
+            "description": "Two-zone balance at its calibration (FORGE), kg/tHM dry",
             "title": "K Forge"
           },
           "k_strata": {
@@ -27950,7 +28040,7 @@
                 "type": "null"
               }
             ],
-            "description": "Burnt coke, oxygen balance + 14-day offset, kg/tHM dry",
+            "description": "Burnt coke, oxygen balance + calibrated offset, kg/tHM dry",
             "title": "K Trace"
           },
           "omega_cal": {
@@ -27962,7 +28052,7 @@
                 "type": "null"
               }
             ],
-            "description": "14-day median omega (the anchor of FORGE and STRATA), dimensionless",
+            "description": "Calibrated omega (FORGE's, the anchor of STRATA), dimensionless",
             "title": "Omega Cal"
           },
           "omega_imp": {
@@ -32281,11 +32371,11 @@
     },
     "/api/forge/calibration": {
       "get": {
-        "description": "Medians of omega, Q_LZ, Q_UZ and r_H over the stable shifts of the 14 days before ``day`` and those shifts.",
+        "description": "omega, Q_LZ, Q_UZ and r_H of FORGE's calibration for a shift (the A shift of ``day``; by default the next shift)\nand the stable shifts it rests on, each with its share.",
         "operationId": "forge_calibration",
         "parameters": [
           {
-            "description": "IST day it applies to (default: the day after the latest balanced shift)",
+            "description": "IST day of the target shift (median: the whole day; tracker: its A shift). Default: the day after the latest balanced shift (median) or the shift after it (tracker)",
             "in": "query",
             "name": "day",
             "required": false,
@@ -32299,7 +32389,7 @@
                   "type": "null"
                 }
               ],
-              "description": "IST day it applies to (default: the day after the latest balanced shift)",
+              "description": "IST day of the target shift (median: the whole day; tracker: its A shift). Default: the day after the latest balanced shift (median) or the shift after it (tracker)",
               "title": "Day"
             }
           }
@@ -34740,7 +34830,7 @@
     },
     "/api/trace": {
       "get": {
-        "description": "The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day\ncorrection and the age of every source at the build of the view (the view's own age in age_s).",
+        "description": "The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the\ncorrection and the age of every source at the build of the view (the view's own age in age_s).",
         "operationId": "trace_summary",
         "responses": {
           "200": {

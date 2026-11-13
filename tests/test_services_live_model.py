@@ -164,7 +164,10 @@ def test_the_view_composes_clock_process_coke_hmt_windows_and_the_shift_check(tw
     assert h.now is not None and h.now.at == NOW and 1465 < h.now.value < 1495
     assert h.next_tap is not None and h.next_tap.at == NOW + timedelta(minutes=90) and h.next_tap.sd > h.now.sd
     assert h.ahead is not None and h.ahead.at == NOW + timedelta(hours=6) and h.ahead.sd > h.next_tap.sd
-    assert h.p_cold_next is not None and 0 < h.p_cold_next < 0.5 and h.cold_tap_c == 1460.0 and h.horizon_h == 6.0
+    # a cold tap is one below the lower edge of BAND-02 unless the config names a temperature
+    assert h.p_cold_next is not None and 0 < h.p_cold_next < 0.1 and h.cold_tap_c == 1440.0 and h.horizon_h == 6.0
+    set_c = _view(twin, settings=live_model.Settings(cold_tap_c=1470.0)).hmt
+    assert set_c.cold_tap_c == 1470.0 and set_c.p_cold_next is not None and set_c.p_cold_next > h.p_cold_next
     # the band runs from the newest tap to the horizon and widens with the lead; the estimate has a point per tap shown
     assert h.band[0].at == h.last_tap.at and h.band[-1].at == NOW + timedelta(hours=6)
     widths = [b.hi - b.lo for b in h.band]
@@ -267,7 +270,7 @@ def test_the_route_serves_the_view_to_users(twin, monkeypatch) -> None:
         body = r.json()
         assert body["hours"] == 12 and body["shifts"]["days"] == 7 and body["process"]["telemetry"] == "live"
         assert [s["key"] for s in body["clock"]["sources"]] == ["process", "charges", "taps"]
-        assert body["hmt"]["cold_tap_c"] == 1460.0 and body["coke"]["limit"] == 8.0
+        assert body["hmt"]["cold_tap_c"] == 1440.0 and body["coke"]["limit"] == 8.0
         assert client.get("/api/optimiser/live-model?hours=4", headers={"Cookie": cookies["op"]}).status_code == 422
         schemas = client.get("/api/openapi.json").json()["components"]["schemas"]
         for name, keys in {

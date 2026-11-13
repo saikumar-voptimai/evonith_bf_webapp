@@ -11,6 +11,7 @@ import {
 	change,
 	closureText,
 	cokeSeries,
+	correctionNote,
 	correctionSeries,
 	feedState,
 	formatAgeS,
@@ -316,10 +317,18 @@ describe('shifts, hours and the correction', () => {
 	});
 
 	it('writes the correction window with its exclusive end and the pool size', () => {
-		expect(windowText({ window_start: '2026-10-13', window_end: '2026-10-27' })).toBe(
+		expect(windowText({ window_start: '2026-10-13', window_end: '2026-10-27', method: 'median' })).toBe(
 			'13 Oct 2026 to 26 Oct 2026'
 		);
-		expect(poolText({ min_shifts: 10 })).toBe('In the window; the median needs 10');
+		expect(windowText({ window_start: '2026-10-13', window_end: '2026-10-27', method: 'exponential' })).toBe(
+			'13 Oct 2026 to 27 Oct 2026'
+		);
+		expect(poolText({ min_shifts: 10, method: 'median' })).toBe('In the window; the median needs 10');
+		expect(poolText({ min_shifts: 4, method: 'exponential' })).toBe('In the window; the correction needs 4');
+		expect(correctionNote({ method: 'exponential', half_life_days: 3, window_days: 14 })).toBe(
+			'Charged − raw burnt coke over the stable shifts that ended before the shift, at most 14 days old, weighted by age (half-life 3 days); TRACE = raw + correction.'
+		);
+		expect(correctionNote(null)).toContain('Median of charged − raw burnt coke');
 		expect(shiftShort('2026-10-26_C')).toBe(`C,${NBSP}26${NBSP}Oct`);
 	});
 });

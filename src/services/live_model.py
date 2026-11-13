@@ -75,6 +75,8 @@ PROCESS_TAGS = {
     "uptake_avg": ("Top-gas temperature", "°C", 0),
 }
 COKE_COLUMNS = ("k_burnt", "k_forge", "k_strata", "k_charged")
+#: Cold-tap limit when neither the config nor the fact register gives one, °C (BAND-02 of register v1.8).
+COLD_TAP_FALLBACK_C = 1440.0
 
 
 @dataclass(frozen=True)
@@ -83,7 +85,7 @@ class Settings:
 
     horizon_h: float = 6.0  # the forecast band reaches this far
     band_step_min: int = 30
-    cold_tap_c: float = 1460.0  # a tap below it is cold (p05 of the shift means, shift_report.yml)
+    cold_tap_c: float | None = None  # a tap below it is cold; None: the lower edge of BAND-02 (fact register)
     score_horizons_h: tuple[float, ...] = (2.0, 6.0)
     score_min_taps: int = 10
     burn_in_days: int = 10  # taps before the scored period, for the filter to settle
@@ -104,7 +106,7 @@ class Settings:
         return cls(
             horizon_h=float(hmt.get("horizon_h", base.horizon_h)),
             band_step_min=int(hmt.get("band_step_min", base.band_step_min)),
-            cold_tap_c=float(hmt.get("cold_tap_c", base.cold_tap_c)),
+            cold_tap_c=None if hmt.get("cold_tap_c") is None else float(hmt["cold_tap_c"]),
             score_horizons_h=tuple(float(h) for h in hmt.get("score_horizons_h", base.score_horizons_h)),
             score_min_taps=int(hmt.get("score_min_taps", base.score_min_taps)),
             burn_in_days=int(hmt.get("burn_in_days", base.burn_in_days)),
@@ -262,7 +264,9 @@ class HmtView(BaseModel):
     last_tap: HmtTap | None = None
     now: HmtEstimate | None = Field(None, description="Thermal state now (σ of the state)")
     next_tap: HmtEstimate | None = Field(None, description="The next tap, at its expected time (σ of a tap)")
-    cold_tap_c: float = Field(..., description="A tap below it is cold, °C")
+    cold_tap_c: float = Field(
+        ..., description="A tap below it is cold, °C: the lower edge of BAND-02 unless configured"
+    )
     p_cold_next: float | None = Field(None, description="Probability of the next tap below cold_tap_c, fraction")
     ahead: HmtEstimate | None = Field(None, description="A tap horizon_h from now (σ of a tap)")
     horizon_h: float
@@ -573,12 +577,15 @@ def hmt_view(
     """The fields of ``HmtView`` from the tap table (``tap_table``)."""
     p = s.filter
     now_ist = _ist_naive(now)
+    cold = s.cold_tap_c
+    if cold is None:  # user decision 12 Nov 2026: the plausibility band's lower edge, 1,440 °C
+        cold = float(plant_band["lo"]) if plant_band else COLD_TAP_FALLBACK_C
     known = taps[taps.index <= now_ist]
     f = hmt_filter.filter_taps(known["hmt"], p)
     base = {
         "available": f.ready,
         "taps_used": len(f.steps),
-        "cold_tap_c": s.cold_tap_c,
+        "cold_tap_c": cold,
         "horizon_h": s.horizon_h,
         "plant_band": plant_band,
         "check": _check_view(hmt_filter.tap_check(f.steps if f.ready else [], z_single=s.z_single, z_pair=s.z_pair)),
@@ -623,7 +630,7 @@ def hmt_view(
         "last_tap": {"at": _utc(known.index[-1]), "value": float(last["hmt"]), "received": _utc(last["received"])},
         "now": {"at": at(t_now), "value": est_now.mean, "sd": est_now.sd_state},
         "next_tap": {"at": at(t_next), "value": est_next.mean, "sd": est_next.sd_tap},
-        "p_cold_next": hmt_filter.p_below(est_next.mean, est_next.sd_tap, s.cold_tap_c),
+        "p_cold_next": hmt_filter.p_below(est_next.mean, est_next.sd_tap, cold),
         "ahead": {"at": at(t_end), "value": est_end.mean, "sd": est_end.sd_tap},
         "tap_interval_h": interval,
         "tap_age_h": t_now - state.t_h,

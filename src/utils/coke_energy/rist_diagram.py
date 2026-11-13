@@ -80,7 +80,7 @@ class RistShift:
     skey: str
     actual: OperatingLine              # calibrated on the shift: charged coke, reconciled blast, analyser eta CO
     p_actual: Point | None             # pivot of the shift's own lower-zone heat balance
-    model: OperatingLine | None        # two-zone prediction, omega fixed at its 14-day median
+    model: OperatingLine | None        # two-zone prediction, omega fixed at its calibration
     p_model: Point | None
     ideal_mu: float | None             # heat-balanced line through P (actual) and W
     ideal_y_a: float | None

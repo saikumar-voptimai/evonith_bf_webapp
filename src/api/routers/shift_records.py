@@ -38,7 +38,7 @@ class ShiftRecordSummary(BaseModel):
     shift_end: datetime = Field(..., description="UTC")
     closed_at: datetime = Field(..., description="Time the record was frozen, UTC")
     k_trace: float | None = Field(None, description="Burnt coke of the shift window (TRACE), kg/tHM dry")
-    k_forge: float | None = Field(None, description="Two-zone balance at the 14-day medians (FORGE), kg/tHM dry")
+    k_forge: float | None = Field(None, description="Two-zone balance at its calibration (FORGE), kg/tHM dry")
     k_strata: float | None = Field(None, description="Two-zone balance at omega_STRATA, kg/tHM dry")
     k_charged: float | None = Field(None, description="Coke charged in the shift window, kg/tHM dry")
     omega_imp: float | None = Field(None, description="Implied shaft efficiency of the shift window, dimensionless")

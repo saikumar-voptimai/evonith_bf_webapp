@@ -2,8 +2,10 @@
 
 TRACE is page 10's burnt coke. Raw (gas-balance coke, GBC): the oxygen balance solved for the dry coke rate at the
 metered blast air with the analyser's eta CO and eta H2 (``utils.coke_energy.burnt.k_burnt``). Calibrated: raw plus the
-14-day correction, the median of (charged - raw burnt) over the stable shifts dated in [d - 14 d, d), at least
-``min_shifts`` of them (``utils.coke_energy.pipeline.burnt_coke``). Every quantity here is read from the Coke Energy
+correction, (charged - raw burnt) calibrated over the stable shifts before the shift (``utils.coke_energy.pipeline.
+burnt_coke`` with ``calibration_values``): the tracker, weights 0.5 ** (age / 3 d) over the shifts that ended before it
+began and are at most 14 d old, or the web's median over the shifts dated in [d - 14 d, d), per
+``PipelineSettings.calibration``. Every quantity here is read from the Coke Energy
 pipeline result (``services.coke_energy.page_data``) or composed by the pipeline's own modules; nothing is recomputed:
 
     per shift    the pipeline's shift table (K_burnt_raw, burnt_offset, K_burnt, K_charged): page 10's values
@@ -11,7 +13,7 @@ pipeline result (``services.coke_energy.page_data``) or composed by the pipeline
                  counts only with all three shifts, the web model's rule)
     per hour     the twin's 8-h windows ending at each full hour (``twin.snapshot``: k_trace, k_burnt_raw_kg_thm,
                  burnt_offset_kg_thm), equal to the shift values on the shift windows (tests/test_twin_window.py)
-    correction   the latest shift's offset, its 14-day window and the stable shifts the median runs over
+    correction   the latest shift's offset, its window and the stable shifts it runs over, each with its share
     feeds        the oxygen balance's inputs of the latest shift and the age of every source as on page 10
                  (``freshness.assess``) at the build of the view, when the build read the sources; the view's own
                  age is reported next to it (a request does not age the sources: the 10-min data would read stale
@@ -45,7 +47,7 @@ from services import twin_views
 from utils.coke_energy import transit as tr
 from utils.coke_energy.accuracy import window_means
 from utils.coke_energy.freshness import assess, in_use_between, item_label, parse_limits
-from utils.coke_energy.pipeline import PipelineSettings
+from utils.coke_energy.pipeline import PipelineSettings, calibration_pool, shift_midpoints
 from utils.memo import memo
 
 log = logging.getLogger("services.trace")
@@ -178,9 +180,10 @@ def oxygen_inputs(row: pd.Series) -> list[dict[str, Any]]:
 
 # --------------------------------------------------------------------------------------------- correction
 def correction(T: pd.DataFrame, settings: PipelineSettings) -> dict[str, Any] | None:
-    """The 14-day correction of the latest shift that has one: the offset (pipeline ``burnt_offset``), its window of
-    dates [d - window_days, d) and the stable shifts in it with their (charged - raw burnt), as the pipeline pools them
-    (``pipeline.burnt_coke``: stable shifts by date, at least ``min_shifts`` rows)."""
+    """The correction of the latest shift that has one: the offset (pipeline ``burnt_offset``), its window and the
+    stable shifts it runs over with their (charged - raw burnt) and share (``pipeline.calibration_pool``: the shifts
+    dated in [d - window_days, d) with equal shares for the median; for the tracker the shifts that ended before the
+    shift began, at most window_days old, weight 0.5 ** (age / half-life))."""
     if T is None or T.empty or "burnt_offset" not in T:
         return None
     have = T[T["burnt_offset"].notna()].sort_values("t_mid")
@@ -188,16 +191,32 @@ def correction(T: pd.DataFrame, settings: PipelineSettings) -> dict[str, Any] | 
         return None
     skey = str(have.index[-1])
     day = pd.Timestamp(have.loc[skey, "sdate"]).normalize()
-    first = day - pd.Timedelta(days=settings.window_days)
-    sdate = pd.to_datetime(T["sdate"])
-    pool = T[T["stable"].eq(True) & (sdate >= first) & (sdate < day)].sort_values("t_mid")
+    t_mid = pd.Timestamp(have.loc[skey, "t_mid"])
+    stable = T[T["stable"].eq(True)]
+    mids = pd.to_datetime(stable["t_mid"]) if "t_mid" in stable else shift_midpoints(stable["sdate"], stable["shift"])
+    candidates = pd.DataFrame(
+        {
+            "date": pd.to_datetime(stable["sdate"]).dt.normalize(),
+            "t_mid": mids,
+            "K_charged": stable["K_charged"],
+            "K_burnt_raw": stable["K_burnt_raw"],
+        },
+        index=stable.index,
+    )
+    candidates["gap"] = candidates["K_charged"] - candidates["K_burnt_raw"]
+    pool = calibration_pool(candidates, day, t_mid, settings, value_col="gap")
+    tracker = settings.calibration != "median"
+    span = pd.Timedelta(days=settings.window_days)
+    first = (t_mid - span).normalize() if tracker else day - span
     return {
         "skey": skey,
         "offset": number(have.loc[skey, "burnt_offset"]),
+        "method": settings.calibration,
+        "half_life_days": float(settings.half_life_days) if tracker else None,
         "window_start": f"{first:%Y-%m-%d}",
         "window_end": f"{day:%Y-%m-%d}",
         "window_days": int(settings.window_days),
-        "min_shifts": int(settings.min_shifts),
+        "min_shifts": int(settings.calibration_min_shifts),
         "n_shifts": int(len(pool)),
         "pool": [
             {
@@ -205,7 +224,8 @@ def correction(T: pd.DataFrame, settings: PipelineSettings) -> dict[str, Any] | 
                 "start": utc_text(pd.Timestamp(r["t_mid"]) - SHIFT / 2),
                 "k_charged": number(r["K_charged"]),
                 "k_burnt_raw": number(r["K_burnt_raw"]),
-                "gap": number(r["K_charged"] - r["K_burnt_raw"]),
+                "gap": number(r["gap"]),
+                "weight": number(r["weight"]),
             }
             for k, r in pool.iterrows()
         ],
@@ -359,7 +379,9 @@ def build_view(data: ce.PageData, cfg: Mapping[str, Any], *, now: pd.Timestamp |
         "built_at": utc_text(now),
         "settings": {
             "window_days": int(settings.window_days),
-            "min_shifts": int(settings.min_shifts),
+            "min_shifts": int(settings.calibration_min_shifts),
+            "method": settings.calibration,
+            "half_life_days": float(settings.half_life_days) if settings.calibration != "median" else None,
             "history_start": str(settings.history_start),
         },
         "sources": {

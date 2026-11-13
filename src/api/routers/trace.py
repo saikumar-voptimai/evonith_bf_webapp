@@ -27,9 +27,12 @@ router = APIRouter(prefix="/api/trace", tags=["trace"], dependencies=[Depends(re
 MAX_SERIES_DAYS = {"hour": 92, "shift": 400, "day": 800}
 LATEST_HOUR_LOOKBACK = timedelta(hours=48)
 
-K_BURNT = "Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM"
+K_BURNT = "Burnt coke, calibrated: raw + the correction (TRACE), kg/tHM"
 K_RAW = "Burnt coke, raw: oxygen balance at the metered blast air and the analyser's ηCO (GBC), kg/tHM"
-OFFSET = "14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM"
+OFFSET = (
+    "Correction: charged − raw burnt calibrated over the stable shifts before the shift (tracker: weights "
+    "0.5^(age / half-life) over the 14 days before; median: the 14 days before its date), kg/tHM"
+)
 K_CHARGED = "Coke charged (dry), kg/tHM"
 
 
@@ -95,15 +98,20 @@ class TraceCorrectionShift(BaseModel):
     k_charged: float | None = Field(None, description=K_CHARGED)
     k_burnt_raw: float | None = Field(None, description=K_RAW)
     gap: float | None = Field(None, description="Charged − raw burnt coke, kg/tHM")
+    weight: float | None = Field(
+        None, description="Share of the shift in the correction (sums to 1 over the shifts with a gap), dimensionless"
+    )
 
 
 class TraceCorrection(BaseModel):
     skey: str = Field(..., description="Shift the correction belongs to (the latest with one)")
     offset: float | None = Field(None, description=OFFSET)
+    method: str = Field("median", description="median (web, 14 days by date) or exponential (tracker)")
+    half_life_days: float | None = Field(None, description="Half-life of the tracker's weights, d")
     window_start: date = Field(..., description="First shift date of the window (IST)")
     window_end: date = Field(..., description="Date the window ends before, the shift's date (IST)")
     window_days: int = Field(..., description="Length of the window, d")
-    min_shifts: int = Field(..., description="Stable shifts the median needs, count")
+    min_shifts: int = Field(..., description="Stable shifts the correction needs, count")
     n_shifts: int = Field(..., description="Stable shifts in the window, count")
     pool: list[TraceCorrectionShift] = Field(..., description="The stable shifts of the window, oldest first")
 
@@ -111,6 +119,8 @@ class TraceCorrection(BaseModel):
 class TraceSettings(BaseModel):
     window_days: int = Field(..., description="Window of the correction, d")
     min_shifts: int = Field(..., description="Stable shifts the correction needs, count")
+    method: str = Field("median", description="Calibration of the correction: median or exponential")
+    half_life_days: float | None = Field(None, description="Half-life of the tracker's weights, d")
     history_start: str = Field(..., description="First date the pipeline balances (IST)")
 
 
@@ -246,7 +256,7 @@ def _latest_hour(store: TwinStore | None, now: datetime) -> tuple[dict[str, Any]
 # --------------------------------------------------------------------------------------------- routes
 @router.get("", response_model=TraceSummary, summary="TRACE: latest shift and hour, correction, feeds")
 def summary(store: Annotated[TwinStore | None, Depends(optional_twin_store)] = None) -> TraceSummary:
-    """The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day
+    """The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the
     correction and the age of every source at the build of the view (the view's own age in age_s)."""
     now = datetime.now(UTC)
     hour, hour_available = _latest_hour(store, now)

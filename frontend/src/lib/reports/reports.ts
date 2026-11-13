@@ -519,7 +519,7 @@ export function twinCells(row: TwinSeriesRow): TwinCell[] {
 	const q = row.quantities ?? {};
 	return [
 		{ key: 'k_trace', label: 'Burnt coke', note: 'TRACE, oxygen balance', value: n(row.k_trace), sd: null, unit: 'kg/tHM', digits: 1, series: 'trace' },
-		{ key: 'k_forge', label: 'FORGE', note: 'Two-zone balance, 14-day medians', value: n(row.k_forge), sd: null, unit: 'kg/tHM', digits: 1, series: 'forge' },
+		{ key: 'k_forge', label: 'FORGE', note: 'Two-zone balance, calibrated on the shifts before', value: n(row.k_forge), sd: null, unit: 'kg/tHM', digits: 1, series: 'forge' },
 		{ key: 'k_strata', label: 'STRATA', note: 'Two-zone balance at ω STRATA', value: n(row.k_strata), sd: n(row.k_strata_sd), unit: 'kg/tHM', digits: 1, series: 'strata' },
 		{ key: 'k_charged', label: 'Coke charged', note: 'Charge records', value: n(row.k_charged), sd: null, unit: 'kg/tHM', digits: 1, series: 'charged' },
 		{ key: 'omega_imp', label: 'ω implied', note: 'Shaft efficiency of the window', value: n(row.omega_imp), sd: null, unit: '', digits: 3 },
@@ -600,7 +600,7 @@ export function recordCells(r: ShiftRecord): TwinCell[] {
 	const w = r.shift_window_snapshot;
 	return [
 		{ key: 'k_trace', label: 'Burnt coke', note: 'TRACE, oxygen balance', value: n(r.k_trace), sd: null, unit: 'kg/tHM', digits: 1, series: 'trace' },
-		{ key: 'k_forge', label: 'FORGE', note: 'Two-zone balance, 14-day medians', value: n(r.k_forge), sd: null, unit: 'kg/tHM', digits: 1, series: 'forge' },
+		{ key: 'k_forge', label: 'FORGE', note: 'Two-zone balance, calibrated on the shifts before', value: n(r.k_forge), sd: null, unit: 'kg/tHM', digits: 1, series: 'forge' },
 		{ key: 'k_strata', label: 'STRATA', note: 'Two-zone balance at ω STRATA', value: n(r.k_strata), sd: n(w?.k_strata_sd), unit: 'kg/tHM', digits: 1, series: 'strata' },
 		{ key: 'k_charged', label: 'Coke charged', note: 'Charge records', value: n(r.k_charged), sd: null, unit: 'kg/tHM', digits: 1, series: 'charged' },
 		{ key: 'omega_imp', label: 'ω implied', note: 'Shaft efficiency of the shift window', value: n(r.omega_imp), sd: null, unit: '', digits: 3 }

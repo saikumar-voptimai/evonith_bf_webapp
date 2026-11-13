@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FakeSource } from '../live/fake-source.ts';
 import { LiveStream, type StreamEvent } from '../live/stream.svelte.ts';
-import { LiveModel } from './live-model.svelte.ts';
+import { LiveModel, REFRESH_MS } from './live-model.svelte.ts';
 import {
 	annotations,
 	arrivalLine,
@@ -327,6 +327,8 @@ describe('HMT, ηCO and top gas', () => {
 		]);
 		expect(tiles[0]!.note).toBe('13:00 IST, received 13:30');
 		expect(tiles[2]!.note).toBe('about 15:00 IST · below 1,460\u00a0°C: 5\u00a0%');
+		const rare = { ...VIEW, hmt: { ...VIEW.hmt, cold_tap_c: 1440, p_cold_next: 0.001 } };
+		expect(hmtTiles(rare)[2]!.note).toBe('about 15:00 IST · below 1,440\u00a0°C: <1\u00a0%');
 		const stale = { ...VIEW, hmt: { ...VIEW.hmt, stale: true } };
 		expect(hmtTiles(stale)[1]!.note).toBe('no recent tap: the long-run level');
 		expect(hmtTiles(null).every((x) => x.value === null)).toBe(true);
@@ -432,7 +434,8 @@ describe('shift record', () => {
 });
 
 describe('LiveModel', () => {
-	it('reads once per hours and period, again on twin.snapshot, and keeps the tags of live.status', async () => {
+	it('reads once per hours and period, again on twin.snapshot and every 5 min, and keeps the tags of live.status', async () => {
+		vi.useFakeTimers();
 		FakeSource.all = [];
 		const stream = new LiveStream({
 			create: (url) => new FakeSource(url),
@@ -462,7 +465,13 @@ describe('LiveModel', () => {
 		expect(model.tagsAt).toBe(at(0));
 		source.emit({ type: 'twin.snapshot', id: '2-0', at: NOW, data: {} } as unknown as StreamEvent);
 		expect(calls).toHaveLength(3);
+		// the periodic re-read, until the page leaves
+		vi.advanceTimersByTime(REFRESH_MS);
+		expect(calls).toHaveLength(4);
 		stop();
+		vi.advanceTimersByTime(3 * REFRESH_MS);
+		expect(calls).toHaveLength(4);
 		expect(source.closed).toBe(true);
+		vi.useRealTimers();
 	});
 });
