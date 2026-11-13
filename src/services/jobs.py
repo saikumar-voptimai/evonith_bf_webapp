@@ -140,7 +140,7 @@ class OptimiserRunParams(BaseModel):
     )
     production_t_d: float | None = Field(
         None, ge=1500, le=3000,
-        description="Step 2 hot-metal target, t/d (default: the configured target, 2,270 t/d)",
+        description="Step 2 hot-metal target (default: the configured target of 2,270 t/d), t/d",
     )
     certainty: Literal["low", "any", "medium", "high"] = Field(
         "low", description="STRATA-ω certainty filter: low excludes Investigate plans (page 11's default)"

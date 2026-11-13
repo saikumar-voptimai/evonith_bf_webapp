@@ -10471,7 +10471,7 @@ export interface components {
             omega_mode: "strata" | "fixed";
             /**
              * Production T D
-             * @description Step 2 hot-metal target, t/d (default: the configured target, 2,270 t/d)
+             * @description Step 2 hot-metal target (default: the configured target of 2,270 t/d), t/d
              */
             production_t_d?: number | null;
             /**

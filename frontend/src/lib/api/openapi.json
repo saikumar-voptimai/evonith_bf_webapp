@@ -17570,7 +17570,7 @@
                 "type": "null"
               }
             ],
-            "description": "Step 2 hot-metal target, t/d (default: the configured target, 2,270 t/d)",
+            "description": "Step 2 hot-metal target (default: the configured target of 2,270 t/d), t/d",
             "title": "Production T D"
           },
           "risk_k": {
