@@ -409,12 +409,17 @@ def _default_tools() -> list[dict[str, Any]]:
 
 
 def _default_system_prompt(*, skill_id: str | None = None, skill_context: str | None = None) -> str:
-    """Page 7's prompt without the per-user layers (memory summary, feedback lessons, semantic memory); on a skill
-    turn with the skill's context."""
+    """Page 7's prompt without the per-user layers (memory summary, feedback lessons, semantic memory). A quick-skill
+    turn gets the skill prompt instead (``skill_guard.skill_system_prompt``: no tool-routing notes and no live-twin
+    routing, user decision 13 Nov 2026), as on page 7."""
     from agents.furnacemind import prompts
     from agents.furnacemind.context import SystemPromptContext
     from agents.furnacemind.turn import system_prompt
 
+    if skill_id:
+        from agents.furnacemind.skill_guard import skill_system_prompt
+
+        return skill_system_prompt(skill_context)
     return system_prompt(
         SystemPromptContext(), tool_policy=prompts.TOOL_POLICY, skill_id=skill_id, skill_context=skill_context
     )
@@ -1002,14 +1007,19 @@ def run_turn_sync(store: TwinStore, request: TurnRequest, emit: Callable[[BaseMo
 
         state = tool_state(request.conversation_id, user_id=request.user_id, resources=request.resources)
         system = request.system_prompt
+        tools = request.tools
         if request.skill is not None:
+            from agents.furnacemind.skill_guard import skill_tools
+
             system = start_skill(store, request, state, emit)
+            # A quick skill works on plant data only: no live-twin or optimiser tool (user decision 13 Nov 2026).
+            tools = skill_tools(request.tools)
         messages = turn_messages(store, request.conversation_id, system=system, window=request.history_window)
         observer = _StreamObserver(emit, state)
         result = run_turn(
             llm=request.llm,
             messages=messages,
-            tools=request.tools,
+            tools=tools,
             state=state,
             observer=observer,
             turn_id=uuid.uuid4().hex,

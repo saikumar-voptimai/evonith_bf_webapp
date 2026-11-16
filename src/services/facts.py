@@ -99,6 +99,11 @@ class FactsConflict(RuntimeError):
 # ------------------------------------------------------------------------------------------------------ values
 
 
+#: The fields of a trial the register view carries (the register's ``trials``; ``plant`` wording stays with
+#: FurnaceMind, ``agents.furnacemind.plant_facts``).
+TRIAL_FIELDS = ("id", "rank", "title", "change", "facts", "benefit", "design", "status", "notes", "source")
+
+
 def file_data() -> dict[str, Any]:
     """The repository file as a document (read on every call)."""
     return register.load_register_data()
@@ -338,6 +343,11 @@ def register_view(store: Any = _PROCESS, version: int | None = None) -> dict[str
     overlay = (row.overlay or {}) if row is not None else {}
     groups = list(dict.fromkeys(f["group"] for f in data["facts"]))
     facts = [fact_view(f, base[f["id"]], overlay.get(f["id"])) for f in doc["facts"]]
+    named, other = register.trial_links(doc)
+    trials = [
+        {**{k: t.get(k) for k in TRIAL_FIELDS}, "named_by": named.get(t["id"], [])}
+        for t in sorted(doc.get("trials") or [], key=lambda t: t["rank"])
+    ]
     return {
         "name": data["name"],
         "file_version": data["version"],
@@ -351,6 +361,9 @@ def register_view(store: Any = _PROCESS, version: int | None = None) -> dict[str
         "label": data["version"] if not shown else f"{data['version']} + overlay {shown}",
         "reason": reason,
         "facts": facts,
+        "trials": trials,
+        "trial_rules": dict(doc.get("trial_rules") or {}),
+        "other_tests": [{"code": code, "facts": ids} for code, ids in other.items()],
     }
 
 

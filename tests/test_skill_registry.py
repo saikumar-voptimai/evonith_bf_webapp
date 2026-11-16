@@ -3,7 +3,20 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
 from agents.furnacemind.skill_registry import SkillRegistry
+
+#: The plant skills in their button order (user decision 13 Nov 2026).
+PLANT_SKILLS = [
+    "shift_pulse",
+    "thermal_watch",
+    "gas_flow_lens",
+    "wall_heat_map",
+    "slag_burden_check",
+    "fuel_drivers",
+    "trial_board",
+]
 
 
 class FakeEngine:
@@ -12,17 +25,19 @@ class FakeEngine:
     def __init__(self) -> None:
         self.calls: list[tuple] = []
 
-    def optimise_prompt(self) -> str:
-        self.calls.append(("optimise_prompt",))
-        return "optimise prompt"
+    def shift_pulse_prompt(self, shift_date: str, label: str) -> str:
+        self.calls.append(("shift_pulse_prompt", shift_date, label))
+        return f"shift pulse {shift_date} {label}"
 
-    def shift_to_best_prompt(self, shift_date: str, label: str) -> str:
-        self.calls.append(("shift_to_best_prompt", shift_date, label))
-        return f"shift prompt {shift_date} {label}"
+    def __getattr__(self, name: str):
+        if name.endswith("_prompt"):
 
-    def heatload_prompt(self) -> str:
-        self.calls.append(("heatload_prompt",))
-        return "heatload prompt"
+            def handler() -> str:
+                self.calls.append((name,))
+                return f"{name} result"
+
+            return handler
+        raise AttributeError(name)
 
 
 class FakeSkillRepository:
@@ -75,6 +90,7 @@ def _row(
     symbol: str = "",
     is_active: bool = True,
     metadata: dict | None = None,
+    source_type: str = "uploaded",
 ) -> SimpleNamespace:
     """Build a minimal ORM-like skill row for registry tests."""
     return SimpleNamespace(
@@ -83,97 +99,166 @@ def _row(
         symbol=symbol,
         description=None,
         instruction=instruction,
-        source_type="built_in",
+        source_type=source_type,
         is_active=is_active,
         metadata_json=metadata or {},
     )
 
 
-def test_registry_falls_back_to_builtin_skills_when_database_is_empty() -> None:
-    """Empty skills table keeps the existing built-in quick skills available."""
+def _review_rows() -> list[SimpleNamespace]:
+    """Two uploaded prompt skills for the semantic-context tests."""
+    return [
+        _row(
+            skill_id="skill_cost_review",
+            name="Cost Review",
+            instruction="Cost instruction for sinter and ore economics.",
+            metadata={"slug": "cost_review", "order": 10},
+        ),
+        _row(
+            skill_id="skill_heat_review",
+            name="Heat Review",
+            instruction="Heatload instruction for skin temperature checks.",
+            metadata={"slug": "heat_review", "order": 20},
+        ),
+    ]
+
+
+def test_registry_offers_the_plant_skills_when_the_database_is_empty() -> None:
+    """An empty skills table leaves the code's seven plant skills, in their order."""
     repository = FakeSkillRepository([])
     registry = SkillRegistry(engine=FakeEngine(), repository=repository)
 
     skills = registry.available_skills()
 
-    assert [skill.slug for skill in skills] == ["optimise", "shift_to_best", "heatload"]
+    assert [skill.slug for skill in skills] == PLANT_SKILLS
+    assert [skill.name for skill in skills] == [
+        "Shift Pulse",
+        "Thermal Watch",
+        "Gas Flow Lens",
+        "Wall Heat Map",
+        "Slag & Burden Check",
+        "Fuel Drivers",
+        "Trial Board",
+    ]
+    assert len({skill.name for skill in skills}) == len(skills)
+    assert all(skill.handler == f"{skill.slug}_prompt" for skill in skills)
     assert registry.using_fallback is True
     assert repository.active_only_values == [False]
 
 
-def test_registry_uses_active_database_skills_in_configured_order() -> None:
-    """Active DB rows replace built-ins and are ordered by metadata."""
+def test_table_rows_add_skills_rename_code_skills_and_hide_them_when_inactive() -> None:
+    """A row with a code skill's slug changes its presentation (never its handler); an inactive one hides it; other
+    rows add their own skills."""
     rows = [
+        _row(skill_id="skill_thermal", name="Thermal Watch", is_active=False, metadata={"slug": "thermal_watch"}),
         _row(
-            skill_id="skill_disabled",
-            name="Disabled",
-            is_active=False,
-            metadata={"slug": "disabled", "order": 1, "handler": "heatload_prompt"},
-        ),
-        _row(
-            skill_id="skill_heatload",
-            name="Heatload Check",
-            metadata={"slug": "heatload", "order": 20, "handler": "heatload_prompt"},
+            skill_id="skill_pulse",
+            name="Shift Review",
+            symbol="SR",
+            metadata={
+                "slug": "shift_pulse",
+                "order": 5,
+                "handler": "trial_board_prompt",
+                "display_template": "Review {shift_date} {shift_label}",
+            },
         ),
         _row(
             skill_id="skill_custom",
             name="Custom SOP",
             instruction="Follow the custom SOP.",
             symbol="CS",
-            metadata={"slug": "custom_sop", "order": 10},
+            metadata={"slug": "custom_sop", "order": 65},
         ),
     ]
     registry = SkillRegistry(engine=FakeEngine(), repository=FakeSkillRepository(rows))
 
     skills = registry.available_skills()
 
-    assert [skill.slug for skill in skills] == ["custom_sop", "heatload"]
-    assert skills[0].button_label == "CS Custom SOP"
+    assert [skill.slug for skill in skills] == [
+        "shift_pulse",
+        "gas_flow_lens",
+        "wall_heat_map",
+        "slag_burden_check",
+        "fuel_drivers",
+        "custom_sop",
+        "trial_board",
+    ]
+    pulse = skills[0]
+    assert (pulse.name, pulse.symbol, pulse.handler, pulse.order) == ("Shift Review", "SR", "shift_pulse_prompt", 5)
+    assert registry.display_text(pulse, shift_date=date(2026, 11, 13), shift_label="B") == "Review 2026-11-13 B"
+    assert skills[5].button_label == "CS Custom SOP"
     assert registry.using_fallback is False
 
 
-def test_registry_respects_all_skills_disabled_without_fallback() -> None:
-    """When DB rows exist but all are inactive, the UI should show no skills."""
+def test_rows_of_the_retired_skills_are_ignored() -> None:
+    """Unit Cost, Shift to Best and Heatloads are not offered any more, active or not, by slug or by handler."""
     rows = [
         _row(
-            skill_id="skill_disabled",
-            name="Disabled",
-            is_active=False,
-            metadata={"slug": "disabled", "handler": "heatload_prompt"},
-        )
+            skill_id="skill_optimise_unit_cost",
+            name="Unit Cost",
+            source_type="built_in",
+            metadata={"slug": "optimise", "handler": "optimise_prompt"},
+        ),
+        _row(
+            skill_id="skill_shift_to_best",
+            name="Shift to Best",
+            source_type="built_in",
+            metadata={"slug": "shift_to_best", "handler": "shift_to_best_prompt"},
+        ),
+        _row(
+            skill_id="skill_heatloads",
+            name="Heatloads",
+            source_type="built_in",
+            metadata={"slug": "heatload", "handler": "heatload_prompt"},
+        ),
+        _row(
+            skill_id="skill_renamed", name="Old heat skill", metadata={"slug": "old_heat", "handler": "heatload_prompt"}
+        ),
+        _row(skill_id="skill_unit", name="Unit cost", instruction="old", metadata={"slug": "unit_cost"}),
     ]
     registry = SkillRegistry(engine=FakeEngine(), repository=FakeSkillRepository(rows))
 
-    assert registry.available_skills() == []
+    assert [skill.slug for skill in registry.available_skills()] == PLANT_SKILLS
+    with pytest.raises(ValueError):
+        registry.execute("heatload", shift_date=date(2026, 11, 13), shift_label="A")
+
+
+def test_inactive_rows_hide_only_their_own_skills() -> None:
+    """Inactive rows no longer empty the list: the code's skills stay unless a row with their slug is inactive."""
+    rows = [
+        _row(
+            skill_id="skill_disabled", name="Disabled", is_active=False, instruction="x", metadata={"slug": "disabled"}
+        ),
+        _row(skill_id="skill_trial", name="Trial Board", is_active=False, metadata={"slug": "trial_board"}),
+    ]
+    registry = SkillRegistry(engine=FakeEngine(), repository=FakeSkillRepository(rows))
+
+    assert [skill.slug for skill in registry.available_skills()] == PLANT_SKILLS[:-1]
     assert registry.using_fallback is False
 
 
-def test_registry_dispatches_whitelisted_engine_handler() -> None:
-    """DB metadata can choose a safe Python handler without executing DB code."""
+@pytest.mark.parametrize("slug", PLANT_SKILLS)
+def test_registry_dispatches_every_plant_skill_to_its_engine_handler(slug: str) -> None:
+    """Each plant skill runs its own whitelisted engine method; Shift Pulse gets the page's shift."""
     engine = FakeEngine()
-    rows = [
-        _row(
-            skill_id="skill_shift",
-            name="Shift Skill",
-            metadata={
-                "slug": "shift_to_best",
-                "handler": "shift_to_best_prompt",
-                "display_template": "Shift to Best: {shift_date}, Shift {shift_label}",
-            },
-        )
-    ]
-    registry = SkillRegistry(engine=engine, repository=FakeSkillRepository(rows))
+    registry = SkillRegistry(engine=engine, repository=FakeSkillRepository([]))
 
-    execution = registry.execute(
-        "shift_to_best",
-        shift_date=date(2026, 6, 25),
-        shift_label="A",
-    )
+    execution = registry.execute(slug, shift_date=date(2026, 6, 25), shift_label="A")
 
-    assert execution.prompt == "shift prompt 2026-06-25 A"
-    assert execution.display == "Shift to Best: 2026-06-25, Shift A"
-    assert execution.skill_id == "shift_to_best"
-    assert engine.calls == [("shift_to_best_prompt", "2026-06-25", "A")]
+    expected = ("shift_pulse_prompt", "2026-06-25", "A") if slug == "shift_pulse" else (f"{slug}_prompt",)
+    assert engine.calls == [expected]
+    assert execution.skill_id == slug
+    assert execution.prompt == ("shift pulse 2026-06-25 A" if slug == "shift_pulse" else f"{slug}_prompt result")
+    assert execution.display
+    assert "plant" in execution.skill_context.lower() or execution.skill_context
+
+
+def test_shift_pulse_display_names_the_shift() -> None:
+    registry = SkillRegistry(engine=FakeEngine(), repository=FakeSkillRepository([]))
+
+    execution = registry.execute("shift_pulse", shift_date=date(2026, 11, 13), shift_label="B")
+
+    assert execution.display == "Shift Pulse: 2026-11-13, Shift B against the week before"
 
 
 def test_registry_builds_prompt_only_database_skill_context() -> None:
@@ -191,7 +276,7 @@ def test_registry_builds_prompt_only_database_skill_context() -> None:
     ]
     registry = SkillRegistry(engine=FakeEngine(), repository=FakeSkillRepository(rows))
 
-    skill = registry.available_skills()[0]
+    skill = next(s for s in registry.available_skills() if s.slug == "prompt_only")
     execution = registry.execute_definition(
         skill,
         shift_date=date(2026, 6, 25),
@@ -205,13 +290,13 @@ def test_registry_builds_prompt_only_database_skill_context() -> None:
 
 
 def test_registry_falls_back_when_database_is_unavailable() -> None:
-    """Database failures do not remove existing built-in quick skills."""
+    """Database failures do not remove the plant skills."""
     repository = FakeSkillRepository([], fail=True)
     registry = SkillRegistry(engine=FakeEngine(), repository=repository)
 
     skills = registry.available_skills()
 
-    assert [skill.slug for skill in skills] == ["optimise", "shift_to_best", "heatload"]
+    assert [skill.slug for skill in skills] == PLANT_SKILLS
     assert registry.using_fallback is True
     assert registry.last_error == "database unavailable"
 
@@ -242,22 +327,9 @@ def test_turn_skill_context_always_includes_selected_skill_context() -> None:
 
 
 def test_turn_skill_context_adds_semantic_skills_from_recent_messages() -> None:
-    """Recent chat context can add relevant active skills without duplicating the selected one."""
-    rows = [
-        _row(
-            skill_id="skill_unit_cost",
-            name="Unit Cost",
-            instruction="Cost instruction for sinter and ore economics.",
-            metadata={"slug": "unit_cost", "order": 10},
-        ),
-        _row(
-            skill_id="skill_heatload",
-            name="Heatloads",
-            instruction="Heatload instruction for skin temperature checks.",
-            metadata={"slug": "heatload", "order": 20},
-        ),
-    ]
-    registry = SkillRegistry(engine=FakeEngine(), repository=FakeSkillRepository(rows))
+    """Recent chat context can add relevant active skills without duplicating the selected one; the code's plant
+    skills are buttons, never semantic context."""
+    registry = SkillRegistry(engine=FakeEngine(), repository=FakeSkillRepository(_review_rows()))
 
     context = registry.turn_skill_context(
         query="What should I check next?",
@@ -271,43 +343,28 @@ def test_turn_skill_context_adds_semantic_skills_from_recent_messages() -> None:
                 "content": "Review thermal behavior before changing burden.",
             },
         ],
-        selected_skill_id="unit_cost",
-        selected_skill_context="Selected Unit Cost context.",
+        selected_skill_id="cost_review",
+        selected_skill_context="Selected Cost Review context.",
         embedding_client=FakeEmbeddingClient(),
         max_retrieved=2,
         min_score=0.8,
     )
 
     assert "EXPLICITLY SELECTED SKILL CONTEXT" in context
-    assert "Selected Unit Cost context." in context
+    assert "Selected Cost Review context." in context
     assert "SEMANTICALLY RELEVANT SKILL CONTEXT" in context
-    assert "Skill: Heatloads" in context
+    assert "Skill: Heat Review" in context
     assert "Heatload instruction for skin temperature checks." in context
-    assert context.count("Skill: Unit Cost") == 0
+    assert context.count("Skill: Cost Review") == 0
+    assert "Wall Heat Map" not in context
 
 
 def test_turn_skill_context_uses_qdrant_skill_vector_matches() -> None:
     """Additional relevant skills should come from the persisted vector index when available."""
-    rows = [
-        _row(
-            skill_id="skill_unit_cost",
-            name="Unit Cost",
-            instruction="Cost instruction for sinter economics.",
-            metadata={"slug": "unit_cost", "order": 10},
-        ),
-        _row(
-            skill_id="skill_heatload",
-            name="Heatloads",
-            instruction="Heatload instruction from SQL.",
-            metadata={"slug": "heatload", "order": 20},
-        ),
-    ]
-    vector_store = FakeSkillVectorStore(
-        [SimpleNamespace(skill_id="skill_heatload", slug="heatload", score=0.91)]
-    )
+    vector_store = FakeSkillVectorStore([SimpleNamespace(skill_id="skill_heat_review", slug="heat_review", score=0.91)])
     registry = SkillRegistry(
         engine=FakeEngine(),
-        repository=FakeSkillRepository(rows),
+        repository=FakeSkillRepository(_review_rows()),
         vector_store=vector_store,
     )
 
@@ -316,60 +373,44 @@ def test_turn_skill_context_uses_qdrant_skill_vector_matches() -> None:
         recent_messages=[
             {"role": "user", "content": "Skin temperature is climbing."},
         ],
-        selected_skill_id="unit_cost",
-        selected_skill_context="Selected Unit Cost context.",
+        selected_skill_id="cost_review",
+        selected_skill_context="Selected Cost Review context.",
         embedding_client=None,
         max_retrieved=2,
         min_score=0.8,
     )
 
-    assert "Selected Unit Cost context." in context
-    assert "Skill: Heatloads" in context
-    assert "Heatload instruction from SQL." in context
+    assert "Selected Cost Review context." in context
+    assert "Skill: Heat Review" in context
+    assert "Heatload instruction for skin temperature checks." in context
     assert vector_store.calls[0]["active_skill_ids"] == [
-        "skill_unit_cost",
-        "skill_heatload",
+        "skill_cost_review",
+        "skill_heat_review",
     ]
-    assert "unit_cost" in vector_store.calls[0]["exclude_skill_ids"]
+    assert "cost_review" in vector_store.calls[0]["exclude_skill_ids"]
     assert registry.last_relevance_error is None
 
 
 def test_turn_skill_context_records_injected_skill_identifiers() -> None:
     """Skill metadata should identify every skill injected into one turn."""
-    rows = [
-        _row(
-            skill_id="skill_unit_cost",
-            name="Unit Cost",
-            instruction="Cost instruction for sinter economics.",
-            metadata={"slug": "unit_cost", "order": 10},
-        ),
-        _row(
-            skill_id="skill_heatload",
-            name="Heatloads",
-            instruction="Heatload instruction from SQL.",
-            metadata={"slug": "heatload", "order": 20},
-        ),
-    ]
-    vector_store = FakeSkillVectorStore(
-        [SimpleNamespace(skill_id="skill_heatload", slug="heatload", score=0.91)]
-    )
+    vector_store = FakeSkillVectorStore([SimpleNamespace(skill_id="skill_heat_review", slug="heat_review", score=0.91)])
     registry = SkillRegistry(
         engine=FakeEngine(),
-        repository=FakeSkillRepository(rows),
+        repository=FakeSkillRepository(_review_rows()),
         vector_store=vector_store,
     )
 
     registry.turn_skill_context(
         query="Skin temperature is climbing.",
-        selected_skill_id="unit_cost",
-        selected_skill_context="Selected Unit Cost context.",
+        selected_skill_id="cost_review",
+        selected_skill_context="Selected Cost Review context.",
         embedding_client=None,
         max_retrieved=2,
         min_score=0.8,
     )
 
-    assert registry.last_context_skill_ids == ("skill_unit_cost", "skill_heatload")
-    assert registry.last_context_skill_slugs == ("unit_cost", "heatload")
+    assert registry.last_context_skill_ids == ("skill_cost_review", "skill_heat_review")
+    assert registry.last_context_skill_slugs == ("cost_review", "heat_review")
 
 
 def test_turn_skill_context_does_not_inject_inactive_qdrant_skill() -> None:

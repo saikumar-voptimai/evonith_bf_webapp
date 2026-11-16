@@ -17,7 +17,7 @@ import streamlit as st
 
 import agents.furnace_tools as furnace_tools
 from agents.embeddings.cloud_embedding import CloudEmbeddingClient
-from agents.furnacemind import prompts
+from agents.furnacemind import prompts, skill_guard
 from agents.furnacemind.context import SystemPromptContext
 from agents.furnacemind.graph import StatusBoxObserver
 from agents.furnacemind.skill_registry import SkillRegistry
@@ -901,17 +901,24 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
     tools = furnace_tools.get_openai_tool_schemas()
+    if active_skill_id:
+        # A quick skill works on plant data only: the plant-data tools and the skill prompt, without the tool-routing
+        # notes and the live-twin routing (user decision 13 Nov 2026; the agent service does the same).
+        tools = skill_guard.skill_tools(tools)
+        turn_system_prompt = skill_guard.skill_system_prompt(active_skill_context)
+    else:
+        turn_system_prompt = system_prompt(
+            context,
+            tool_policy=prompts.TOOL_POLICY,
+            skill_id=active_skill_id,
+            skill_context=active_skill_context,
+            feedback_context=feedback_lesson_context,
+            semantic_context=semantic_memory_context,
+        )
     messages = [
         {
             "role": "system",
-            "content": system_prompt(
-                context,
-                tool_policy=prompts.TOOL_POLICY,
-                skill_id=active_skill_id,
-                skill_context=active_skill_context,
-                feedback_context=feedback_lesson_context,
-                semantic_context=semantic_memory_context,
-            ),
+            "content": turn_system_prompt,
         },
         *chat_interface.chat_history_to_messages(
             max_messages=memory_summary_window,

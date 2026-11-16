@@ -414,6 +414,35 @@ Thumbs up/down voting with optional text feedback on AI responses. Currently sto
 | 8 | `search_knowledge_docs` | Semantic search on uploaded operator docs (1024-dim) |
 | 9 | `execute_python_plot` | Execute sandboxed Plotly code; result in `fm_fig` |
 
+Since then also `render_heatload_plot`, the live-twin tools (`agents/twin_tools.py`, section 12), `show_skill_chart`
+(shows the chart a quick skill prepared, `fm_skill_charts` of the tools' state) and `lookup_plant_facts` (the plant
+fact register as FurnaceMind may show it, `agents/furnacemind/plant_facts.py`).
+
+### Quick skills (user decision 13 Nov 2026)
+
+Seven plant skills replace Unit Cost, Shift to Best and Heatloads (`skill_registry._BUILTIN_SKILLS`, handlers on
+`SkillEngine`, analysis in `agents/furnacemind/plant_skills.py`, settings `config/furnacemind_skills.yml`):
+**Shift Pulse** (the page's shift against the 21 shifts before it; a running shift up to now), **Thermal Watch** (HMT
+per tap and Si, 24 h, against `shift_report.yml` limits, drivers 12 h against 3 d), **Gas Flow Lens** (wall
+temperatures A-D at 18.660 / 15.162 / 12.975 m, uptakes, top gas, ΔP and pressure swings, stock rods; 8 h against
+7 d), **Wall Heat Map** (heat load R6-R10 × Q1-Q4, stave ΔT, cooling water; 8 h against 14 d), **Slag & Burden
+Check** (slag against `utils.slag_bands` and practice, blend shares from the raw charge record, latest sinter; 24 h
+against 7 d), **Fuel Drivers** (highest against lowest fuel days of 30, coke effects from the COKE facts) and **Trial
+Board** (open facts grouped by `next_test`, why each is open, the levers' day-to-day range). Each computes its numbers
+in Python (median and 1.4826 × MAD as the usual spread; `valid` ranges drop stuck tags such as PCI outside 80-320
+kg/tHM; `floor_pct` keeps tiny changes of steady flows usual) and returns a filled report form; the model writes
+the note and calls `show_skill_chart`. **No IP in a skill turn** (`skill_guard.py`): the turn is offered
+`SKILL_TOOLS` only (no live-twin or optimiser tool) and `skill_system_prompt` (persona without the twin routing, no
+`TOOLS*.md`), in the agent service and on page 7; the fact register is shown without MOD / VAL, basis, note, params
+or se, and a fact whose text names a method or model is left out (`METHOD_WORDS` = the SPA's `method-words.ts`, kept
+equal by `tests/test_furnacemind_skill_guard.py`, plus STRATA / FORGE / TRACE). The code's skills show whether or not
+the `furnace_mind.skills` table has rows; a row with the same slug renames or hides one, rows of the retired skills
+are ignored; `scripts/furnacemind_skills_sync.py` (dry run; `--apply` after the release is deployed) tidies the
+table. Trial Board and `lookup_plant_facts` read the register's trial list (`plant_facts.trials` / `shown_trial`:
+plant wording, benefit as a Rs/tHM range, no model or validation fact); titles of the codes not on the list (Q1-Q12,
+T4, T9) go in `skills.trial_board.trial_titles`. Tests
+`tests/test_furnacemind_plant_skills.py` (synthetic data `tests/plant_skill_fakes.py`), `test_skill_registry.py`.
+
 ### LLM Client (`src/agents/llm/llm_client.py`)
 
 Two clients:
@@ -937,7 +966,14 @@ run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI th
   `moisture.source` must match (tested).
 - **Fact register:** `src/config/facts_register.json` v1.8, 116 facts (schema in `config/schemas/`). Every coefficient outside the
   balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
-  Change values there, not in code; retired facts are refused by `FactRegister.active()`.
+  Change values there, not in code; retired facts are refused by `FactRegister.active()`. The register also holds the
+  **trial list** (`trials`, `trial_rules`; user decision 13 Nov 2026, from slides 36 and 46 of the client deck of 27 Oct
+  2026): T1, T2, T3, T5, T6, T7, T8, TR-2, TR-3, TR-1b in rank order (money at stake × uncertainty), each with the
+  change, the facts it tests, the benefit at plant prices (`rs_thm` low-high, negative = saving), the design, a status
+  (Proposed / Planned / Running / Done / Dropped) and `plant` wording where the deck's words name a model or method.
+  `FactRegister.trials`; `register_problems` refuses a trial naming a missing fact or listed twice; `next_test_codes`
+  and `trial_links` join facts and trials. The Q1-Q12 questions and T4 / T9 are named by facts but not defined in the
+  deck.
 - **Adapters:** `src/data/burden_engine/inputs.py` (yard from `EvonithBmoContextProvider` + `bmo_operator_inputs.yml`),
   `src/data/burden_engine/calibration.py` (live calibration from the Coke Energy pipeline result, fallback to
   `src/assets/burden_engine/cal_2z_jul_oct_2026.json`).
@@ -989,7 +1025,9 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `routes/admin/<view>/`. Admin writes go through `services.audit.admin_write(store, actor, action, object_type,
   object_id)`: write through `write.session`, set `write.before` / `write.after` (`row_values`); one `twin.audit_log`
   row with before and after in the same transaction. Read the log through `GET /api/admin/audit` (admin only).
-- Fact register editor (SV-4.2, `/admin/facts`): `services/facts.py` + `api/routers/facts.py` (`GET /api/admin/facts[?version]`,
+- Fact register editor (SV-4.2, `/admin/facts`; tab **Trials** since 13 Nov 2026: the register's trial list with the
+  facts each settles, those naming it folded behind "+N", the trial rules and the codes facts name that are not on the
+  list; `register_view` → `trials`, `trial_rules`, `other_tests`): `services/facts.py` + `api/routers/facts.py` (`GET /api/admin/facts[?version]`,
   `/versions`, `POST /versions` propose, `POST /versions/{n}/review`, `/diff`, `/export`; admin only). A version of
   `twin.facts_version` is a cumulative overlay `{fact id: {value?, band?, status?}}` on the repository file, made from the
   version in force (409 otherwise), schema- and engine-checked on proposal and approval; a status change needs a second

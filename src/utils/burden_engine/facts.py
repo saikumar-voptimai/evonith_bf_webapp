@@ -20,6 +20,7 @@ import copy
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -95,6 +96,9 @@ class FactRegister:
         self.statuses: list[str] = list(data["statuses"])
         self.revision_log: list[dict[str, str]] = list(data.get("revision_log", []))
         self._facts = {f["id"]: Fact.from_dict(f) for f in data["facts"]}
+        #: The register's trial list (slide 46 of the client deck of 27 Oct 2026) and its rules, as in the file.
+        self.trials: list[dict[str, Any]] = [dict(t) for t in data.get("trials") or []]
+        self.trial_rules: dict[str, str] = dict(data.get("trial_rules") or {})
         self._check()
 
     @property
@@ -162,6 +166,14 @@ class FactRegister:
                 raise ValueError(f"{f.id}: id does not match group {f.group}")
         if not self.revision_log or self.revision_log[0].get("version") != self.version:
             raise ValueError("revision log must start with the register's current version")
+        seen: set[str] = set()
+        for t in self.trials:
+            if t["id"] in seen:
+                raise ValueError(f"trial {t['id']}: listed twice")
+            seen.add(t["id"])
+            unknown = [fid for fid in t.get("facts", []) if fid not in self._facts]
+            if unknown:
+                raise ValueError(f"trial {t['id']}: no such fact {', '.join(unknown)}")
 
     def table(self, ids: Iterable[str] | None = None) -> list[dict[str, Any]]:
         """Rows for display (id, statement, value, unit, +/-, status, grade, next test, version)."""
@@ -264,6 +276,35 @@ def apply_overlay(data: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[s
 def _schema() -> dict[str, Any]:
     with open(SCHEMA_PATH, encoding="utf-8") as fh:
         return json.load(fh)
+
+
+_TEST_CODE = re.compile(r"^(?:T|Q|TR-)\d{1,2}[a-z]?$")
+
+
+def next_test_codes(next_test: str | None) -> list[str]:
+    """The trial and question codes a fact's ``next_test`` names (``"Q6, T5"`` -> ``["Q6", "T5"]``), then any test it
+    describes in words as one entry (``"Q12; production step trial"`` -> ``["Q12", "production step trial"]``)."""
+    parts = [p.strip() for p in re.split(r"[,;]", next_test or "") if p.strip()]
+    codes = [p for p in parts if _TEST_CODE.match(p)]
+    text = [p for p in parts if not _TEST_CODE.match(p)]
+    return codes + (["; ".join(text)] if text else [])
+
+
+def trial_links(data: Mapping[str, Any]) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """For a register document: ``{trial id: facts whose next test names it}`` for the trial list, and ``{code:
+    facts}`` for the codes the facts name that are not on the trial list (questions Q1-Q12, trials not yet listed),
+    each in register order."""
+    listed = {t["id"] for t in data.get("trials") or []}
+    named: dict[str, list[str]] = {tid: [] for tid in listed}
+    other: dict[str, list[str]] = {}
+    for f in data.get("facts", []):
+        if f.get("status") == RETIRED:
+            continue
+        for code in next_test_codes(f.get("next_test")):
+            if not _TEST_CODE.match(code):
+                continue
+            (named if code in listed else other).setdefault(code, []).append(f["id"])
+    return named, other
 
 
 def register_problems(data: Mapping[str, Any]) -> list[str]:

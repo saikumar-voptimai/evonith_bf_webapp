@@ -8,9 +8,9 @@ rows only to a small whitelist of ``SkillEngine`` handlers.
 
 That split is deliberate. Operators can add, hide, rename, and tune prompt-based
 skills from the UI/database, while the application still avoids running arbitrary
-code or reading arbitrary files from values stored in SQL. If the database is
-empty or unavailable, the registry falls back to the built-in skills so the chat
-screen remains usable.
+code or reading arbitrary files from values stored in SQL. The built-in skills are the seven plant skills
+(``plant_skills``, user decision 13 Nov 2026); they are offered with or without table rows, a row with the same
+slug can rename or hide one, and the rows of the retired Unit Cost, Shift to Best and Heatloads are ignored.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timezone
 from pathlib import Path
 from typing import Any
@@ -84,58 +84,97 @@ class _SafeFormatDict(dict[str, str]):
         return "{" + key + "}"
 
 
+def _plant_skill(slug: str, name: str, symbol: str, description: str, display: str, order: int,
+                 instruction: str) -> SkillDefinition:
+    return SkillDefinition(
+        skill_id=slug,
+        slug=slug,
+        name=name,
+        symbol=symbol,
+        description=description,
+        instruction=instruction,
+        handler=f"{slug}_prompt",
+        display_template=display,
+        order=order,
+    )
+
+
+#: The quick skills (user decision 13 Nov 2026: seven plant skills replace Unit Cost, Shift to Best and Heatloads).
+#: Their numbers come from the plant's own records and the plant fact register (``plant_skills``); a skill turn offers
+#: the model the plant-data tools only (``skill_guard``).
 _BUILTIN_SKILLS: tuple[SkillDefinition, ...] = (
-    SkillDefinition(
-        skill_id="optimise",
-        slug="optimise",
-        name="Unit Cost",
-        symbol="â‚¹",
-        description="Compare recent operating state against best-shift cost targets.",
-        handler="optimise_prompt",
-        display_template="Unit Cost - last 30 days vs best-shift targets",
-        context_files=("SKILLS_BESTSHIFT.md", "SKILLS_OPTIMISE.md"),
-        order=10,
+    _plant_skill(
+        "shift_pulse", "Shift Pulse", "📈",
+        "The shift against the 21 shifts before it: which KPIs moved, which way, and any plant-limit breach.",
+        "Shift Pulse: {shift_date}, Shift {shift_label} against the week before", 10,
+        "Shift review: the shift mean of every process KPI and the hot-metal quality against the usual shift of the "
+        "week before, the largest movers and the plant-limit breaches, with actions for the next shift.",
     ),
-    SkillDefinition(
-        skill_id="shift_to_best",
-        slug="shift_to_best",
-        name="Shift to Best",
-        symbol="â†—",
-        description="Compare the last completed shift against best-shift targets.",
-        handler="shift_to_best_prompt",
-        display_template="Shift to Best: {shift_date}, Shift {shift_label}",
-        context_files=("SKILLS_BESTSHIFT.md",),
-        order=20,
+    _plant_skill(
+        "thermal_watch", "Thermal Watch", "🌡",
+        "Hot-metal temperature per tap and Si over the last 24 h against the plant limits, and what moved before.",
+        "Thermal Watch: hot metal over the last 24 h", 20,
+        "Hearth thermal state: HMT per tap and Si against the plant limits, the trend, a cold or hot drift, and the "
+        "blast and fuel quantities that moved in the hours before, sized with the plant fact register.",
     ),
-    SkillDefinition(
-        skill_id="heatload",
-        slug="heatload",
-        name="Heatloads",
-        symbol="ðŸ”¥",
-        description="Check recent heatload and skin-temperature behavior.",
-        handler="heatload_prompt",
-        display_template="Heatloads - last 8h vs 2-month baseline",
-        context_files=("SKILLS_HEATLOAD.md",),
-        order=30,
+    _plant_skill(
+        "gas_flow_lens", "Gas Flow Lens", "🌀",
+        "Gas distribution and burden descent: wall temperatures A–D, uptakes, top gas and pressure swings, 8 h "
+        "against the week before.",
+        "Gas Flow Lens: the last 8 h against the week before", 30,
+        "Gas flow and channelling check: the spread of the wall temperatures around the furnace at each stack level, "
+        "the hottest sector, uptake temperatures, top-gas analysis, pressure drop, permeability, pressure swings and "
+        "the stock rods.",
+    ),
+    _plant_skill(
+        "wall_heat_map", "Wall Heat Map", "🧱",
+        "Stave heat load by row and quadrant, the staves whose ΔT rose most and the cooling water, 8 h against 14 "
+        "days.",
+        "Wall Heat Map: the last 8 h against 14 days", 40,
+        "Wall and cooling check: heat load of rows R6–R10 by quadrant against the usual, the staves with the largest "
+        "rise of cooling-water ΔT, and the cooling-water flows and pressures by circuit.",
+    ),
+    _plant_skill(
+        "slag_burden_check", "Slag & Burden Check", "⚗",
+        "Slag basicity, Al₂O₃ and MgO against the plant bands, the charged blend and the sinter, 24 h against the "
+        "week before.",
+        "Slag & Burden Check: the last 24 h against the week before", 50,
+        "Slag and burden check: slag chemistry against the plant bands and practice, the shares of sinter, pellet and "
+        "lump ore charged, coke per tonne of ferrous, the charge count and the latest sinter analysis.",
+    ),
+    _plant_skill(
+        "fuel_drivers", "Fuel Drivers", "⛽",
+        "What separated the highest-fuel days of the last 30 from the lowest, sized with the plant fact register.",
+        "Fuel Drivers: highest against lowest fuel days of the last 30", 60,
+        "Fuel-rate review: the highest-fuel days against the lowest, split into coke, nut coke and PCI, the blast and "
+        "hot-metal quantities that differed, and how much of the coke gap the plant facts account for.",
+    ),
+    _plant_skill(
+        "trial_board", "Trial Board", "🧪",
+        "The plant facts not yet settled on BF-02, the trial or question that would settle each, and why.",
+        "Trial Board: open plant facts and the trials that settle them", 70,
+        "Plant trials: the facts of the plant fact register that rest on published values, judgement or disputed data, "
+        "grouped by the trial or question that would settle them, why each is open, and the range the plant already "
+        "moves through day to day.",
     ),
 )
 
+#: The former quick skills (Unit Cost, Shift to Best, Heatloads): skills-table rows with these slugs or handlers are
+#: not offered any more (user decision 13 Nov 2026).
+_RETIRED_SLUGS = frozenset({"optimise", "optimize", "unit_cost", "shift_to_best", "heatload", "heatloads"})
+_RETIRED_HANDLERS = frozenset({"optimise_prompt", "shift_to_best_prompt", "heatload_prompt"})
+
 _HANDLER_ALIASES = {
-    "optimise": "optimise_prompt",
-    "optimize": "optimise_prompt",
-    "unit_cost": "optimise_prompt",
-    "shift_to_best": "shift_to_best_prompt",
-    "heatload": "heatload_prompt",
-    "heatloads": "heatload_prompt",
+    **{skill.slug: skill.handler for skill in _BUILTIN_SKILLS},
     "shift_report": "shift_report_prompt",
 }
 
-_SUPPORTED_HANDLERS = {
-    "optimise_prompt",
-    "shift_to_best_prompt",
-    "heatload_prompt",
-    "shift_report_prompt",
-}
+_SUPPORTED_HANDLERS = {*(skill.handler for skill in _BUILTIN_SKILLS), "shift_report_prompt"}
+
+#: Slugs of the code's skills: buttons whose value is their computation, so semantic retrieval of skill context for
+#: a free question leaves them out.
+_BUILTIN_SLUGS = frozenset(skill.slug for skill in _BUILTIN_SKILLS)
+
 
 
 def _slugify(value: str) -> str:
@@ -345,6 +384,24 @@ def _definition_from_row(row: Any, *, fallback_order: int) -> SkillDefinition:
     )
 
 
+def _overlay(skill: SkillDefinition, row: SkillDefinition) -> SkillDefinition:
+    """A code skill with the presentation of its skills-table row: name, symbol, description, display text, order
+    and support files when the row gives them; the handler and the instruction stay the code's."""
+    meta = row.metadata or {}
+    return replace(
+        skill,
+        skill_id=row.skill_id or skill.skill_id,
+        name=row.name or skill.name,
+        symbol=row.symbol or skill.symbol,
+        description=row.description or skill.description,
+        display_template=_string_value(meta.get("display_template"), skill.display_template),
+        order=row.order if ("order" in meta or "sort_order" in meta) else skill.order,
+        context_files=row.context_files or skill.context_files,
+        source_type=row.source_type or skill.source_type,
+        metadata={**meta},
+    )
+
+
 class SkillRegistry:
     """Load DB-driven quick skills and turn user clicks into agent prompts.
 
@@ -353,10 +410,8 @@ class SkillRegistry:
     payloads for the chat UI. It does not own the sidebar form, database writes,
     or the actual blast-furnace prompt logic.
 
-    Fallback behavior is important: an empty/unavailable table uses built-in
-    skills so existing deployments still work, but a populated table with all
-    rows inactive returns no skills. That lets admins intentionally disable every
-    quick skill from the database.
+    The code's skills are always offered unless the table holds an inactive row with their slug; the table adds
+    its own active skills (``available_skills``). An empty or unavailable table leaves the code's skills alone.
     """
 
     def __init__(
@@ -386,16 +441,28 @@ class SkillRegistry:
     def available_skills(self) -> list[SkillDefinition]:
         """Return the quick skills currently available to the chat UI.
 
-        Active SQL rows are preferred. ``None`` from ``_database_definitions``
-        means the database cannot provide definitions, so built-ins are returned.
-        An empty list means the database intentionally has no active skills.
+        The code's skills (``_BUILTIN_SKILLS``) and the active rows of the skills table (user decision 13 Nov 2026,
+        so a release brings its skills without editing the table first). A row with the slug of a code skill changes
+        its name, symbol, description, order and display text, never its handler or instruction; an inactive row with
+        that slug hides it. Other active rows add their own skills (uploaded prompt skills). Rows of the retired
+        skills (Unit Cost, Shift to Best, Heatloads) are ignored. Without the table (none, unreachable or empty) the
+        code's skills alone (``using_fallback``).
         """
-        definitions = self._database_definitions()
-        if definitions is None:
+        loaded = self._database_definitions()
+        if loaded is None:
             self.using_fallback = True
             return list(_BUILTIN_SKILLS)
         self.using_fallback = False
-        return definitions
+        active, inactive = loaded
+        rows = {definition.slug: definition for definition in active}
+        skills: list[SkillDefinition] = []
+        for skill in _BUILTIN_SKILLS:
+            if skill.slug in inactive:
+                continue
+            row = rows.pop(skill.slug, None)
+            skills.append(_overlay(skill, row) if row is not None else skill)
+        skills.extend(rows.values())
+        return sorted(skills, key=lambda item: (item.order, item.name.lower()))
 
     def execute(
         self,
@@ -612,7 +679,8 @@ class SkillRegistry:
         if not query_text:
             return []
 
-        definitions = self.available_skills()
+        # The code's skills are buttons that compute their analysis; their text is not context for a free question.
+        definitions = [d for d in self.available_skills() if d.slug not in _BUILTIN_SLUGS]
         excluded = {
             str(value).strip().lower() for value in (exclude_skill_ids or set())
         }
@@ -817,13 +885,11 @@ class SkillRegistry:
             lines.append("Instruction:\n" + definition.instruction)
         return "\n".join(lines).strip()
 
-    def _database_definitions(self) -> list[SkillDefinition] | None:
-        """Load active database definitions or signal built-in fallback.
+    def _database_definitions(self) -> tuple[list[SkillDefinition], set[str]] | None:
+        """The active definitions of the skills table and the slugs of its inactive rows, or None for no table.
 
-        ``None`` means the repository is missing, errored, or returned no rows, so
-        the registry should use built-ins. A real list, even an empty one, means
-        the database is authoritative and fallback should not add hidden skills.
-        Duplicate slugs are ignored after the first active row.
+        ``None`` means the repository is missing, errored, or returned no rows. Rows of the retired skills (by slug
+        or by configured handler) are left out; duplicate slugs are ignored after the first active row.
         """
         if self._repository is None:
             return None
@@ -838,17 +904,23 @@ class SkillRegistry:
             return None
 
         definitions: list[SkillDefinition] = []
+        inactive: set[str] = set()
         seen: set[str] = set()
         for index, row in enumerate(rows):
-            if not getattr(row, "is_active", True):
-                continue
+            metadata = _metadata_for(row)
+            configured = _string_value(metadata.get("handler") or metadata.get("handler_name"))
             definition = _definition_from_row(row, fallback_order=1000 + index)
+            if definition.slug in _RETIRED_SLUGS or configured in _RETIRED_HANDLERS:
+                continue
+            if not getattr(row, "is_active", True):
+                inactive.add(definition.slug)
+                continue
             if definition.slug in seen:
                 continue
             if definition.handler or definition.instruction:
                 definitions.append(definition)
                 seen.add(definition.slug)
-        return sorted(definitions, key=lambda item: (item.order, item.name.lower()))
+        return definitions, inactive
 
     def _execute_handler(
         self,
@@ -863,12 +935,20 @@ class SkillRegistry:
         row cannot call arbitrary engine attributes. Add new branches here only
         when a new code-backed skill is intentionally supported.
         """
-        if handler == "optimise_prompt":
-            return str(self._engine.optimise_prompt())
-        if handler == "shift_to_best_prompt":
-            return str(self._engine.shift_to_best_prompt(str(shift_date), shift_label))
-        if handler == "heatload_prompt":
-            return str(self._engine.heatload_prompt())
+        if handler == "shift_pulse_prompt":
+            return str(self._engine.shift_pulse_prompt(str(shift_date), shift_label))
+        if handler == "thermal_watch_prompt":
+            return str(self._engine.thermal_watch_prompt())
+        if handler == "gas_flow_lens_prompt":
+            return str(self._engine.gas_flow_lens_prompt())
+        if handler == "wall_heat_map_prompt":
+            return str(self._engine.wall_heat_map_prompt())
+        if handler == "slag_burden_check_prompt":
+            return str(self._engine.slag_burden_check_prompt())
+        if handler == "fuel_drivers_prompt":
+            return str(self._engine.fuel_drivers_prompt())
+        if handler == "trial_board_prompt":
+            return str(self._engine.trial_board_prompt())
         if handler == "shift_report_prompt":
             start_utc, end_utc = self._shift_window_utc(shift_date, shift_label)
             return str(

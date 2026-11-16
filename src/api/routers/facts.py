@@ -62,6 +62,33 @@ class FactView(BaseModel):
     )
 
 
+class TrialBenefit(BaseModel):
+    text: str = Field(..., description="Benefit as the trial list states it (plant prices, 2,270 t/d)")
+    rs_thm: list[float] | None = Field(
+        None, description="Low and high benefit (negative: a saving; none when the list gives no figure), Rs/tHM"
+    )
+    basis: str | None = Field(None, description="What the benefit is for, e.g. for +40 °C")
+
+
+class TrialView(BaseModel):
+    id: str = Field(..., description="Trial code, e.g. T1 or TR-2")
+    rank: int = Field(..., description="Place on the trial list (money at stake × uncertainty), count")
+    title: str = Field(..., description="Short name")
+    change: str = Field(..., description="What the trial changes")
+    facts: list[str] = Field(..., description="Facts the trial tests, by the trial list")
+    named_by: list[str] = Field(..., description="Facts whose next test names this trial")
+    benefit: TrialBenefit
+    design: str = Field(..., description="Design: blocks, switchback, duration")
+    status: Literal["Proposed", "Planned", "Running", "Done", "Dropped"] = Field(..., description="Trial status")
+    notes: str | None = Field(None, description="Why it is on the list and what to prepare")
+    source: str | None = Field(None, description="Where the entry comes from")
+
+
+class NamedTest(BaseModel):
+    code: str = Field(..., description="A trial or question code facts name that is not on the trial list, e.g. Q5")
+    facts: list[str] = Field(..., description="Facts whose next test names it")
+
+
 class FactRegisterView(BaseModel):
     name: str = Field(..., description="Register name")
     file_version: str = Field(..., description="Version of the repository file, e.g. 1.8")
@@ -77,6 +104,13 @@ class FactRegisterView(BaseModel):
     label: str = Field(..., description="Register shown, e.g. 1.8 or 1.8 + overlay 3")
     reason: str | None = Field(..., description="Why the repository file is shown when the twin store is missing")
     facts: list[FactView] = Field(..., description="Facts in register order")
+    trials: list[TrialView] = Field(default_factory=list, description="The register's trial list, in rank order")
+    trial_rules: dict[str, str] = Field(
+        default_factory=dict, description="Rules every trial follows: ranking, detection limits, data rules, grade"
+    )
+    other_tests: list[NamedTest] = Field(
+        default_factory=list, description="Trial and question codes facts name that are not on the trial list"
+    )
 
 
 class FactsVersionView(BaseModel):

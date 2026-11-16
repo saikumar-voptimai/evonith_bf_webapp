@@ -118,7 +118,8 @@ def instant(text: str | None) -> pd.Timestamp | None:
 # ------------------------------------------------------------------------------------------------------ contract
 def test_the_twin_tools_are_offered_to_the_model_with_json_schemas() -> None:
     schemas = {s["function"]["name"]: s["function"] for s in ft.get_openai_tool_schemas()}
-    assert set(TWIN_TOOLS) <= set(schemas) and len(schemas) == 14
+    # 14 + show_skill_chart and lookup_plant_facts (the plant skills, 13 Nov 2026)
+    assert set(TWIN_TOOLS) <= set(schemas) and len(schemas) == 16
     for name in TWIN_TOOLS:
         params = schemas[name]["parameters"]
         assert params["type"] == "object" and params["additionalProperties"] is False and "required" not in params

@@ -215,3 +215,56 @@ export function exportName(disposition: string | null, fallback = 'facts_registe
 	const match = /filename="([^"]+)"/.exec(disposition ?? '');
 	return match?.[1] ?? fallback;
 }
+
+// ------------------------------------------------------------------------------------------------------ trials
+export type Trial = Schemas['TrialView'];
+export type NamedTest = Schemas['NamedTest'];
+
+/** A fact of a trial: `listed` when the trial list names it, else it names the trial as its next test. */
+export interface TrialFact {
+	id: string;
+	status: string;
+	grade: string;
+	listed: boolean;
+}
+
+/** The facts a trial would settle, in register order: those the trial list names, then those whose next test names
+ * the trial, with their status and grade in the version shown. */
+export function trialFacts(trial: Trial, facts: Fact[]): TrialFact[] {
+	const listed = new Set(trial.facts);
+	const named = new Set(trial.named_by);
+	return facts
+		.filter((f) => listed.has(f.id) || named.has(f.id))
+		.map((f) => ({ id: f.id, status: f.status, grade: f.grade, listed: listed.has(f.id) }))
+		.sort((a, b) => Number(b.listed) - Number(a.listed));
+}
+
+/** "Saves Rs 185–197/tHM, for +40 °C" from the benefit's range; the list's own text when it gives no figure. */
+export function benefitText(benefit: Trial['benefit']): string {
+	const range = benefit.rs_thm;
+	const a = range?.[0];
+	const b = range?.[1];
+	if (a === undefined || b === undefined) return benefit.text;
+	const lo = Math.min(Math.abs(a), Math.abs(b));
+	const hi = Math.max(Math.abs(a), Math.abs(b));
+	const span = lo === hi ? formatNumber(lo) : `${formatNumber(lo)}–${formatNumber(hi)}`;
+	const head =
+		a <= 0 && b <= 0
+			? `Saves Rs${UNIT_SPACE}${span}/tHM`
+			: a >= 0 && b >= 0
+				? `Costs Rs${UNIT_SPACE}${span}/tHM`
+				: `Rs${UNIT_SPACE}${formatNumber(a)} to ${formatNumber(b)}/tHM`;
+	return benefit.basis ? `${head}, ${benefit.basis}` : head;
+}
+
+/** Status chip of a trial. */
+export function trialStatus(status: Trial['status']): { kind: StatusKind; label: string } {
+	const kind: Record<Trial['status'], StatusKind> = {
+		Proposed: 'info',
+		Planned: 'info',
+		Running: 'warning',
+		Done: 'ok',
+		Dropped: 'stale'
+	};
+	return { kind: kind[status], label: status };
+}

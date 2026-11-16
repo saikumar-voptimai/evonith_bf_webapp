@@ -153,6 +153,124 @@
           }
         }
       }
+    },
+    "trials": {
+      "description": "The register's trial list: the planned BF-02 trials that would settle open facts (client deck 27 Oct 2026, slide 46).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "rank",
+          "title",
+          "change",
+          "facts",
+          "benefit",
+          "design",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(T|TR-)[0-9]+[a-z]?$"
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "change": {
+            "type": "string",
+            "minLength": 1
+          },
+          "facts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "benefit": {
+            "type": "object",
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "rs_thm": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "basis": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "design": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "Proposed",
+              "Planned",
+              "Running",
+              "Done",
+              "Dropped"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plant": {
+            "description": "Plain wording for client pages and FurnaceMind where the deck's text names a model or method.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "benefit": {
+                "type": "string"
+              },
+              "design": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "trial_rules": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   }
 }

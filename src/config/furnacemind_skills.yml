@@ -1,0 +1,182 @@
+# FurnaceMind quick skills (user decision 13 Nov 2026: seven plant skills replace Unit Cost, Shift to Best and
+# Heatloads). Every skill computes its numbers in `agents/furnacemind/plant_skills.py` from the plant's own records
+# (InfluxDB process tags, the hot-metal and slag samples, the charge record, the raw-material laboratory) and from the
+# plant fact register; the language model only writes the operator note. No skill reads the live twin, the optimisers
+# or any model state, and a skill turn offers the model the plant-data tools only (`skill_guard.py`).
+#
+# "Usual spread" = 1.4826 x the median absolute deviation of the baseline: a reading 2 spreads from the usual value is
+# unusual, 3 is far outside.
+
+spread:
+  unusual: 2.0
+  far: 3.0
+
+# Label, unit, decimals and which way is better (lower / higher / none) of every quantity a skill reports. `valid`:
+# readings outside are dropped before any average (a stuck tag, a stoppage's zeros; PCI as
+# `coke_energy.yml -> twin.live_model.pci_valid_kg_thm`). `floor_pct`: a change smaller than this share of the usual
+# value stays usual however steady the quantity is.
+quantities:
+  fuel_rate: {label: Fuel rate, unit: kg/tHM, digits: 1, better: lower, valid: [400, 750]}
+  coke_rate: {label: Coke rate, unit: kg/tHM, digits: 1, better: lower, valid: [150, 550]}
+  nut_coke_rate: {label: Nut coke rate, unit: kg/tHM, digits: 1, better: none, valid: [0, 150]}
+  coal_rate_actual_value: {label: PCI rate, unit: kg/tHM, digits: 1, better: none, valid: [80, 320]}
+  production_per_hour: {label: Production, unit: t/h, digits: 1, better: higher, valid: [20, 160]}
+  body_etaco: {label: ETA CO, unit: '%', digits: 2, better: higher, valid: [30, 55]}
+  body_raft: {label: RAFT, unit: °C, digits: 0, better: none, valid: [1700, 2600]}
+  body_perm: {label: Permeability index, unit: '', digits: 0, better: none}
+  body_dp_total: {label: Total ΔP, unit: bar, digits: 3, better: lower}
+  body_dp_bottom: {label: Bottom ΔP, unit: bar, digits: 3, better: lower}
+  body_dp_top: {label: Top ΔP, unit: bar, digits: 3, better: lower}
+  hot_blast_vol_nm3h: {label: Hot blast volume, unit: Nm³/h, digits: 0, better: none, valid: [20000, 160000]}
+  hot_blast_temp: {label: Hot blast temperature, unit: °C, digits: 0, better: higher, valid: [800, 1350]}
+  hot_blast_press: {label: Hot blast pressure, unit: bar, digits: 3, better: none}
+  oxygen_enrichment_pct: {label: O₂ enrichment, unit: '%', digits: 2, better: none, valid: [0, 15]}
+  steam_injection: {label: Steam, unit: kg/h, digits: 0, better: none}
+  top_press_avg: {label: Top pressure, unit: bar, digits: 3, better: none}
+  top_temp_avg: {label: Top gas temperature, unit: °C, digits: 0, better: none}
+  co_pct: {label: Top gas CO, unit: '%', digits: 2, better: none}
+  co2_pct: {label: Top gas CO₂, unit: '%', digits: 2, better: none}
+  h2_pct: {label: Top gas H₂, unit: '%', digits: 2, better: none}
+  charges_per_hour: {label: Charges, unit: charges/h, digits: 2, better: higher}
+  runner_temp_pci_taphole: {label: Runner temperature (PCI side), unit: °C, digits: 0, better: none}
+  hmt: {label: Hot-metal temperature, unit: °C, digits: 0, better: none}
+  chem_pct_si: {label: Hot-metal Si, unit: '%', digits: 2, better: none}
+  chem_pct_s: {label: Hot-metal S, unit: '%', digits: 3, better: lower}
+  slag_basicity: {label: Slag B2 (CaO/SiO₂), unit: '', digits: 3, better: none}
+  slag_t_basicity: {label: Slag T-basicity, unit: '', digits: 3, better: none}
+  slag_pct_al2o3: {label: Slag Al₂O₃, unit: '%', digits: 2, better: lower}
+  slag_pct_mgo: {label: Slag MgO, unit: '%', digits: 2, better: none}
+  mgo_al2o3: {label: Slag MgO/Al₂O₃, unit: '', digits: 3, better: none}
+  slag_pct_feo: {label: Slag FeO, unit: '%', digits: 2, better: lower}
+  slag_pct_s: {label: Slag S, unit: '%', digits: 3, better: none}
+  sinter_share: {label: Sinter share of ferrous, unit: '%', digits: 1, better: none}
+  pellet_share: {label: Pellet share of ferrous, unit: '%', digits: 1, better: none}
+  ore_share: {label: Lump ore share of ferrous, unit: '%', digits: 1, better: none}
+
+skills:
+  shift_pulse:
+    baseline_days: 7
+    online: [fuel_rate, coke_rate, nut_coke_rate, coal_rate_actual_value, production_per_hour, body_etaco, body_raft,
+             body_perm, body_dp_total, hot_blast_vol_nm3h, hot_blast_temp, hot_blast_press, oxygen_enrichment_pct,
+             steam_injection, top_press_avg, top_temp_avg, charges_per_hour]
+    hot_metal: [hmt, chem_pct_si, chem_pct_s, slag_basicity]
+    movers: 5
+
+  thermal_watch:
+    window_hours: 24
+    history_hours: 72
+    drivers_hours: 12
+    drivers_baseline_days: 3
+    drivers: [body_raft, hot_blast_temp, coal_rate_actual_value, oxygen_enrichment_pct, steam_injection,
+              hot_blast_vol_nm3h, fuel_rate, coke_rate, production_per_hour, body_etaco, top_temp_avg,
+              runner_temp_pci_taphole]
+    facts: [COKE-03, COKE-04, COKE-05, COKE-06, COKE-01]
+    # Falling by more than this over the window with the last tap within `near_low_c` of the lower limit = cold drift.
+    cold_drift_c_per_h: -2.0
+    near_low_c: 15.0
+
+  gas_flow_lens:
+    window_hours: 8
+    baseline_days: 7
+    # Wall temperature levels (mm) and their zone, A-D around the furnace (CLAUDE.md section 2).
+    levels: {'18660': Upper stack, '15162': Lower stack, '12975': Belly}
+    uptake: [top_temp_1, top_temp_2, top_temp_3, top_temp_4]
+    gas: [body_etaco, co_pct, co2_pct, h2_pct, top_temp_avg]
+    pressure: [body_perm, body_dp_total, body_dp_bottom, body_dp_top, hot_blast_press, top_press_avg]
+    # Quantities whose swing (standard deviation within the window) is compared with the usual 8-h swing.
+    swings: [top_press_avg, body_dp_total, body_perm, hot_blast_press]
+
+  wall_heat_map:
+    window_hours: 8
+    baseline_days: 14
+    rise_pct: 20.0
+    flow_drop_pct: 10.0
+    # Cooling-water changes below this share of the usual value stay usual (the flows are very steady).
+    water_floor_pct: 3.0
+    top_staves: 5
+
+  slag_burden_check:
+    window_hours: 24
+    baseline_days: 7
+    slag: [slag_basicity, slag_t_basicity, slag_pct_al2o3, slag_pct_mgo, mgo_al2o3, slag_pct_feo, slag_pct_s,
+           chem_pct_s, chem_pct_si]
+    # Published practice the plant compares itself with (Indian practice), shown beside the plant's own bands.
+    practice:
+      slag_pct_al2o3: {high: 18.5, note: Indian practice about 18.5 %}
+      mgo_al2o3: {low: 0.45, high: 0.55, note: Indian practice 0.45–0.55}
+    sinter: [fe_t, feo, sio2, al2o3, cao, mgo, basicity]
+
+  fuel_drivers:
+    days: 30
+    extremes: 7
+    # Days below this share of the median production are stoppages or slow days and are left out.
+    min_production_share: 0.6
+    # Each driver with the plant fact that states its effect on coke: `step` in the fact's own terms;
+    # `relative: true` = the step is a percentage of the driver's value.
+    drivers:
+      - {field: hot_blast_temp, fact: COKE-05, step: 50}
+      - {field: coal_rate_actual_value, fact: COKE-01, step: 10}
+      - {field: nut_coke_rate, fact: COKE-02, step: 10}
+      - {field: chem_pct_si, fact: COKE-03, step: 0.1}
+      - {field: hmt, fact: COKE-04, step: 10}
+      - {field: production_per_hour, fact: COKE-08, step: 5, relative: true}
+      - {field: oxygen_enrichment_pct, fact: COKE-07, step: 0.84}
+      - {field: steam_injection}
+      - {field: hot_blast_vol_nm3h}
+      - {field: body_etaco}
+      - {field: top_temp_avg}
+      - {field: pellet_share, fact: COKE-15, step: 1}
+
+  trial_board:
+    days: 30
+    # A fact is open when it is not settled on BF-02: its grade is a published value or a judgement, or its status
+    # says it is assumed, disputed or not measured.
+    open_grades: [C, D]
+    open_statuses: [Assumed, Disputed, Measured gap, Instrument check needed, Modelled only]
+    # The plant lever behind a fact, for the day-to-day range it already moves through.
+    levers:
+      COKE-01: coal_rate_actual_value
+      COKE-02: nut_coke_rate
+      COKE-03: chem_pct_si
+      COKE-04: hmt
+      COKE-05: hot_blast_temp
+      COKE-07: oxygen_enrichment_pct
+      COKE-08: production_per_hour
+      COKE-15: pellet_share
+      GAS-01: hot_blast_temp
+      GAS-05: top_press_avg
+      GAS-06: pellet_share
+      FLOW-02: pellet_share
+      FLOW-05: oxygen_enrichment_pct
+    # The trial list itself is in the register (`facts_register.json -> trials`, client deck of 27 Oct 2026, slide
+    # 46). Titles of the codes facts name that are not on it (questions Q1-Q12, trials T4 and T9) go here, e.g.
+    # `Q5: Silicon against coke at the plant`; the deck does not define them.
+    trial_titles: {}
+
+# What the skills and the `lookup_plant_facts` tool may show of the fact register: the plant's facts with their value,
+# status and the test that would settle them; never how a value was worked out (basis, note, parameters) and never the
+# model and validation groups. A fact whose shown text names a method is left out (`skill_guard.METHOD_WORDS`).
+facts:
+  hidden_groups: [MOD, VAL]
+  fields: [id, group, statement, value, unit, range, status, grade, literature, next_test, validity_window, date]
+  # Register statuses shown under a plant word (the register's word names the analyser's check, not a model).
+  status_labels: {Calibration needed: Instrument check needed}
+  grades:
+    A: Measured on BF-02 by a trial or a clean step change
+    B: Estimated from BF-02 plant data, with a stated uncertainty
+    C: Published value from other furnaces, not yet measured on BF-02
+    D: Vendor note or engineering judgement
+  statuses:
+    Assumed: taken from practice or literature and not yet measured on BF-02
+    Disputed: BF-02 data and the working value disagree
+    Measured gap: the measurement it needs is not made today
+    Instrument check needed: the instrument must be checked before the value can be trusted
+    Modelled only: worked out by calculation, with no plant test yet
+    Model: a calculated response, compared only with published values
+    Supported: BF-02 data agree with it
+    Validated: tested on BF-02 data it was not built from
+    Measured: measured on BF-02
+    Plant data: read from BF-02 records
+    Plant choice: a setting the plant chose
+    Plant practice: the plant's operating practice
+    Neutral: no effect expected

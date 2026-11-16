@@ -84,7 +84,51 @@ class SkillEngine:
         self._uc_col: str = _PARAMS["unit_cost_col"]
         self._bmark_pct: float = _PARAMS["benchmark_percentile"]
 
-    # ── Public skill entry points ────────────────────────────────────────────
+    # ── Plant skills (the quick skills since 13 Nov 2026; ``agents.furnacemind.plant_skills``) ─────────────────
+
+    def shift_pulse_prompt(self, shift_date: str, label: str) -> str:
+        """Shift Pulse: the shift against the 21 shifts before it."""
+        from agents.furnacemind import plant_skills
+
+        return plant_skills.run("shift_pulse", shift_date, label)
+
+    def thermal_watch_prompt(self) -> str:
+        """Thermal Watch: hot metal over the last 24 h against the plant limits."""
+        from agents.furnacemind import plant_skills
+
+        return plant_skills.run("thermal_watch")
+
+    def gas_flow_lens_prompt(self) -> str:
+        """Gas Flow Lens: wall temperatures, uptakes, top gas and pressures, 8 h against the week before."""
+        from agents.furnacemind import plant_skills
+
+        return plant_skills.run("gas_flow_lens")
+
+    def wall_heat_map_prompt(self) -> str:
+        """Wall Heat Map: stave heat load, stave ΔT and cooling water, 8 h against 14 days."""
+        from agents.furnacemind import plant_skills
+
+        return plant_skills.run("wall_heat_map")
+
+    def slag_burden_check_prompt(self) -> str:
+        """Slag & Burden Check: slag, the charged blend and the sinter, 24 h against the week before."""
+        from agents.furnacemind import plant_skills
+
+        return plant_skills.run("slag_burden_check")
+
+    def fuel_drivers_prompt(self) -> str:
+        """Fuel Drivers: the highest-fuel days against the lowest of the last 30 days."""
+        from agents.furnacemind import plant_skills
+
+        return plant_skills.run("fuel_drivers")
+
+    def trial_board_prompt(self) -> str:
+        """Trial Board: the open plant facts and the trials that would settle them."""
+        from agents.furnacemind import plant_skills
+
+        return plant_skills.run("trial_board")
+
+    # ── Former quick skills (retired as buttons 13 Nov 2026; kept for direct callers) ─────────────────────────
 
     def optimise_prompt(self) -> str:
         """Run 30-day ML analysis; return a prompt containing only pre-computed numbers."""

@@ -87,6 +87,8 @@ def test_browse_propose_review_diff_and_export(client, twin) -> None:
     view = FactRegisterView.model_validate(r.json())
     assert r.status_code == 200 and view.label == "1.8" and len(view.facts) == 116 and view.in_force_version == 0
     assert view.groups == ["COKE", "GAS", "FLOW", "DATA", "BAND", "ASM", "MOD", "VAL"]
+    assert [t.id for t in view.trials][:3] == ["T1", "T2", "T3"] and view.trials[0].benefit.rs_thm == [-197, -185]
+    assert view.trial_rules["detection"] and any(o.code == "Q5" for o in view.other_tests)
     assert {f.id for f in view.facts if f.retired} >= {"GAS-19", "COKE-17"}
     band = next(f for f in view.facts if f.id == "BAND-02")
     assert band.band == [1440.0, 1520.0] and band.band_kind == "plausibility" and band.unit

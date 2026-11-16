@@ -55,6 +55,8 @@ _TOOL_LABELS: dict[str, str] = {
     "search_shift_history": "Searching shift history...",
     "search_knowledge_docs": "Searching knowledge docs...",
     "execute_python_plot": "Generating plot...",
+    "show_skill_chart": "Showing the skill's chart...",
+    "lookup_plant_facts": "Reading the plant fact register...",
     **TWIN_TOOL_LABELS,  # the live twin (SV-5.3)
 }
 

@@ -11,6 +11,7 @@
 	import { istStamp } from '#lib/admin/audit.ts';
 	import {
 		bandText,
+		benefitText,
 		compareOptions,
 		counts,
 		download,
@@ -22,6 +23,8 @@
 		filterFacts,
 		NO_FILTER,
 		reviewBlock,
+		trialFacts,
+		trialStatus,
 		valueText,
 		versionName,
 		versionStatus,
@@ -35,7 +38,10 @@
 		type FactFilter,
 		type FactRegister,
 		type FactsDiff,
-		type FactsVersion
+		type FactsVersion,
+		type NamedTest,
+		type Trial,
+		type TrialFact
 	} from '#lib/admin/facts.ts';
 	import { describeError } from '#lib/api/describe.ts';
 	import { api } from '#lib/api/client.ts';
@@ -286,12 +292,82 @@
 		}
 	];
 
+	// The register's trial list (client deck of 27 Oct 2026, slide 46): what each trial changes, the facts it would
+	// settle, its benefit at plant prices and its design.
+	const trialColumns: Column<Trial>[] = [
+		{ key: 'rank', label: 'Rank', align: 'right', width: '4rem', format: (t) => String(t.rank) },
+		{ key: 'trial', label: 'Trial', sortable: false, width: '13rem' },
+		{ key: 'change', label: 'Change', sortable: false, wrap: true },
+		{ key: 'facts', label: 'Facts it settles', sortable: false, width: '14rem' },
+		{ key: 'benefit', label: 'Benefit', sortable: false, wrap: true, format: (t) => benefitText(t.benefit) },
+		{ key: 'design', label: 'Design', sortable: false, wrap: true },
+		{ key: 'status', label: 'Status', sortable: false, width: '8rem' }
+	];
+	const otherTestColumns: Column<NamedTest>[] = [
+		{ key: 'code', label: 'Code', width: '6rem' },
+		{ key: 'facts', label: 'Facts that name it', sortable: false, format: (t) => t.facts.join(', ') }
+	];
+	const RULES: { key: string; label: string }[] = [
+		{ key: 'detection', label: 'What a trial can detect' },
+		{ key: 'rules', label: 'Rules for every test' },
+		{ key: 'grade', label: 'After the trial' }
+	];
+
+	/** Open a fact of a trial on the Facts tab. */
+	function showFact(id: string): void {
+		filter = { ...NO_FILTER, text: id };
+		tab = 'facts';
+	}
+
 	const tabs = $derived([
 		{ id: 'facts', label: 'Facts', count: draftSize || undefined },
+		{ id: 'trials', label: 'Trials', count: (register?.trials ?? []).length || undefined },
 		{ id: 'versions', label: 'Versions', count: pendingCount || undefined },
 		{ id: 'compare', label: 'Compare' }
 	]);
 </script>
+
+{#snippet trialCell(t: Trial)}
+	<span class="trial">
+		<span class="id">{t.id}</span>
+		<span>{t.title}</span>
+	</span>
+{/snippet}
+
+{#snippet factLink(f: TrialFact)}
+	<button
+		type="button"
+		class={['fact-link', !f.listed && 'named']}
+		title="{f.status} · grade {f.grade}{f.listed
+			? ''
+			: ' · names this trial as its next test'}. Open on the Facts tab."
+		onclick={() => showFact(f.id)}>{f.id}</button
+	>
+{/snippet}
+
+<!-- The trial list's own facts as chips; the facts that only name the trial as their next test fold behind "+N"
+     (every model and validation fact names T5, which would make one row a wall of chips). -->
+{#snippet trialFactsCell(t: Trial)}
+	{@const all = trialFacts(t, register?.facts ?? [])}
+	{@const own = all.filter((f) => f.listed)}
+	{@const named = all.filter((f) => !f.listed)}
+	<span class="trial-facts">
+		{#each own as f (f.id)}{@render factLink(f)}{/each}
+		{#if named.length}
+			<details class="named-facts">
+				<summary title="Facts whose next test names {t.id}">+{named.length} name it</summary>
+				<span class="trial-facts">
+					{#each named as f (f.id)}{@render factLink(f)}{/each}
+				</span>
+			</details>
+		{/if}
+	</span>
+{/snippet}
+
+{#snippet trialStatusCell(t: Trial)}
+	{@const s = trialStatus(t.status)}
+	<StatusChip kind={s.kind} label={s.label} size="sm" />
+{/snippet}
 
 {#snippet factIdCell(fact: Fact)}
 	<span class="id">{fact.id}</span>
@@ -544,6 +620,52 @@
 							{/snippet}
 						</Panel>
 					</div>
+				{:else if id === 'trials'}
+					<div class="facts">
+						<Panel
+							title="Trial list"
+							note={register?.trial_rules?.['ranking'] ??
+								'The planned BF-02 trials that would settle the open facts.'}
+							flush
+						>
+							<DataTable
+								caption="Trials of the fact register, by rank"
+								rows={register?.trials ?? []}
+								columns={trialColumns}
+								rowKey={(t) => t.id}
+								cells={{ trial: trialCell, facts: trialFactsCell, status: trialStatusCell }}
+								emptyTitle="No trial on the list"
+								emptyMessage="The register file holds no trial list."
+							/>
+							{#snippet footer()}
+								<dl class="rules">
+									{#each RULES.filter((r) => register?.trial_rules?.[r.key]) as r (r.key)}
+										<dt>{r.label}</dt>
+										<dd>{register?.trial_rules?.[r.key]}</dd>
+									{/each}
+									{#if register?.trial_rules?.['source']}
+										<dt>Source</dt>
+										<dd>{register.trial_rules?.['source']}</dd>
+									{/if}
+								</dl>
+							{/snippet}
+						</Panel>
+						{#if register?.other_tests?.length}
+							<Panel
+								title="Tests named by facts, not on the trial list"
+								note="Questions and trials the facts point to whose design is not in the register yet."
+								flush
+							>
+								<DataTable
+									caption="Test codes named by facts but not on the trial list"
+									rows={register.other_tests ?? []}
+									columns={otherTestColumns}
+									rowKey={(t) => t.code}
+									dense
+								/>
+							</Panel>
+						{/if}
+					</div>
 				{:else if id === 'versions'}
 					<Panel
 						title="Versions"
@@ -769,6 +891,63 @@
 		color: var(--vo-text);
 		font-size: var(--vo-fs-label);
 		white-space: nowrap;
+	}
+	.trial {
+		display: grid;
+		gap: 2px;
+	}
+	.trial-facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+	.fact-link {
+		padding: 1px 6px;
+		border: 1px solid var(--vo-border-input);
+		border-radius: var(--vo-radius-small);
+		background: var(--vo-surface);
+		color: var(--vo-text);
+		font: inherit;
+		font-size: var(--vo-fs-label);
+		font-variant-numeric: tabular-nums;
+		cursor: pointer;
+	}
+	.fact-link:hover {
+		background: var(--vo-surface-raised);
+	}
+	.fact-link.named {
+		border-style: dashed;
+		color: var(--vo-text-muted);
+	}
+	.named-facts {
+		flex-basis: 100%;
+		font-size: var(--vo-fs-label);
+		color: var(--vo-text-muted);
+	}
+	.named-facts summary {
+		cursor: pointer;
+	}
+	.named-facts .trial-facts {
+		margin-top: 4px;
+	}
+	.rules {
+		display: grid;
+		grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+		gap: 6px var(--vo-space-3);
+		margin: 0;
+		font-size: var(--vo-fs-label);
+	}
+	.rules dt {
+		font-weight: 600;
+	}
+	.rules dd {
+		margin: 0;
+		color: var(--vo-text-muted);
+	}
+	@media (max-width: 767px) {
+		.rules {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 	.mark.draft {
 		background: var(--vo-accent-soft);

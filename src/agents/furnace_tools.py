@@ -1265,6 +1265,41 @@ def get_openai_tool_schemas() -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "show_skill_chart",
+                "description": "Show the chart a quick skill prepared (its question names the chart_id). Use it instead of writing plot code when a skill asks for it.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "chart_id": {
+                            "type": "string",
+                            "description": "The chart_id named in the skill's question, e.g. 'shift_pulse'.",
+                        }
+                    },
+                    "required": ["chart_id"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "lookup_plant_facts",
+                "description": "Look up the plant fact register of BF-02: responses, bands, assumptions and data facts with their value, status, grade and the trial or question that would settle them, and why a fact is still open. Use for questions about plant facts, sensitivities, open questions and trials.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Words that must all appear, e.g. 'PCI coke' or 'slag'."},
+                        "ids": {"type": "array", "items": {"type": "string"}, "description": "Fact ids, e.g. ['COKE-01', 'BAND-02']."},
+                        "open_only": {"type": "boolean", "description": "Only facts not yet settled on BF-02."},
+                        "trial": {"type": "string", "description": "A trial or question code, e.g. 'T5' or 'Q6'."},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "execute_python_plot",
                 "description": "Execute restricted Python to create a Plotly figure named 'fig' using preloaded df, pd, px, go, make_subplots, and np. Do not include import statements or fig.show(). Multi-series plots receive FurnaceMind default styling with distinct colors.",
                 "parameters": {
@@ -1396,6 +1431,13 @@ def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
         return search_knowledge_docs.invoke(arguments)
     if name == "render_heatload_plot":
         return render_heatload_plot.invoke(arguments)
+    if name == "show_skill_chart":
+        return show_skill_chart(chart_id=str(arguments.get("chart_id") or ""))
+    if name == "lookup_plant_facts":
+        from agents.furnacemind.plant_facts import lookup_plant_facts
+
+        allowed = {"query", "ids", "open_only", "trial"}
+        return lookup_plant_facts(**{k: v for k, v in arguments.items() if k in allowed})
     if name == "execute_python_plot":
         if not arguments.get("code"):
             return "Error: execute_python_plot requires a non-empty 'code' argument containing valid Python that creates a Plotly figure named 'fig'."
@@ -2369,6 +2411,28 @@ def render_heatload_plot() -> str:
         f"{len(row_cols)} row traces, {len(quad_cols)} quadrant traces, "
         f"and {len(temp_cols)} temperature traces."
     )
+
+
+def show_skill_chart(*, chart_id: str) -> str:
+    """Show the chart a quick skill prepared (``agents.furnacemind.plant_skills.run`` stores it under ``chart_id``).
+
+    The chart is built in application code from the skill's own numbers, so the answer shows exactly what the skill
+    computed without model-written plotting code.
+    """
+    charts = _state().get("fm_skill_charts") or {}
+    payload = charts.get(chart_id)
+    if not payload:
+        known = ", ".join(sorted(charts)) or "none"
+        return f"No chart '{chart_id}' was prepared in this conversation (prepared: {known}). Answer without it."
+    import plotly.io as pio  # noqa: PLC0415
+
+    fig = pio.from_json(payload)
+    # The skill styled its chart (colours by meaning, margins for the bar labels): only the template is applied.
+    fig.update_layout(template="plotly_white")
+    _state()["fm_fig"] = fig
+    _tag_artifact_turn("fm_fig_turn_id")
+    title = getattr(getattr(fig.layout, "title", None), "text", None) or chart_id
+    return f"Showing the skill chart: {title}."
 
 
 @tool

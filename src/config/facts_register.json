@@ -28,6 +28,11 @@
  "revision_log": [
   {
    "version": "1.8",
+   "date": "2026-11-13",
+   "change": "Trial list (T1, T2, T3, T5, T6, T7, T8, TR-2, TR-3, TR-1b) and the trial rules added from the client deck of 27 Oct 2026, slides 36 and 46 (same version: no fact changed)."
+  },
+  {
+   "version": "1.8",
    "date": "2026-10-25",
    "change": "STRATA 1.5: blast moisture from the Open-Meteo daily RH at Wardha (DATA-11 restated, DATA-16 added: top-gas H2 validation); moisture data term removed (GAS-19 retired); GAS-14, 20, 22, 23, 25, 26, ASM-18, DATA-04, 06, 15 re-estimated / restated on the STRATA 1.5 posterior and the Open-Meteo basis. MOD / VAL regenerated. 25 Oct 2026 (same version): plans and the Blend Mix Optimiser take the plan day's Open-Meteo moisture (fetched live); shipped calibration re-solved at its window's Open-Meteo mean (18.45 g/Nm3); MOD facts regenerated at the calibration point (DATA-04, DATA-11)."
   },
@@ -2359,5 +2364,243 @@
     }
    }
   }
- ]
+ ],
+ "trials": [
+  {
+   "id": "T1",
+   "rank": 1,
+   "title": "Hot-blast temperature",
+   "change": "Hot blast 1,188 → 1,230 °C",
+   "facts": [
+    "COKE-05",
+    "GAS-01"
+   ],
+   "benefit": {
+    "text": "−Rs 185 / −197 per tHM for +40 °C (Fixed-ω / STRATA-ω)",
+    "rs_thm": [
+     -197,
+     -185
+    ],
+    "basis": "for +40 °C, plant prices, 2,270 t/d"
+   },
+   "design": "Two 20 °C steps, ABAB 4-day blocks, 8–12 weeks",
+   "status": "Proposed",
+   "notes": "Leads the list at Rs 185–197/tHM, about Rs 15–16 crore a year. Disputed: the balance gives ηCO +0.23 pt per +50 °C, the plant data −0.5 ± 0.5 pt (GAS-01). Calibrate the stove thermocouples before the trial (slide 48).",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46"
+  },
+  {
+   "id": "T2",
+   "rank": 2,
+   "title": "Nut coke for coke",
+   "change": "Nut coke +10 kg/tHM replacing coke",
+   "facts": [
+    "COKE-02",
+    "FLOW-07"
+   ],
+   "benefit": {
+    "text": "Rs −56 / −160 per tHM; coke −9.9 / −12.9 kg; break-even ratio 0.82",
+    "rs_thm": [
+     -160,
+     -56
+    ],
+    "basis": "per +10 kg/tHM nut coke, plant prices, 2,270 t/d"
+   },
+   "design": "ABAB 4-day blocks, 8 weeks",
+   "status": "Proposed",
+   "notes": "The replacement ratio is site-specific (literature 0.59–1.0); the trial pays when it is above 0.82.",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46"
+  },
+  {
+   "id": "T3",
+   "rank": 3,
+   "title": "PCI step",
+   "change": "PCI 190 → 205 kg/tHM",
+   "facts": [
+    "COKE-01",
+    "DATA-03"
+   ],
+   "benefit": {
+    "text": "Rs −74 / −96 per +10 kg; coke −8.7 / −9.3 kg",
+    "rs_thm": [
+     -96,
+     -74
+    ],
+    "basis": "per +10 kg/tHM PCI, plant prices, 2,270 t/d"
+   },
+   "design": "5 kg/tHM steps, ABAB",
+   "status": "Proposed",
+   "notes": "Also tests the RAFT workbook formula (DATA-03) as PCI rises.",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46"
+  },
+  {
+   "id": "T5",
+   "rank": 4,
+   "title": "Pellet share",
+   "change": "Pellet 11 → 20 % of ferrous",
+   "facts": [
+    "FLOW-02",
+    "GAS-06"
+   ],
+   "benefit": {
+    "text": "+64 t/d on a pressure-limited day (STRATA-ω); Rs +243 / +87 per tHM at 2,270 t/d",
+    "rs_thm": [
+     87,
+     243
+    ],
+    "basis": "at 2,270 t/d; +64 t/d on a pressure-limited day"
+   },
+   "design": "ABAB 1-week blocks, 8 weeks",
+   "status": "Proposed",
+   "notes": "Buys output on pressure-limited days rather than cost.",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46",
+   "plant": {
+    "benefit": "Costs Rs 87–243/tHM at 2,270 t/d and can add about 64 t/d on a pressure-limited day"
+   }
+  },
+  {
+   "id": "T6",
+   "rank": 5,
+   "title": "Slag MgO/Al₂O₃",
+   "change": "Slag MgO/Al₂O₃ 0.35 → 0.42–0.45",
+   "facts": [
+    "ASM-12"
+   ],
+   "benefit": {
+    "text": "Rs +101 / +117 per tHM at 0.42 (dolomite); literature asks 0.45–0.55",
+    "rs_thm": [
+     101,
+     117
+    ],
+    "basis": "at MgO/Al₂O₃ 0.42 with dolomite"
+   },
+   "design": "ABAB 4-day blocks",
+   "status": "Proposed",
+   "notes": "Tests the plant's slag limits against the literature (MgO/Al₂O₃ 0.45–0.55 above 18 % Al₂O₃).",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46"
+  },
+  {
+   "id": "T7",
+   "rank": 6,
+   "title": "No raw limestone",
+   "change": "No raw limestone (CaO via sinter basicity)",
+   "facts": [
+    "COKE-11",
+    "ASM-04"
+   ],
+   "benefit": {
+    "text": "Fixed-ω: coke −2.1 kg for Rs +2/tHM; STRATA-ω: no change, its optimum carries no limestone",
+    "rs_thm": null,
+    "basis": "coke −2.1 kg/tHM for about Rs +2/tHM"
+   },
+   "design": "2 × 2-week blocks",
+   "status": "Proposed",
+   "notes": "Settles the share of flux CO₂ released below the reserve zone (ASM-04).",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46",
+   "plant": {
+    "benefit": "About 2 kg/tHM less coke for about Rs 2/tHM more; settles how much coke raw limestone costs"
+   }
+  },
+  {
+   "id": "T8",
+   "rank": 7,
+   "title": "Lower hot-metal Si",
+   "change": "HM Si 0.38 → 0.30 %",
+   "facts": [
+    "COKE-03"
+   ],
+   "benefit": {
+    "text": "Rs ±0 / −6 per tHM by the model (coke −1.6 kg, more flux); −Rs 100 if Geerdes holds",
+    "rs_thm": [
+     -6,
+     0
+    ],
+    "basis": "by the balance; up to Rs 100/tHM saving if the literature value holds"
+   },
+   "design": "Gradual, CUSUM on HMT and Si",
+   "status": "Proposed",
+   "notes": "The balance's +2.15 kg per 0.1 % Si against Geerdes' +4 (Q5).",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46",
+   "plant": {
+    "design": "Gradual, with a running watch on HMT and Si",
+    "benefit": "Little by the plant's own balance (Rs 0–6/tHM); up to Rs 100/tHM if the literature value holds"
+   }
+  },
+  {
+   "id": "TR-2",
+   "rank": 8,
+   "title": "Gomti switchback",
+   "change": "Gomti 0 ↔ 4 % for Lloyds CLO",
+   "facts": [
+    "FLOW-03",
+    "FLOW-16",
+    "VAL-02"
+   ],
+   "benefit": {
+    "text": "−Rs 85 / −81 per tHM at 4 %; up to −162 at 8 % if the 2.85 bar g margin holds",
+    "rs_thm": [
+     -85,
+     -81
+    ],
+    "basis": "at 4 % Gomti; up to Rs 162/tHM at 8 % if the 2.85 bar g pressure margin holds"
+   },
+   "design": "3-day switchback, 30 days",
+   "status": "Proposed",
+   "notes": "The trial to run first (slide 99): it moves money and its result would change the blend.",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46"
+  },
+  {
+   "id": "TR-3",
+   "rank": 9,
+   "title": "Pellet switchback",
+   "change": "Pellet 10 ↔ 20 % for Lloyds CLO",
+   "facts": [
+    "GAS-14",
+    "GAS-15",
+    "FLOW-02",
+    "FLOW-15"
+   ],
+   "benefit": {
+    "text": "Settles the models: −4.7 kg/tHM (STRATA-ω) against +0.2 (Fixed-ω) per 10 pt",
+    "rs_thm": null,
+    "basis": "settles the coke response to pellet"
+   },
+   "design": "3–4-day switchback, 30–48 days",
+   "status": "Proposed",
+   "notes": "Value of information (slide 36): perfect information on pellet is worth Rs 3/tHM at today's prices, so the trial buys certainty, not money; a 30-day switchback (SE 2.8 kg/tHM) discriminates the two responses at 1.7 SE, step tests (SE 7–8 kg/tHM) are not informative. Worth Rs 21/tHM if pellet were Rs 500/t cheaper.",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46",
+   "plant": {
+    "benefit": "Settles how much coke a 10-point pellet step saves (about 5 kg/tHM is in question); buys certainty, not money",
+    "notes": "A 30-day switchback measures the pellet effect to about 2.8 kg/tHM; 14- or 28-day steps are too noisy to decide it."
+   }
+  },
+  {
+   "id": "TR-1b",
+   "rank": 10,
+   "title": "Laboratory RI and RDI",
+   "change": "Laboratory RI and RDI: Gomti, Lloyds CLO repeat, Donimalai, sinter by IS 8167",
+   "facts": [
+    "GAS-21",
+    "DATA-13"
+   ],
+   "benefit": {
+    "text": "Lifts Gomti plans out of the Low tier (RI 65 % assumed, untested)",
+    "rs_thm": null,
+    "basis": "laboratory tests; no furnace change"
+   },
+   "design": "Laboratory, 2–4 weeks",
+   "status": "Proposed",
+   "notes": "No furnace change: the cheapest test on the list.",
+   "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46",
+   "plant": {
+    "benefit": "Replaces the assumed Gomti reducibility (RI 65 %) with a measured one, so Gomti plans carry less uncertainty"
+   }
+  }
+ ],
+ "trial_rules": {
+  "ranking": "Ranked by money at stake times uncertainty, engine at the plant prices of 23 Oct 2026, 2,270 t/d.",
+  "detection": "A four-week trial arm detects about 9 kg/tHM of coke, 5.5 % of K or 1.6 pt of ηCO; a three-month arm about 5 kg, 3 % and 0.9 pt.",
+  "rules": "Daily means; the first 24–36 h after a step dropped (burden travel 6–7 h plus transients); robust errors; Fe, C, O and N balances must close before a day's data are used.",
+  "grade": "A trial result moves the facts it tests to grade A (BF-02 trial); no planned BF-02 trial has run yet.",
+  "source": "Client deck BF02_Physics_Model_Client_STRATA15, 27 Oct 2026, slide 46"
+ }
 }

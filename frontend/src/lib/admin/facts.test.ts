@@ -16,8 +16,12 @@ import {
 	versionStatus,
 	withEdit,
 	withoutField,
+	benefitText,
+	trialFacts,
+	trialStatus,
 	type Fact,
-	type FactsVersion
+	type FactsVersion,
+	type Trial
 } from './facts.ts';
 
 const NBSP = ' ';
@@ -176,5 +180,50 @@ describe('versions', () => {
 	it('reads the export file name', () => {
 		expect(exportName('attachment; filename="facts_register_v1.9.json"')).toBe('facts_register_v1.9.json');
 		expect(exportName(null)).toBe('facts_register.json');
+	});
+});
+
+describe('trials', () => {
+	const trial = (over: Partial<Trial> = {}): Trial => ({
+		id: 'T1',
+		rank: 1,
+		title: 'Hot-blast temperature',
+		change: 'Hot blast 1,188 → 1,230 °C',
+		facts: ['COKE-05', 'GAS-01'],
+		named_by: ['COKE-05'],
+		benefit: { text: '−Rs 185 / −197 per tHM for +40 °C', rs_thm: [-197, -185], basis: 'for +40 °C' },
+		design: 'Two 20 °C steps, ABAB 4-day blocks, 8–12 weeks',
+		status: 'Proposed',
+		notes: null,
+		source: null,
+		...over
+	});
+
+	it('lists the facts a trial settles, the trial list first, with status and grade', () => {
+		const facts = [
+			fact({ id: 'COKE-01' }),
+			fact({ id: 'COKE-05', status: 'Model', grade: 'C' }),
+			fact({ id: 'GAS-01', status: 'Disputed', grade: 'B' }),
+			fact({ id: 'COKE-15' })
+		];
+		const rows = trialFacts(trial({ facts: ['GAS-01'], named_by: ['COKE-05'] }), facts);
+		expect(rows).toEqual([
+			{ id: 'GAS-01', status: 'Disputed', grade: 'B', listed: true },
+			{ id: 'COKE-05', status: 'Model', grade: 'C', listed: false }
+		]);
+	});
+
+	it('states a benefit as a saving or a cost, or as the list words it', () => {
+		expect(benefitText(trial().benefit)).toBe(`Saves Rs${NBSP}185–197/tHM, for +40 °C`);
+		expect(benefitText({ text: 'x', rs_thm: [87, 243], basis: null })).toBe(`Costs Rs${NBSP}87–243/tHM`);
+		expect(benefitText({ text: 'Settles the pellet response', rs_thm: null, basis: null })).toBe(
+			'Settles the pellet response'
+		);
+		expect(benefitText({ text: 'x', rs_thm: [-6, 2], basis: null })).toBe(`Rs${NBSP}${MINUS}6 to 2/tHM`);
+	});
+
+	it('shows the trial status with a chip kind', () => {
+		expect(trialStatus('Proposed')).toEqual({ kind: 'info', label: 'Proposed' });
+		expect(trialStatus('Done').kind).toBe('ok');
 	});
 });

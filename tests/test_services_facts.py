@@ -228,6 +228,7 @@ def test_the_export_is_schema_valid_and_loads_as_the_next_register_version(store
     assert (
         reg.value("COKE-01") == -9.0 and reg.band("BAND-02") == (1445.0, 1515.0) and reg["COKE-02"].status == "Disputed"
     )
+    assert doc["trials"] == FILE["trials"] and doc["trial_rules"] == FILE["trial_rules"]  # the trial list is kept
     stamped = {f["id"] for f in doc["facts"] if f["version"] == "1.9"}
     assert stamped == {"COKE-01", "BAND-02", "COKE-02"} and reg["COKE-01"].date == "2026-10-29"
     assert [f for f in doc["facts"] if f["id"] not in stamped] == [f for f in FILE["facts"] if f["id"] not in stamped]
@@ -269,3 +270,36 @@ def test_on_postgresql_versions_and_their_audit_rows_commit_together(pg_store) -
     finally:
         store_service.reset()
         facts.approved_overlay.clear()
+
+
+# ------------------------------------------------------------------------------------------------- trial list
+
+
+def test_the_register_carries_the_trial_list_of_the_client_deck() -> None:
+    """Slide 46 of the client deck of 27 Oct 2026: ten trials in rank order, each naming facts of the register."""
+    import copy
+
+    reg = load_register(REGISTER_PATH)
+    ranked = [t["id"] for t in sorted(reg.trials, key=lambda t: t["rank"])]
+    assert ranked == ["T1", "T2", "T3", "T5", "T6", "T7", "T8", "TR-2", "TR-3", "TR-1b"]
+    assert reg.trial_rules["detection"].startswith("A four-week trial arm")
+    assert register.register_problems(FILE) == []
+    bad = copy.deepcopy(FILE)
+    bad["trials"][0]["facts"].append("COKE-99")
+    assert register.register_problems(bad) == ["trial T1: no such fact COKE-99"]
+    twice = copy.deepcopy(FILE)
+    twice["trials"].append(dict(FILE["trials"][0]))
+    assert register.register_problems(twice) == ["trial T1: listed twice"]
+    assert register.next_test_codes("Q6, T5") == ["Q6", "T5"]
+    assert register.next_test_codes("Q12; production step trial") == ["Q12", "production step trial"]
+
+
+def test_the_register_view_links_each_trial_to_its_facts() -> None:
+    view = facts.register_view(None)
+    assert [t["id"] for t in view["trials"]][:3] == ["T1", "T2", "T3"]
+    t5 = next(t for t in view["trials"] if t["id"] == "T5")
+    assert t5["facts"] == ["FLOW-02", "GAS-06"] and {"COKE-15", "GAS-06"} <= set(t5["named_by"])
+    assert t5["benefit"]["rs_thm"] == [87, 243] and t5["status"] == "Proposed"
+    others = {o["code"]: o["facts"] for o in view["other_tests"]}
+    assert others["Q5"] == ["COKE-03"] and others["T9"] == ["ASM-12"] and "T1" not in others
+    assert view["trial_rules"]["rules"].startswith("Daily means")

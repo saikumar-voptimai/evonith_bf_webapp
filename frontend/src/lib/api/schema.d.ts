@@ -4919,6 +4919,11 @@ export interface components {
              */
             name: string;
             /**
+             * Other Tests
+             * @description Trial and question codes facts name that are not on the trial list
+             */
+            other_tests?: components["schemas"]["NamedTest"][];
+            /**
              * Reason
              * @description Why the repository file is shown when the twin store is missing
              */
@@ -4928,6 +4933,18 @@ export interface components {
              * @description Statuses a fact can have
              */
             statuses: string[];
+            /**
+             * Trial Rules
+             * @description Rules every trial follows: ranking, detection limits, data rules, grade
+             */
+            trial_rules?: {
+                [key: string]: string;
+            };
+            /**
+             * Trials
+             * @description The register's trial list, in rank order
+             */
+            trials?: components["schemas"]["TrialView"][];
             /**
              * Version
              * @description Version shown (0: the repository file), count
@@ -9604,6 +9621,19 @@ export interface components {
              * @description SD of model − burnt, kg/tHM
              */
             sd?: number | null;
+        };
+        /** NamedTest */
+        NamedTest: {
+            /**
+             * Code
+             * @description A trial or question code facts name that is not on the trial list, e.g. Q5
+             */
+            code: string;
+            /**
+             * Facts
+             * @description Facts whose next test names it
+             */
+            facts: string[];
         };
         /**
          * NetworkSolves
@@ -15646,6 +15676,79 @@ export interface components {
              * @description Correlation at the lag, dimensionless
              */
             r_peak?: number | null;
+        };
+        /** TrialBenefit */
+        TrialBenefit: {
+            /**
+             * Basis
+             * @description What the benefit is for, e.g. for +40 °C
+             */
+            basis?: string | null;
+            /**
+             * Rs Thm
+             * @description Low and high benefit (negative: a saving; none when the list gives no figure), Rs/tHM
+             */
+            rs_thm?: number[] | null;
+            /**
+             * Text
+             * @description Benefit as the trial list states it (plant prices, 2,270 t/d)
+             */
+            text: string;
+        };
+        /** TrialView */
+        TrialView: {
+            benefit: components["schemas"]["TrialBenefit"];
+            /**
+             * Change
+             * @description What the trial changes
+             */
+            change: string;
+            /**
+             * Design
+             * @description Design: blocks, switchback, duration
+             */
+            design: string;
+            /**
+             * Facts
+             * @description Facts the trial tests, by the trial list
+             */
+            facts: string[];
+            /**
+             * Id
+             * @description Trial code, e.g. T1 or TR-2
+             */
+            id: string;
+            /**
+             * Named By
+             * @description Facts whose next test names this trial
+             */
+            named_by: string[];
+            /**
+             * Notes
+             * @description Why it is on the list and what to prepare
+             */
+            notes?: string | null;
+            /**
+             * Rank
+             * @description Place on the trial list (money at stake × uncertainty), count
+             */
+            rank: number;
+            /**
+             * Source
+             * @description Where the entry comes from
+             */
+            source?: string | null;
+            /**
+             * Status
+             * @description Trial status
+             * @enum {string}
+             */
+            status: "Proposed" | "Planned" | "Running" | "Done" | "Dropped";
+            /**
+             * Title
+             * @description Short name
+             */
+            title: string;
         };
         /** TwinAlarms */
         TwinAlarms: {

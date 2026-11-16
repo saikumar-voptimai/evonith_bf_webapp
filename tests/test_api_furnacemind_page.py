@@ -16,11 +16,12 @@ from typing import Any
 
 import pytest
 
-from agents.furnacemind import tool_state
+from agents.furnacemind import plant_skills, tool_state
 from agents.furnacemind.skill_registry import SkillRegistry
 from agents.furnacemind.skills import SkillEngine
 from services import furnacemind as fm
 from tests import furnacemind_fakes as fakes
+from tests.plant_skill_fakes import FakePlantData
 from tests.test_api_furnacemind import PLOT, api, ask, call, sqlite_store
 
 SHIFT = (date(2026, 10, 15), "B")  # inside the synthetic static dataset (1 Sep - 20 Oct 2026)
@@ -61,6 +62,7 @@ def plant(monkeypatch, tmp_path):
 
     fakes.install_plant_data(monkeypatch, tmp_path)
     monkeypatch.setattr(fm, "default_shift", lambda: SHIFT)
+    monkeypatch.setattr(plant_skills, "PlantData", FakePlantData)  # the plant skills' reads
     return ft.get_openai_tool_schemas()
 
 
@@ -78,11 +80,15 @@ def test_skills_are_page_7s_built_in_ones_without_a_skill_table(store, plant) ->
         body = call(client, "op", "GET", "/api/fm/skills").json()
         assert body["source"] == "built_in" and (body["shift_date"], body["shift_label"]) == ("2026-10-15", "B")
         assert [(s["slug"], s["name"]) for s in body["skills"]] == [
-            ("optimise", "Unit Cost"),
-            ("shift_to_best", "Shift to Best"),
-            ("heatload", "Heatloads"),
+            ("shift_pulse", "Shift Pulse"),
+            ("thermal_watch", "Thermal Watch"),
+            ("gas_flow_lens", "Gas Flow Lens"),
+            ("wall_heat_map", "Wall Heat Map"),
+            ("slag_burden_check", "Slag & Burden Check"),
+            ("fuel_drivers", "Fuel Drivers"),
+            ("trial_board", "Trial Board"),
         ]
-        assert body["skills"][1]["display"] == "Shift to Best: 2026-10-15, Shift B"
+        assert body["skills"][0]["display"] == "Shift Pulse: 2026-10-15, Shift B against the week before"
         assert client.get("/api/fm/skills").status_code == 401
 
 
@@ -107,7 +113,9 @@ def test_skills_come_from_the_skill_table_when_it_has_rows(store, plant) -> None
     with api(store, deps(llm, plant, registry=registry)) as client:
         body = call(client, "op", "GET", "/api/fm/skills").json()
         assert body["source"] == "database"
-        assert [(s["slug"], s["display"]) for s in body["skills"]] == [("custom_sop", "SOP for 2026-10-15 B")]
+        # The table's skill joins the plant skills (13 Nov 2026): order 5 puts it first.
+        assert [s["slug"] for s in body["skills"]][:2] == ["custom_sop", "shift_pulse"] and len(body["skills"]) == 8
+        assert body["skills"][0]["display"] == "SOP for 2026-10-15 B"
         conversation = call(client, "op", "POST", "/api/fm/conversations", json={}).json()
         events = ask_skill(client, conversation["id"], "custom_sop")
         question = events[0]["message"]
@@ -115,40 +123,69 @@ def test_skills_come_from_the_skill_table_when_it_has_rows(store, plant) -> None
         assert question["meta"]["display"] == "SOP for 2026-10-15 B" and question["meta"]["skill"] == "custom_sop"
 
 
-def test_a_skill_turn_stores_page_7s_prompt_and_puts_its_context_in_the_system_prompt(store, plant) -> None:
+def test_a_skill_turn_stores_page_7s_prompt_and_puts_its_context_in_the_system_prompt(
+    store, plant, monkeypatch
+) -> None:
+    import agents.furnacemind.turn as turn
+
+    offered: list[set[str]] = []
+    real_run_turn = turn.run_turn
+
+    def recording_run_turn(**kw):
+        offered.append({t["function"]["name"] for t in kw["tools"]})
+        return real_run_turn(**kw)
+
+    monkeypatch.setattr(turn, "run_turn", recording_run_turn)
     llm = fakes.ScriptedLLM()
     prompt = RecordingPrompt()
     with api(store, deps(llm, plant, prompt=prompt)) as client:
         conversation = call(client, "op", "POST", "/api/fm/conversations", json={}).json()
-        events = ask_skill(client, conversation["id"], "shift_to_best")
+        events = ask_skill(client, conversation["id"], "shift_pulse")
         types = [e["type"] for e in events if e["type"] != "token"]
         assert types == ["message.user", "message.assistant"]  # the skill's own chart and DataFrame are dropped
         question, answer = events[0]["message"], events[-1]["message"]
 
         # Page 7: the same registry, skill, shift and data give the same prompt, to the character.
         registry = SkillRegistry(engine=SkillEngine(), repository=None)
-        definition = next(d for d in registry.available_skills() if d.slug == "shift_to_best")
+        definition = next(d for d in registry.available_skills() if d.slug == "shift_pulse")
         with tool_state.bind({}):
             expected = registry.execute_definition(definition, shift_date=SHIFT[0], shift_label=SHIFT[1])
-        assert question["content"] == expected.prompt and "TIER 1 (ranked by impact score)" in expected.prompt
-        assert question["meta"]["display"] == expected.display == "Shift to Best: 2026-10-15, Shift B"
-        assert question["meta"]["skill"] == "shift_to_best" and question["meta"]["exclude_from_memory"] is True
-        assert question["meta"]["skill_context_skill_slugs"] == ["shift_to_best"]
+        assert (
+            question["content"] == expected.prompt
+            and "READINGS (shift mean against the usual shift)" in expected.prompt
+        )
+        assert "15 Oct B, completed" in expected.prompt
+        assert (
+            question["meta"]["display"]
+            == expected.display
+            == "Shift Pulse: 2026-10-15, Shift B against the week before"
+        )
+        assert question["meta"]["skill"] == "shift_pulse" and question["meta"]["exclude_from_memory"] is True
+        assert question["meta"]["skill_context_skill_slugs"] == ["shift_pulse"]
 
-        assert prompt.calls[-1]["skill_id"] == "shift_to_best"
+        assert prompt.calls[-1]["skill_id"] == "shift_pulse"
         assert "EXPLICITLY SELECTED SKILL CONTEXT" in prompt.calls[-1]["skill_context"]
-        assert "SKILLS_BESTSHIFT.md" in prompt.calls[-1]["skill_context"]
+        assert "Shift review" in prompt.calls[-1]["skill_context"]
         model_input = llm.calls[-1]
-        assert model_input[0]["content"].startswith("test prompt skill=shift_to_best")
+        assert model_input[0]["content"].startswith("test prompt skill=shift_pulse")
         assert model_input[-1] == {"role": "user", "content": expected.prompt}
         assert answer["seq"] == 2 and answer["status"] == "complete"
 
+        # A skill turn is offered the plant-data tools only (no live twin, no optimiser result).
+        assert offered and not offered[-1] & {
+            "get_twin_snapshot",
+            "get_twin_series",
+            "get_transit",
+            "get_optimiser_result",
+        }
+        assert {"show_skill_chart", "lookup_plant_facts"} <= offered[-1]
+
         state = fm._STATES[conversation["id"]]
         assert state.get("fm_fig") is None and state.get("fm_df") is None  # page 7's _queue_skill
-        assert any(k.startswith("ml_static_") for k in state["fm_datasets"])  # the fetched data stays for follow-ups
+        assert "shift_pulse" in state[plant_skills.CHARTS]  # the skill's chart waits for show_skill_chart
 
         stored = call(client, "op", "GET", f"/api/fm/conversations/{conversation['id']}").json()
-        assert stored["messages"][0] == question and stored["title"].startswith("SKILL: Shift to Best")
+        assert stored["messages"][0] == question and stored["title"].startswith("SKILL: Shift Pulse")
 
 
 def test_a_skill_request_is_validated(store, plant) -> None:
@@ -164,15 +201,15 @@ def test_a_skill_request_is_validated(store, plant) -> None:
 
 
 class FailingEngine:
-    def heatload_prompt(self) -> str:
-        raise RuntimeError("skill_params.yml unreadable")
+    def thermal_watch_prompt(self) -> str:
+        raise RuntimeError("plant data layer unreadable")
 
 
 def test_a_failing_skill_stores_nothing_and_ends_the_stream_with_an_error(store, plant) -> None:
     registry = SkillRegistry(engine=FailingEngine(), repository=None)
     with api(store, deps(fakes.ScriptedLLM(), plant, registry=registry)) as client:
         conversation = call(client, "op", "POST", "/api/fm/conversations", json={}).json()
-        events = ask_skill(client, conversation["id"], "heatload")
+        events = ask_skill(client, conversation["id"], "thermal_watch")
         assert events == [
             {
                 "type": "error",
