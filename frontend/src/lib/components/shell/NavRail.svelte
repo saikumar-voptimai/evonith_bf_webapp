@@ -1,7 +1,7 @@
 <!--
 @component
 Navigation sidebar: product mark with the collapse control, operator pages in sections, the Admin section for
-administrators, the Streamlit pages under /legacy, and the signed-in user with the sign-out menu. Collapsed, it shows
+administrators, the Streamlit pages under /legacy (not in demo mode), and the signed-in user with the sign-out menu. Collapsed, it shows
 icons; each label stays the accessible name and the tooltip. When the sections do not fit the height, the list
 scrolls and fades at the edge that has more items.
 -->
@@ -14,6 +14,7 @@ scrolls and fades at the edge that has more items.
 	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
 	import { legacyHref } from '../../legacy.ts';
 	import type { NavGroup } from '../../nav.ts';
+	import { plant } from '../../plant.svelte.ts';
 	import type { SessionUser } from '../../session/session.svelte.ts';
 	import UserMenu from './UserMenu.svelte';
 
@@ -71,11 +72,11 @@ scrolls and fades at the edge that has more items.
 			<span class="mark" aria-hidden="true"><Flame size={19} strokeWidth={2.25} /></span>
 			{#if !collapsed}
 				<span class="names">
-					<span class="word">V-OptimAIse</span>
-					<span class="plant">BF-02, Evonith Steel</span>
+					<span class="word">{plant.product}</span>
+					<span class="plant">{plant.label}</span>
 				</span>
 			{:else}
-				<span class="sr-only">V-OptimAIse BF-02</span>
+				<span class="sr-only">{plant.product} {plant.furnace}</span>
 			{/if}
 			{#if ontoggle}
 				<button
@@ -123,11 +124,13 @@ scrolls and fades at the edge that has more items.
 	</div>
 
 	<div class="foot">
-		<a class="item" href={legacyHref()} rel="external" title={collapsed ? 'Streamlit pages' : undefined}>
-			<AppWindow size={19} strokeWidth={1.75} />
-			<span class="label">Streamlit pages</span>
-			<span class="ext" aria-hidden="true"><ExternalLink size={13} strokeWidth={2} /></span>
-		</a>
+		{#if !plant.demo}
+			<a class="item" href={legacyHref()} rel="external" title={collapsed ? 'Streamlit pages' : undefined}>
+				<AppWindow size={19} strokeWidth={1.75} />
+				<span class="label">Streamlit pages</span>
+				<span class="ext" aria-hidden="true"><ExternalLink size={13} strokeWidth={2} /></span>
+			</a>
+		{/if}
 		<div class="user"><UserMenu {user} compact={collapsed} {onsignout} /></div>
 	</div>
 </nav>

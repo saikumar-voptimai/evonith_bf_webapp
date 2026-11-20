@@ -9,7 +9,11 @@ const release: ApiVersion = {
 	started_at: '2026-10-29T11:30:00Z',
 	release: 'v1.2.0',
 	installed_at: '2026-10-29T11:29:00Z',
-	frontend_build: 'v1.2.0'
+	frontend_build: 'v1.2.0',
+	product: 'CoOperate',
+	furnace: 'BF-1',
+	site: 'Demo Steel',
+	demo: false
 };
 
 const checkout: ApiVersion = {
@@ -20,7 +24,12 @@ const checkout: ApiVersion = {
 	started_at: '2026-10-29T11:30:00Z',
 	release: null,
 	installed_at: null,
-	frontend_build: null
+	frontend_build: null,
+	product: 'CoOperate',
+	furnace: 'BF-1',
+	site: 'Demo Steel',
+	demo: true,
+	demo_notice: 'Demo data.'
 };
 
 describe('footer version', () => {

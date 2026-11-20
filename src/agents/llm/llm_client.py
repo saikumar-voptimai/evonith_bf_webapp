@@ -24,10 +24,34 @@ from typing import Any, List, Literal, Optional
 
 from openai import OpenAI
 
+from utils import demo
 from utils.settings import normalize_openrouter_reasoning_level, settings
 
 Provider = Literal["openrouter", "openai"]
 ApiMode = Literal["responses", "chat_completions"]
+
+
+def messages_for_model(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The messages as the model reads them. In demo mode (``BF_DEMO=1``) every text has the plant, site, supplier
+    and mine names and the ids built from them replaced (``utils.demo.redact_for_model``), so no answer, commentary
+    or narrative can repeat one; otherwise unchanged."""
+    if not demo.enabled():
+        return messages
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str):
+            message = {**message, "content": demo.redact_for_model(content)}
+        elif isinstance(content, list):
+            parts = [
+                {**part, "text": demo.redact_for_model(part["text"])}
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+                else part
+                for part in content
+            ]
+            message = {**message, "content": parts}
+        out.append(message)
+    return out
 
 
 def _field(obj: Any, name: str) -> Any:
@@ -199,7 +223,7 @@ class OpenRouterClient:
         """
         kwargs: dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": messages_for_model(messages),
             "stop": stop,
             "extra_headers": self.extra_headers,
         }

@@ -16186,6 +16186,17 @@ export interface components {
         /** Version */
         Version: {
             /**
+             * Demo
+             * @description Demo mode (BF_DEMO): names replaced, the SPA shows the demo notice
+             * @default false
+             */
+            demo: boolean;
+            /**
+             * Demo Notice
+             * @description Notice the SPA shows on every page in demo mode; None otherwise
+             */
+            demo_notice?: string | null;
+            /**
              * Environment
              * @description 'dev' or 'prod'
              */
@@ -16195,6 +16206,12 @@ export interface components {
              * @description Version name of the SPA build installed with the release (frontend/build/_app/version.json); None without a build
              */
             frontend_build?: string | null;
+            /**
+             * Furnace
+             * @description Furnace the SPA names, e.g. BF-1 (the demo's in demo mode)
+             * @default
+             */
+            furnace: string;
             /**
              * Git Sha
              * @description Commit of the running release ('unknown' in development)
@@ -16206,6 +16223,12 @@ export interface components {
              */
             installed_at?: string | null;
             /**
+             * Product
+             * @description Product name the SPA shows (the demo's in demo mode)
+             * @default
+             */
+            product: string;
+            /**
              * Python
              * @description Python version
              */
@@ -16215,6 +16238,12 @@ export interface components {
              * @description Release tag of the running directory (RELEASE.json of deploy/jetson/release.sh); None in development
              */
             release?: string | null;
+            /**
+             * Site
+             * @description Plant site the SPA names after the furnace (the demo's in demo mode)
+             * @default
+             */
+            site: string;
             /**
              * Started At
              * Format: date-time

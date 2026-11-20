@@ -1279,6 +1279,36 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `build_context` on the stored case, one LLM retry) into `twin.optimiser_commentary` (twin_0007). The case report is
   reproduced through the API in `tests/test_api_optimiser.py`.
 
+## 13. Demo mode (branch `demo`, user decision 16 Nov 2026)
+
+For showing the product to a prospective client: `python scripts/dev.py --demo` (SPA, twin-api, worker; no Streamlit).
+Nothing here changes the app outside demo mode.
+
+- **Names:** `BF_DEMO=1` turns on `utils/demo.py` with the rules of `config/demo.yml` (plant, company, site, suppliers,
+  mines, deck and bucket names; case-insensitive, word-bounded, case style kept: `LLOYDS CLO` → `SOURCE B CLO`). Ids
+  joined by underscores (`lloyds_clo`) are left alone on the wire, because the SPA sends them back on a save; read-only
+  views that draw ids as text get them replaced too (`id_paths`: `/api/strata`). Host paths (the Jobs and health disk
+  rows) become "the app disk"; a regex rule that starts with "/" says `bounded: false`. Applied (1) to every `/api` response by `api.demo.DemoRedaction` (outermost ASGI middleware: JSON,
+  problem+json, CSV, text, server-sent events per event), (2) to every message the LLM reads, ids included
+  (`agents.llm.llm_client.messages_for_model` in `OpenRouterClient._base_kwargs`; also the FurnaceMind tool results in
+  `furnace_tools.execute_openai_tool_call` and the skill question / system prompt in `services.furnacemind.start_skill`),
+  so answers, commentaries and narratives cannot repeat a name. Stored usernames show as `person` (`demo.person`).
+- **Labels:** `GET /api/version` carries `product`, `furnace`, `site` (outside demo `utils.demo.PLANT`, product
+  V-OptimAIse), `demo`, `demo_notice`; the SPA reads them in `#lib/plant.svelte.ts` before the first page is drawn (root
+  `+layout.ts`), so the build holds no plant name. In demo the product is **CoOperate** (user decision 16 Nov 2026:
+  wordmark, tab title, drawer; the "by V-OptimAIse" vendor lines stay), the shell shows the notice above every page and
+  on the sign-in page, the rail leaves out Models and the Streamlit link, Admin holds every view except Users (`nav.ts`
+  `DEMO_ADMIN_HREFS` / `demoRows` / `demoAdminPath`; `/admin/users` redirects to `/admin`), the optimiser hides its
+  Streamlit links.
+- **Store:** the demo runs on its own twin store, `src/storage/demo/twin_demo.sqlite` (git-ignored), Redis database 1,
+  its own outbox, no scheduled jobs (`DEMO_SKIP_SCHEDULES`). `scripts/demo_seed.py` (run by `--demo` when the file is
+  missing; `--reseed` rebuilds) copies from the normal store, anonymised: optimiser runs of 4 days, twin windows, shift
+  reports and records of 10 days, leaving out shifts whose closing twin window did not evaluate (`--keep-failed` keeps
+  them), stamped at the head migration. Times read from a SQLite store get UTC attached (`data/twin/models.py`,
+  `_utc_on_sqlite`). Tests `tests/test_utils_demo.py`, `frontend/src/lib/plant.test.ts`, `nav.test.ts` (demo mode).
+- Live readings (status, live model, FurnaceMind's data tools) are the plant's own, with names replaced; the numbers are
+  real plant figures and prices.
+
 ## Environment Variables
 
 ```
@@ -1298,4 +1328,5 @@ Worker:     BF_REDIS_URL (API and worker), BF_WORKER_POOL, BF_WORKER_MAX_JOBS, B
             BF_WORKER_LIVE_STATUS (0 = no live furnace-status snapshots from the heartbeat; tests: 0),
             BF_STRATA_SOLVERS (network-solver processes per STRATA-ω run; default min(8, cpus); 0 or 1 = serial; tests: 0)
 Twin store: BF_TWIN_DB_URL (default DATABASE_URL; `off` disables), BF_TEST_DATABASE_URL (tests; else a local cluster)
+Demo:       BF_DEMO (1: names replaced, demo notice; set by `scripts/dev.py --demo`, section 13)
 ```

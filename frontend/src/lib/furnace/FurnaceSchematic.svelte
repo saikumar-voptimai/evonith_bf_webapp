@@ -1,6 +1,6 @@
 <!--
 @component
-BF-02 cross-section (SV-0.6, #275), drawn from the configured furnace profile exactly as the Streamlit schematic
+Blast-furnace cross-section (SV-0.6, #275), drawn from the configured furnace profile exactly as the Streamlit schematic
 (`ui/furnace_status/schematic.py`): outline, lining, zones, burden layers in the stack, hot blast at the tuyeres,
 top gas and tapping, and readings in callouts on both sides with leader lines to the part of the furnace they
 describe. The zone buttons highlight a zone and the readings related to it. Illustrative: the shading is not a
@@ -31,6 +31,7 @@ each zone button, and `onselect` reports a zone selection (the Furnace Status pa
 </script>
 
 <script lang="ts">
+	import { plant } from '../plant.svelte.ts';
 	import type { Snippet } from 'svelte';
 	import { STATUS_ICON, STATUS_WORD } from '../components/status.ts';
 	import {
@@ -92,9 +93,11 @@ each zone button, and `onselect` reports a zone selection (the Furnace Status pa
 	}: Props = $props();
 
 	const uid = $props.id();
-	const ALT =
-		'Illustrative BF-02 cross-section drawn from the configured furnace profile: stack, belly, bosh, tuyere and ' +
-		'hearth zones, hot blast entering at the tuyeres, top gas leaving the top, hot metal and slag leaving the hearth.';
+	const ALT = $derived(
+		`Illustrative ${plant.furnace} cross-section drawn from the configured furnace profile: stack, belly, bosh, ` +
+			'tuyere and hearth zones, hot blast entering at the tuyeres, top gas leaving the top, hot metal and slag ' +
+			'leaving the hearth.'
+	);
 
 	const outline = $derived(pointsAttr(outlinePoints(profile)));
 	const lining = $derived(liningPolylines(profile));

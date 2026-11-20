@@ -55,3 +55,6 @@ src/storage/strata_flow/
 src/storage/twin_api/
 # Day calibrations and STRATA-Learn outputs of the worker (SV-1.7)
 src/storage/burden_engine/
+
+# Demo store (scripts/demo_seed.py): anonymised copies, rebuilt on demand, never committed
+src/storage/demo/

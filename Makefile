@@ -6,7 +6,7 @@ RUFF ?= uvx ruff@0.17.2
 # uv of the lock rule (CLAUDE.md): keeps uv.lock at revision 2. CI installs this version and sets UV_LOCK=uv.
 UV_LOCK ?= uvx --from uv==0.7.13 uv
 # Files under the programme's Ruff rules (the rest of the repository keeps black + isort).
-RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/ui/coke_energy/loaders.py \
+RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/utils/demo.py scripts/demo_seed.py tests/test_utils_demo.py src/ui/coke_energy/loaders.py \
 	src/ui/burden_optimiser/loaders.py scripts/dev.py tests/services_fakes.py tests/test_services_*.py \
 	tests/test_utils_memo.py tests/test_api_*.py tests/test_events.py tests/test_jobs.py tests/redis_server.py \
 	scripts/export_openapi.py scripts/export_chart_fixtures.py tests/test_chart_fixtures.py src/data/twin alembic/twin \

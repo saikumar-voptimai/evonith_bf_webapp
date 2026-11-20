@@ -2,11 +2,14 @@
 	import { resolve } from '$app/paths';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Panel from '#lib/components/Panel.svelte';
-	import { ADMIN_ROWS } from '#lib/nav.ts';
+	import { ADMIN_ROWS, demoRows } from '#lib/nav.ts';
+	import { plant } from '#lib/plant.svelte.ts';
+
+	const rows = $derived(plant.demo ? demoRows() : ADMIN_ROWS);
 </script>
 
 <div class="rows">
-	{#each ADMIN_ROWS as row (row.label)}
+	{#each rows as row (row.label)}
 		<Panel title={row.label} note={row.note}>
 			<ul class="views">
 				{#each row.items as view (view.href)}

@@ -1,5 +1,5 @@
 /**
- * Illustrative live inputs for the component catalogue and the builder tests (SV-7.3): plausible BF-02 values, not
+ * Illustrative live inputs for the component catalogue and the builder tests (SV-7.3): plausible blast-furnace values, not
  * plant data. The limits are those of `config/live_inputs.yml` at the time of writing; the real page reads them from
  * the API.
  */
@@ -34,7 +34,7 @@ export function sampleLiveInputs(now: Date, options: Options = {}): LiveInputs {
 		materials: [
 			{
 				id: 'sinter_sp_02',
-				name: 'SINTER (SP-02)',
+				name: 'SINTER (SP-1)',
 				code: 'sinter_3',
 				stock_t: 3800,
 				source: 'sinter_fallback',
@@ -42,7 +42,7 @@ export function sampleLiveInputs(now: Date, options: Options = {}): LiveInputs {
 			},
 			{
 				id: 'nmdc_donimalai',
-				name: 'NMDC DONIMALAI',
+				name: 'SOURCE C LUMP',
 				code: 'ore_1',
 				stock_t: 1250,
 				source: 'offline_db',
@@ -50,7 +50,7 @@ export function sampleLiveInputs(now: Date, options: Options = {}): LiveInputs {
 			},
 			{
 				id: 'lloyds_clo',
-				name: 'LLOYDS CLO',
+				name: 'SOURCE B CLO',
 				code: 'ore_2',
 				stock_t: 640,
 				source: 'offline_db',
@@ -58,7 +58,7 @@ export function sampleLiveInputs(now: Date, options: Options = {}): LiveInputs {
 			},
 			{
 				id: 'geomin_clo',
-				name: 'GEOMIN CLO',
+				name: 'SOURCE A CLO',
 				code: 'ore_3',
 				stock_t: 0,
 				source: 'offline_db_missing_as_zero',
@@ -99,7 +99,7 @@ export function sampleLiveInputs(now: Date, options: Options = {}): LiveInputs {
 		materials: [
 			{
 				id: 'sinter_sp_02',
-				name: 'SINTER (SP-02)',
+				name: 'SINTER (SP-1)',
 				code: 'sinter_3',
 				source: 'offline_db_latest_used',
 				table: 'offline_feed.sinter_chemistry',
@@ -114,7 +114,7 @@ export function sampleLiveInputs(now: Date, options: Options = {}): LiveInputs {
 			},
 			{
 				id: 'nmdc_donimalai',
-				name: 'NMDC DONIMALAI',
+				name: 'SOURCE C LUMP',
 				code: 'ore_1',
 				source: 'offline_db_latest_used',
 				table: 'offline_feed.ore_chemistry',
@@ -125,7 +125,7 @@ export function sampleLiveInputs(now: Date, options: Options = {}): LiveInputs {
 			},
 			{
 				id: 'lloyds_clo',
-				name: 'LLOYDS CLO',
+				name: 'SOURCE B CLO',
 				code: 'ore_2',
 				source: 'offline_db_latest_used',
 				table: 'offline_feed.ore_chemistry',
@@ -136,7 +136,7 @@ export function sampleLiveInputs(now: Date, options: Options = {}): LiveInputs {
 			},
 			{
 				id: 'geomin_clo',
-				name: 'GEOMIN CLO',
+				name: 'SOURCE A CLO',
 				code: 'ore_3',
 				source: 'fallback',
 				table: 'offline_feed.ore_chemistry',

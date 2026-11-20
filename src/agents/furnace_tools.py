@@ -1405,6 +1405,16 @@ def get_openai_tool_schemas() -> list[dict]:
 
 
 def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
+    """Dispatch one validated OpenAI/OpenRouter tool call to local code (``_execute_tool``). In demo mode
+    (``BF_DEMO=1``, ``utils.demo``) the result is read by the model with the plant, site, supplier and mine names
+    replaced, so an answer cannot repeat them."""
+    result = _execute_tool(name=name, arguments=arguments)
+    from utils import demo  # noqa: PLC0415
+
+    return demo.redact_for_model(result) if demo.enabled() and isinstance(result, str) else result
+
+
+def _execute_tool(*, name: str, arguments: Dict[str, Any]) -> str:
     """Dispatch one validated OpenAI/OpenRouter tool call to local code.
 
     Args:

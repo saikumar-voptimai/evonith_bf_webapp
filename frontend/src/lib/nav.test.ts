@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	ADMIN_ROWS,
 	ADMIN_VIEWS,
+	DEMO_ADMIN_HREFS,
+	demoAdminPath,
+	demoRows,
 	headingFor,
 	HOME_PATH,
 	MODEL_VIEWS,
@@ -30,9 +33,10 @@ describe('headingFor', () => {
 	});
 
 	it('falls back to the plant name for an unknown route and for the root, which redirects', () => {
-		expect(headingFor('/no-such-page')).toEqual({ title: 'BF-02' });
+		expect(headingFor('/no-such-page', 'BF-02')).toEqual({ title: 'BF-02' });
 		expect(navItemFor('/')).toBeUndefined();
-		expect(headingFor('/')).toEqual({ title: 'BF-02' });
+		expect(headingFor('/', 'BF-1')).toEqual({ title: 'BF-1' });
+		expect(headingFor('/no-such-page')).toEqual({ title: 'V-OptimAIse' });
 	});
 });
 
@@ -149,5 +153,44 @@ describe('admin views (SV-4.1, #304; model views SV-7.2, #325)', () => {
 		const rail = visibleGroups('admin').flatMap((g) => g.items.map((i) => i.href));
 		expect(rail).toContain('/admin');
 		expect(rail.some((href) => href.startsWith('/admin/'))).toBe(false);
+	});
+});
+
+describe('demo mode', () => {
+	it('leaves out the planned Models page and keeps Admin with the demo views', () => {
+		const groups = visibleGroups('admin', true);
+		const rail = groups.flatMap((g) => g.items.map((i) => i.href));
+		expect(rail).toEqual(['/status', '/reports', '/furnacemind', '/optimiser', '/admin']);
+		expect(groups.map((g) => g.label)).not.toContain('Digital twin');
+		const admin = groups.at(-1)?.items[0];
+		expect(admin?.children?.map((v) => v.href)).toEqual([...DEMO_ADMIN_HREFS]);
+	});
+
+	it('shows a user the operator pages only', () => {
+		const rail = visibleGroups('user', true).flatMap((g) => g.items.map((i) => i.href));
+		expect(rail).toEqual(['/status', '/reports', '/furnacemind', '/optimiser']);
+	});
+
+	it('keeps the full navigation outside demo mode', () => {
+		expect(visibleGroups('admin')).toEqual(visibleGroups('admin', false));
+		expect(visibleGroups('admin').flatMap((g) => g.items.map((i) => i.href))).toContain('/models');
+	});
+
+	it('lists the demo admin views only: every view but the accounts and plant tables', () => {
+		const rows = demoRows();
+		expect(rows.flatMap((r) => r.items.map((i) => i.href))).toEqual([...DEMO_ADMIN_HREFS]);
+		expect(DEMO_ADMIN_HREFS).not.toContain('/admin/users');
+		expect(DEMO_ADMIN_HREFS).toContain('/admin/facts');
+		expect(DEMO_ADMIN_HREFS).toContain('/admin/live-twin');
+		expect(DEMO_ADMIN_HREFS.length).toBe(ADMIN_VIEWS.length - 1);
+		expect(rows.find((r) => r.label === 'Model views')?.note).not.toMatch(/Models page/);
+	});
+
+	it('knows which admin addresses the demo shows', () => {
+		expect(demoAdminPath('/admin')).toBe(true);
+		expect(demoAdminPath('/admin/')).toBe(true);
+		expect(demoAdminPath('/admin/facts')).toBe(true);
+		expect(demoAdminPath('/admin/trace/2026-10-26')).toBe(true);
+		expect(demoAdminPath('/admin/users')).toBe(false);
 	});
 });

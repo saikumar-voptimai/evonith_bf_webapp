@@ -8,6 +8,7 @@ twin values, plan decision and report link frozen by `shift.close`, linked from 
 column on A4 (print theme; `print.ts` plans the pages).
 -->
 <script lang="ts">
+	import { plant } from '../plant.svelte.ts';
 	import { resolve } from '$app/paths';
 	import Activity from '@lucide/svelte/icons/activity';
 	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
@@ -176,7 +177,7 @@ column on A4 (print theme; `print.ts` plans the pages).
 
 <article class="report" aria-label="Shift report {detail.shift_key}">
 	<Panel
-		eyebrow="Shift handover report, BF-02"
+		eyebrow="Shift handover report, {plant.furnace}"
 		title="Shift {detail.shift}, {formatDay(detail.shift_date)}, {span} IST"
 		icon={ClipboardList}
 		note={flagNote}

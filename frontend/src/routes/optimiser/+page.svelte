@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { plant } from '#lib/plant.svelte.ts';
 	/**
 	 * Blend & Fuel Optimiser: the Blend Mix Optimiser (SV-3.6 / SV-7.4, page 9) and the Blend Simulator (SV-3.3,
 	 * page 11) as one page (user decision 12 Nov 2026). Top: the yard inputs (the ores with a tick, their composition,
@@ -268,22 +269,24 @@
 							<CommentaryPanel page={opt} hasPlan={!!result?.plan && result.status === 'ok'} />
 						{:else if id === 'yard'}
 							<YardPanel page={opt} {result} canEdit={supervisor} />
-							<Panel
-								title="In Streamlit"
-								note="The Intensive Optimizer and the Sandbox stay on the Streamlit Blend Mix Optimiser page; each link opens its section."
-							>
-								<div class="cards">
-									{#each links as link (link.id)}
-										<a class="card" href={link.href} rel="external" target="_blank">
-											<span class="card-text">
-												<span class="card-title">{link.title}</span>
-												<span class="card-sub">{link.note}</span>
-											</span>
-											<ExternalLink size={16} aria-hidden="true" />
-										</a>
-									{/each}
-								</div>
-							</Panel>
+							{#if !plant.demo}
+								<Panel
+									title="In Streamlit"
+									note="The Intensive Optimizer and the Sandbox stay on the Streamlit Blend Mix Optimiser page; each link opens its section."
+								>
+									<div class="cards">
+										{#each links as link (link.id)}
+											<a class="card" href={link.href} rel="external" target="_blank">
+												<span class="card-text">
+													<span class="card-title">{link.title}</span>
+													<span class="card-sub">{link.note}</span>
+												</span>
+												<ExternalLink size={16} aria-hidden="true" />
+											</a>
+										{/each}
+									</div>
+								</Panel>
+							{/if}
 						{:else if id === 'facts'}
 							<ReferencePanels reference={opt.reference} onretry={() => void opt.loadReference()} />
 						{/if}

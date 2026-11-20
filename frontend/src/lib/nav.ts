@@ -319,8 +319,51 @@ const EXTRA_TITLES: Record<string, { title: string; subtitle: string }> = {
 	}
 };
 
-export function visibleGroups(role: Role | null | undefined): NavGroup[] {
-	return NAV.filter((g) => !g.role || hasRole(role, g.role));
+/**
+ * Admin views shown in demo mode (demo branch, 16 Nov 2026): every view except the accounts and plant tables, which
+ * hold the existing plant's people and are not in the demo store.
+ */
+export const DEMO_ADMIN_HREFS: readonly RouteId[] = ADMIN_VIEWS.map((v) => v.href).filter(
+	(href) => href !== '/admin/users'
+);
+
+/** Row notes that name a page the demo leaves out, as the demo words them. */
+const DEMO_ROW_NOTES: Record<string, string> = {
+	'Model views':
+		'The digital twin’s models, one view each: what the furnace burnt, what the energy balance asks for and what the learning model adds.'
+};
+
+/** Rows of the admin space in demo mode: the views of `DEMO_ADMIN_HREFS` only. */
+export function demoRows(rows: NavRow[] = ADMIN_ROWS): NavRow[] {
+	return rows
+		.map((row) => ({
+			...row,
+			note: DEMO_ROW_NOTES[row.label] ?? row.note,
+			items: row.items.filter((i) => DEMO_ADMIN_HREFS.includes(i.href))
+		}))
+		.filter((row) => row.items.length > 0);
+}
+
+/** True when the demo shows `pathname`: the admin index or one of the demo's admin views. */
+export function demoAdminPath(pathname: string): boolean {
+	const path = normalise(pathname);
+	return path === '/admin' || DEMO_ADMIN_HREFS.some((href) => path === href || path.startsWith(`${href}/`));
+}
+
+/**
+ * Groups the rail shows to `role`. In demo mode the planned Models page is left out and the Admin section holds the
+ * demo's views only (`DEMO_ADMIN_HREFS`).
+ */
+export function visibleGroups(role: Role | null | undefined, demo = false): NavGroup[] {
+	const groups = NAV.filter((g) => !g.role || hasRole(role, g.role));
+	if (!demo) return groups;
+	const views = demoRows().flatMap((row) => row.items);
+	return groups
+		.filter((g) => !g.items.every((i) => i.href === '/models'))
+		.map((g) => ({
+			...g,
+			items: g.items.map((i) => (i.href === '/admin' ? { ...i, children: views } : i))
+		}));
 }
 
 function normalise(pathname: string): string {
@@ -354,11 +397,12 @@ export interface PageHeading {
 	subtitle?: string;
 }
 
-export function headingFor(pathname: string): PageHeading {
+/** Heading of a pathname; `fallback` (the furnace's name) for a route outside the navigation. */
+export function headingFor(pathname: string, fallback = 'V-OptimAIse'): PageHeading {
 	const path = normalise(pathname);
 	const item = navItemFor(path);
 	const group = item && NAV.find((g) => g.items.some((i) => i === item || (i.children ?? []).includes(item)));
 	if (item && group) return { group: group.label, title: item.title, subtitle: item.subtitle };
 	const extra = EXTRA_TITLES[path];
-	return extra ? { title: extra.title, subtitle: extra.subtitle } : { title: 'BF-02' };
+	return extra ? { title: extra.title, subtitle: extra.subtitle } : { title: fallback };
 }

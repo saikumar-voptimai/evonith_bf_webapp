@@ -1,0 +1,70 @@
+# Demo mode (BF_DEMO=1; user decision 16 Nov 2026, demo branch): the app shown to a prospective client with the
+# names of the existing plant, its site, its suppliers and its mines replaced, and a "Demo data" notice on every page.
+# `utils/demo.py` applies the rules to every response of the twin-api (JSON, server-sent events, CSV) and to what
+# FurnaceMind's model reads (tool results, skill questions), so a name never reaches the screen or the model.
+#
+# Rules apply in order (longer phrases first). `find` is matched case-insensitively at word boundaries, so an id such
+# as `lloyds_clo` (letters joined by underscores) is left alone and the app's writes keep working; `regex: true` takes
+# `find` as a regular expression. The replacement keeps the case style of the match: UPPER stays upper, lower stays
+# lower, anything else is written as given.
+
+# Notice on every page of the SPA, and the furnace and site it names (`GET /api/version`; outside demo mode the
+# labels are `utils.demo.PLANT`).
+banner: Demo data. Plant, site, supplier and material names are replaced; figures are for demonstration only.
+# Product name the SPA shows in demo mode (`utils.demo.PRODUCT` outside it; user decision 16 Nov 2026).
+product: CoOperate
+furnace: BF-1
+site: Demo Steel
+# Usernames shown on stored runs and decisions are replaced by this, except the system's own.
+person: engineer
+system_users: [scheduler, schedule, system, worker, admin, demo]
+# Read-only views that show ids as text (`lloyds_clo` drawn as "lloyds clo"): their responses get the ids replaced
+# as well. The SPA never sends ids of these views back, so nothing it saves is touched.
+id_paths: [/api/strata]
+
+rules:
+  # Paths on the host (the jobs and health view lists the disks of the repository)
+  - {find: '[A-Za-z]:\\[^\s"]+', to: the app disk, regex: true}
+  - {find: '(?<![\w/])/(?:home|Users|opt|srv|var)/[^\s"]+', to: the app disk, regex: true, bounded: false}
+  # Documents and data-source names
+  - {find: 'client deck BF02_\w+(?:, \d{1,2} \w{3,9} \d{4})?', to: demo deck, regex: true}
+  - {find: 'BF02_\w+', to: model deck, regex: true}
+  - {find: 'bf2_evonith\w*', to: plant_data, regex: true}
+  # The plant, its company and its site
+  - {find: Evonith Steel Limited, to: Demo Steel}
+  - {find: Evonith Steel Ltd, to: Demo Steel}
+  - {find: Evonith Steel, to: Demo Steel}
+  - {find: EvonithSteel, to: DemoSteel}
+  - {find: Evonith, to: Demo}
+  - {find: Uttam Value Steels, to: Demo Steel}
+  - {find: Wardha, to: the plant site}
+  - {find: Butibori, to: the plant site}
+  - {find: Nagpur, to: the region}
+  - {find: 'BF-02', to: BF-1}
+  - {find: 'BF 02', to: BF 1}
+  - {find: BF02, to: BF1}
+  - {find: 'BF-2', to: BF-1}
+  - {find: BF2, to: BF1}
+  - {find: 'SP-02', to: SP-1}
+  - {find: SP02, to: SP1}
+  # Suppliers and mines of the ferrous materials (one letter each, kept the same everywhere)
+  - {find: Kirandul, to: Mine I}
+  - {find: NMDC Limited, to: Source I}
+  - {find: NMDC Donimalai, to: Source C}
+  - {find: Donimalai, to: Source C}
+  - {find: NMDC, to: Source I}
+  - {find: Lloyds Metals, to: Source B}
+  - {find: Lloyds, to: Source B}
+  - {find: Geomin, to: Source A}
+  - {find: Gomti, to: Source D}
+  - {find: JRS Ventures, to: Source E}
+  - {find: JRS, to: Source E}
+  - {find: Jayaswal Neco, to: Source F}
+  - {find: Jayaswal, to: Source F}
+  - {find: Neco, to: Source F}
+  - {find: Titani Ferrous, to: Source G}
+  - {find: Titani, to: Source G}
+  - {find: 'Acore Ind\.?\s*Pvt\.?\s*Ltd\.?', to: Source H, regex: true}
+  - {find: Acore, to: Source H}
+  - {find: Bacheli, to: Source J}
+  - {find: Sarda, to: Source K}

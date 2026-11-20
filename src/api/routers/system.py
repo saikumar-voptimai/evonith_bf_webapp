@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from api import __version__
 from api.settings import get_settings
 from services.release import current_release
+from utils import demo
 
 router = APIRouter(prefix="/api", tags=["system"])
 STARTED_AT = datetime.now(UTC)
@@ -38,6 +39,11 @@ class Version(BaseModel):
         description="Version name of the SPA build installed with the release (frontend/build/_app/version.json); "
         "None without a build",
     )
+    product: str = Field("", description="Product name the SPA shows (the demo's in demo mode)")
+    furnace: str = Field("", description="Furnace the SPA names, e.g. BF-1 (the demo's in demo mode)")
+    site: str = Field("", description="Plant site the SPA names after the furnace (the demo's in demo mode)")
+    demo: bool = Field(False, description="Demo mode (BF_DEMO): names replaced, the SPA shows the demo notice")
+    demo_notice: str | None = Field(None, description="Notice the SPA shows on every page in demo mode; None otherwise")
 
 
 @router.get("/health", response_model=Health, summary="Liveness")
@@ -61,4 +67,7 @@ def version() -> Version:
         release=release.tag,
         installed_at=release.installed_at,
         frontend_build=release.frontend_build,
+        **demo.labels(),
+        demo=demo.enabled(),
+        demo_notice=demo.config().get("banner") if demo.enabled() else None,
     )

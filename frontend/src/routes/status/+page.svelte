@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { plant } from '#lib/plant.svelte.ts';
 	import { untrack } from 'svelte';
 	/**
 	 * Furnace Status (SV-2.2, #294): the V-Board on the SPA. The schematic with zone callouts and zone status in the
@@ -83,7 +84,7 @@
 <div class="status">
 	<div class="head">
 		<Panel
-			title="BF-02 blast furnace status"
+			title="{plant.furnace} blast furnace status"
 			icon={Activity}
 			note="Select a reading to open its trend; pick a zone under the diagram for its readings."
 		>

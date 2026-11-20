@@ -45,7 +45,7 @@ import uuid
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
@@ -53,6 +53,7 @@ from pydantic import BaseModel, Field
 
 from data.twin.repositories import Actor, TwinStore
 from services.twin_views import utc
+from utils import demo
 
 log = logging.getLogger(__name__)
 
@@ -968,6 +969,13 @@ def start_skill(
             execution = skill.registry.execute_definition(
                 skill.definition, shift_date=skill.shift_date, shift_label=skill.shift_label
             )
+        if demo.enabled():  # demo mode: the question the model reads carries no plant or supplier name
+            execution = replace(
+                execution,
+                prompt=demo.redact_text(execution.prompt),
+                display=demo.redact_text(execution.display),
+                skill_context=demo.redact_text(execution.skill_context),
+            )
         for key in (tools_state.FIGURE, tools_state.DATAFRAME, tools_state.DATAFRAME_META):
             state.pop(key, None)
         before = chat_entries(store.fm.messages(request.conversation_id, last=SKILL_RECENT_MESSAGES))
@@ -994,7 +1002,8 @@ def start_skill(
         )
     row = store.fm.append(request.conversation_id, role="user", content=execution.prompt, meta=meta)
     emit(FmUserMessageEvent(conversation_id=request.conversation_id, message=message_view(row)))
-    return skill.system_prompt(skill_id=execution.skill_id, skill_context=context or execution.skill_context)
+    system = skill.system_prompt(skill_id=execution.skill_id, skill_context=context or execution.skill_context)
+    return demo.redact_text(system) if demo.enabled() else system
 
 
 def run_turn_sync(store: TwinStore, request: TurnRequest, emit: Callable[[BaseModel], None]) -> FmMessage | None:

@@ -7,6 +7,7 @@
 	import AppShell from '#lib/components/shell/AppShell.svelte';
 	import { toasts } from '#lib/components/toast.svelte.ts';
 	import { headingFor, type PageHeading } from '#lib/nav.ts';
+	import { plant } from '#lib/plant.svelte.ts';
 	import { LOGIN_PATH } from '#lib/session/guard.ts';
 	import { session } from '#lib/session/session.svelte.ts';
 
@@ -15,7 +16,7 @@
 	const onLogin = $derived(page.url.pathname === LOGIN_PATH);
 	const heading = $derived.by<PageHeading>(() => {
 		if (onLogin) return { title: 'Sign in' };
-		if (!page.error) return headingFor(page.url.pathname);
+		if (!page.error) return headingFor(page.url.pathname, plant.furnace || plant.product);
 		if (page.status === 404)
 			return { title: 'Page not found', subtitle: 'The address does not match a page.' };
 		if (page.status === 403) return { title: 'Not permitted', subtitle: 'This page needs a higher role.' };
@@ -47,7 +48,7 @@
 </script>
 
 <svelte:head>
-	<title>{heading.title} | V-OptimAIse BF-02</title>
+	<title>{heading.title} | {plant.product} {plant.furnace}{plant.demo ? ' (demo)' : ''}</title>
 </svelte:head>
 
 {#if onLogin}

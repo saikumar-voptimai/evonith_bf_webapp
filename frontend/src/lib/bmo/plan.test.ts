@@ -232,15 +232,15 @@ describe('the constraints rows', () => {
 	it('joins stock, chemistry, the saved availability and bounds, and the shown run’s prices by ore', () => {
 		const rows = oreConstraintRows(inputs, result.yard);
 		const sinter = rows.find((r) => r.id === 'sinter_sp_02')!;
-		expect(sinter.name).toBe('SINTER (SP-02)');
+		expect(sinter.name).toBe('SINTER (SP-1)');
 		expect(sinter.offered).toBe(true);
 		expect(sinter.stock).toBe(3800);
 		expect(sinter.stockSource).toBe('sinter_fallback');
 		expect(sinter.price).toBe(8724); // from the shown run's yard
 		expect(sinter.min).toBe(58); // the yard's bound, no saved row
-		const geomin = rows.find((r) => r.id === 'geomin_clo')!;
-		expect(geomin.offered).toBe(false); // not in the saved selection
-		expect(geomin.stock).toBe(0);
+		const sourceA = rows.find((r) => r.id === 'geomin_clo')!;
+		expect(sourceA.offered).toBe(false); // not in the saved selection
+		expect(sourceA.stock).toBe(0);
 		expect(rows.every((r) => r.fe === null || typeof r.fe === 'number')).toBe(true);
 		expect(oreConstraintRows(null, null)).toEqual([]);
 	});

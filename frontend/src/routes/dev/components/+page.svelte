@@ -130,9 +130,17 @@ The values are illustrative and are not plant data.
 	}
 	const blend: BlendRow[] = [
 		{ material: 'Sinter', kind: 'Sinter', share: 68.0, fe: 54.8, sio2: 5.6, al2o3: 2.9, price: 9850 },
-		{ material: 'Lloyds pellet', kind: 'Pellet', share: 17.5, fe: 64.6, sio2: 3.1, al2o3: 0.9, price: 11400 },
 		{
-			material: 'Donimalai lump',
+			material: 'Source B pellet',
+			kind: 'Pellet',
+			share: 17.5,
+			fe: 64.6,
+			sio2: 3.1,
+			al2o3: 0.9,
+			price: 11400
+		},
+		{
+			material: 'Source C lump',
 			kind: 'Lump ore',
 			share: 9.0,
 			fe: 63.4,
@@ -140,7 +148,7 @@ The values are illustrative and are not plant data.
 			al2o3: 1.9,
 			price: 8150
 		},
-		{ material: 'Lloyds CLO', kind: 'Lump ore', share: 3.5, fe: 64.1, sio2: 2.8, al2o3: 1.6, price: 8900 },
+		{ material: 'Source B CLO', kind: 'Lump ore', share: 3.5, fe: 64.1, sio2: 2.8, al2o3: 1.6, price: 8900 },
 		{ material: 'Quartzite', kind: 'Flux', share: 1.2, fe: null, sio2: 96.5, al2o3: 0.8, price: 1450 },
 		{ material: 'Dolomite', kind: 'Flux', share: 0.8, fe: null, sio2: 1.5, al2o3: 0.6, price: 2100 }
 	];
@@ -559,7 +567,7 @@ The values are illustrative and are not plant data.
 					columns={blendColumns}
 					rowKey={(r) => r.material}
 					bind:sort={blendSort}
-					rowClass={(r) => (r.material === 'Lloyds pellet' ? 'selected' : undefined)}
+					rowClass={(r) => (r.material === 'Source B pellet' ? 'selected' : undefined)}
 				/>
 			</Panel>
 		</div>
@@ -652,7 +660,7 @@ The values are illustrative and are not plant data.
 		<div class="span-6">
 			<Panel
 				title="Furnace schematic"
-				note="Configured BF-02 profile; zones highlight their related readings"
+				note="Configured furnace profile; zones highlight their related readings"
 			>
 				<FurnaceSchematic readings={READINGS} zoneReadings={ZONE_READINGS} bind:selected={zone} />
 			</Panel>
@@ -748,8 +756,8 @@ The values are illustrative and are not plant data.
 	size="sm"
 >
 	<p>
-		Sinter {formatQuantity(68, 1, '%')}, Lloyds pellet {formatQuantity(17.5, 1, '%')}, Donimalai lump
-		{formatQuantity(9, 1, '%')}, Lloyds CLO {formatQuantity(3.5, 1, '%')}, flux {formatQuantity(2, 1, '%')}.
+		Sinter {formatQuantity(68, 1, '%')}, Source B pellet {formatQuantity(17.5, 1, '%')}, Source C lump
+		{formatQuantity(9, 1, '%')}, Source B CLO {formatQuantity(3.5, 1, '%')}, flux {formatQuantity(2, 1, '%')}.
 	</p>
 	{#snippet footer()}
 		<Button onclick={() => (modalOpen = false)}>Keep current plan</Button>
@@ -771,7 +779,7 @@ The values are illustrative and are not plant data.
 		</div>
 		<div>
 			<dt>Blast moisture</dt>
-			<dd>18.4 g/Nm³, Open-Meteo daily mean RH at Wardha</dd>
+			<dd>18.4 g/Nm³, Open-Meteo daily mean RH at the plant site</dd>
 		</div>
 		<div>
 			<dt>PCI and nut coke</dt>

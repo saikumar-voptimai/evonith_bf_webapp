@@ -28676,6 +28676,24 @@
       },
       "Version": {
         "properties": {
+          "demo": {
+            "default": false,
+            "description": "Demo mode (BF_DEMO): names replaced, the SPA shows the demo notice",
+            "title": "Demo",
+            "type": "boolean"
+          },
+          "demo_notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Notice the SPA shows on every page in demo mode; None otherwise",
+            "title": "Demo Notice"
+          },
           "environment": {
             "description": "'dev' or 'prod'",
             "title": "Environment",
@@ -28692,6 +28710,12 @@
             ],
             "description": "Version name of the SPA build installed with the release (frontend/build/_app/version.json); None without a build",
             "title": "Frontend Build"
+          },
+          "furnace": {
+            "default": "",
+            "description": "Furnace the SPA names, e.g. BF-1 (the demo's in demo mode)",
+            "title": "Furnace",
+            "type": "string"
           },
           "git_sha": {
             "description": "Commit of the running release ('unknown' in development)",
@@ -28711,6 +28735,12 @@
             "description": "Installation time of the running release (UTC)",
             "title": "Installed At"
           },
+          "product": {
+            "default": "",
+            "description": "Product name the SPA shows (the demo's in demo mode)",
+            "title": "Product",
+            "type": "string"
+          },
           "python": {
             "description": "Python version",
             "title": "Python",
@@ -28727,6 +28757,12 @@
             ],
             "description": "Release tag of the running directory (RELEASE.json of deploy/jetson/release.sh); None in development",
             "title": "Release"
+          },
+          "site": {
+            "default": "",
+            "description": "Plant site the SPA names after the furnace (the demo's in demo mode)",
+            "title": "Site",
+            "type": "string"
           },
           "started_at": {
             "description": "Process start (UTC)",

@@ -1116,7 +1116,8 @@ class FurnaceMindRepository(_Repository):
         meta: Mapping[str, Any] | None = None,
         at: datetime | None = None,
     ) -> FmMessage:
-        """Add the next message; the first user message also titles an untitled conversation."""
+        """Add the next message; the first user message also titles an untitled conversation (with the text it is shown
+        as, ``meta["display"]``, when it has one: a quick skill's label rather than its full prompt)."""
         key = uuid.UUID(str(conversation_id))
         now = _utc(at) or utcnow()
         with self._sessions.begin() as session:
@@ -1142,7 +1143,9 @@ class FurnaceMindRepository(_Repository):
             conversation.message_count = seq
             conversation.updated_at = now
             if role == "user" and not conversation.title:
-                conversation.title = " ".join(content.split())[: self.TITLE_CHARS]
+                shown = (meta or {}).get("display")
+                text = shown if isinstance(shown, str) and shown.strip() else content
+                conversation.title = " ".join(text.split())[: self.TITLE_CHARS]
         return row
 
     def feedback(self, conversation_id: uuid.UUID | str) -> list[FmFeedback]:

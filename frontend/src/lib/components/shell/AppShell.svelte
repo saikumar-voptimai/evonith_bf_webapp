@@ -2,13 +2,16 @@
 @component
 Application frame: dark navigation sidebar (from 1024 px; a drawer below), page header on the light canvas, the
 page, the footer with the running release (`VersionInfo`), and notifications. Starts the shared clock and the server
-connection check while mounted.
+connection check while mounted. In demo mode (`plant.demo`) a notice above the page header says the data are demo
+data, and the rail shows the demo's sections.
 -->
 <script lang="ts">
 	import { afterNavigate } from '$app/navigation';
+	import Info from '@lucide/svelte/icons/info';
 	import type { Snippet } from 'svelte';
 	import { connection } from '../../live/connection.svelte.ts';
 	import { visibleGroups, type PageHeading } from '../../nav.ts';
+	import { plant } from '../../plant.svelte.ts';
 	import type { SessionUser } from '../../session/session.svelte.ts';
 	import { clock } from '../../time/clock.svelte.ts';
 	import Drawer from '../Drawer.svelte';
@@ -31,7 +34,7 @@ connection check while mounted.
 	const RAIL_KEY = 'vo.rail.collapsed';
 	let collapsed = $state(false);
 	let navOpen = $state(false);
-	const groups = $derived(visibleGroups(user?.role));
+	const groups = $derived(visibleGroups(user?.role, plant.demo));
 
 	$effect(() => {
 		try {
@@ -67,6 +70,13 @@ connection check while mounted.
 		</div>
 	</div>
 	<div class="column">
+		{#if plant.notice}
+			<p class="demo" role="note">
+				<Info size={16} strokeWidth={2} aria-hidden="true" />
+				<strong>Demo</strong>
+				<span>{plant.notice}</span>
+			</p>
+		{/if}
 		<PageHeader
 			{heading}
 			now={clock.now}
@@ -79,21 +89,14 @@ connection check while mounted.
 			{@render children()}
 		</main>
 		<footer class="foot">
-			<span>BF-02 Twin <span class="by">by V-OptimAIse</span></span>
+			<span>{plant.furnace} Twin <span class="by">by V-OptimAIse</span></span>
 			<VersionInfo online={connection.state === 'online'} />
 			<span class="note">Times in IST. Shifts A 06:00, B 14:00, C 22:00.</span>
 		</footer>
 	</div>
 </div>
 
-<Drawer
-	bind:open={navOpen}
-	side="left"
-	size="sm"
-	chrome
-	title="V-OptimAIse"
-	description="BF-02, Evonith Steel"
->
+<Drawer bind:open={navOpen} side="left" size="sm" chrome title={plant.product} description={plant.label}>
 	<NavRail {groups} {current} {user} embedded {onsignout} onnavigate={() => (navOpen = false)} />
 </Drawer>
 
@@ -144,6 +147,23 @@ connection check while mounted.
 	}
 	main:focus {
 		outline: none;
+	}
+	.demo {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--vo-space-1) var(--vo-space-2);
+		margin: 0;
+		padding: var(--vo-space-2) var(--vo-gutter);
+		background: var(--vo-info-bg);
+		border-bottom: 1px solid var(--vo-border);
+		color: var(--vo-info);
+		font-size: 0.8125rem;
+		line-height: 1.4;
+	}
+	.demo span {
+		color: var(--vo-text);
+		min-width: 0;
 	}
 	.foot {
 		display: flex;

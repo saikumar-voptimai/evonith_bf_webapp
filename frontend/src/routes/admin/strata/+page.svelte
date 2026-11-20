@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { plant } from '#lib/plant.svelte.ts';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import { untrack } from 'svelte';
 	import { api } from '#lib/api/client.ts';
@@ -387,7 +388,7 @@
 	<div class="cols">
 		<Panel
 			title="Certainty tiers"
-			note="How far a plan or a window can be trusted (GAS-18): σ(coke) on wet coke and the blend against the range BF-02 ran."
+			note="How far a plan or a window can be trusted (GAS-18): σ(coke) on wet coke and the blend against the range {plant.furnace} ran."
 			updatedAt={current ? toDate(current.evaluated_at ?? current.window_end) : summary.updatedAt}
 			busy={summary.loading && !!summary.data}
 		>

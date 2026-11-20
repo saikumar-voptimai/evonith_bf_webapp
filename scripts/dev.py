@@ -4,6 +4,7 @@ Cross-platform (Windows, Linux, Jetson). Run from anywhere:
 
     python scripts/dev.py                 # all four processes
     python scripts/dev.py api web         # a subset
+    python scripts/dev.py --demo          # demo mode: SPA, API and worker, see below
 
 Ports: SPA 5173 (open http://localhost:5173), API 8100, Streamlit 8501 under /legacy. The SPA dev server proxies
 /api and /legacy, so the browser sees one origin, as it does behind Caddy in production. Ctrl+C stops everything.
@@ -13,6 +14,12 @@ production.
 
 Live events and jobs need Redis (``BF_REDIS_URL``, default redis://127.0.0.1:6379/0). When it is not reachable, the
 worker is left out of the default set and the API keeps events in-process (job routes answer 503).
+
+``--demo`` (user decision 16 Nov 2026, demo branch) starts the SPA, the API and the worker for a demonstration to a
+new client: ``BF_DEMO=1`` (plant, site, supplier and mine names replaced by ``config/demo.yml``, a demo notice on every
+page), the demo's own twin store ``src/storage/demo/twin_demo.sqlite`` (seeded by ``scripts/demo_seed.py`` from the
+normal store when missing; ``--reseed`` rebuilds it), Redis database 1 for its jobs and events, no scheduled jobs, no
+Streamlit (/legacy is not part of the demo).
 """
 
 from __future__ import annotations
@@ -109,6 +116,32 @@ def _reachable(url: str, timeout: float = 0.5) -> bool:
         return False
 
 
+#: Every scheduled kind's prefix: the demo runs jobs on request only.
+DEMO_SKIP_SCHEDULES = "system.,forecast.,twin.,optimiser.,calibration.,learn.,report.,shift.,strata."
+
+
+def _demo_env(env: dict[str, str], *, reseed: bool) -> dict[str, str]:
+    """``env`` for the demo: demo mode, the demo's twin store (seeded when missing), Redis database 1, no schedules."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import demo_seed
+
+    if reseed or not demo_seed.DEMO_DB.is_file():
+        source = env.get("BF_TWIN_DB_URL") or env.get("DATABASE_URL") or ""
+        if not source or source == "off" or source.startswith("sqlite"):
+            sys.exit("--demo: no demo store yet and no store to seed it from (BF_TWIN_DB_URL / DATABASE_URL).")
+        demo_seed.DEMO_DB.parent.mkdir(parents=True, exist_ok=True)
+        print("seeding the demo store:", demo_seed.seed(source))
+    parts = urlsplit(env.get("BF_REDIS_URL") or DEFAULT_REDIS_URL)
+    return env | {
+        "BF_DEMO": "1",
+        "BF_TWIN_DB_URL": demo_seed.DEMO_URL,
+        "BF_REDIS_URL": parts._replace(path="/1").geturl(),
+        "BF_WORKER_SKIP_SCHEDULES": DEMO_SKIP_SCHEDULES,
+        "BF_WORKER_CATCH_UP": "0",
+        "BF_TWIN_OUTBOX": str(demo_seed.DEMO_DB.parent / "outbox.sqlite"),
+    }
+
+
 def _sigterm(signum: int, frame: object) -> None:
     raise KeyboardInterrupt  # stop the children exactly as Ctrl+C does
 
@@ -116,13 +149,18 @@ def _sigterm(signum: int, frame: object) -> None:
 def main(argv: list[str]) -> int:
     if not IS_WINDOWS:
         signal.signal(signal.SIGTERM, _sigterm)
-    names = argv or list(PROCESSES)
+    demo = "--demo" in argv
+    reseed = "--reseed" in argv
+    argv = [a for a in argv if a not in ("--demo", "--reseed")]
+    names = argv or ([n for n in PROCESSES if n != "legacy"] if demo else list(PROCESSES))
     unknown = [n for n in names if n not in PROCESSES]
     if unknown:
         sys.exit(f"unknown process(es): {', '.join(unknown)}; choose from {', '.join(PROCESSES)}")
     env = {k: v for k, v in dotenv_values(ROOT / ".env").items() if v is not None} | dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), str(ROOT / "furnace_data"), env.get("PYTHONPATH", "")])
     env.setdefault("PYTHONUNBUFFERED", "1")
+    if demo:
+        env = _demo_env(env, reseed=reseed)
     redis_url = env.get("BF_REDIS_URL") or DEFAULT_REDIS_URL
     if _reachable(redis_url):
         env["BF_REDIS_URL"] = redis_url  # API and worker share the queue and the event stream
@@ -151,7 +189,9 @@ def main(argv: list[str]) -> int:
             start_new_session=not IS_WINDOWS,
         )
         threading.Thread(target=_pump, args=(name, procs[name]), daemon=True).start()
-    print(f"started: {', '.join(names)} - SPA http://localhost:5173, API :{API_PORT}, Streamlit :{LEGACY_PORT}/legacy")
+    legacy = f", Streamlit :{LEGACY_PORT}/legacy" if "legacy" in names else ""
+    mode = " (demo)" if demo else ""
+    print(f"started: {', '.join(names)} - SPA http://localhost:5173, API :{API_PORT}{legacy}{mode}")
     try:
         while True:
             for name, proc in procs.items():

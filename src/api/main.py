@@ -21,6 +21,7 @@ from fastapi.routing import APIRoute
 
 from api import __version__
 from api.auth import build_auth_state
+from api.demo import DemoRedaction
 from api.errors import ERROR_RESPONSES, ApiError, install_error_handlers
 from api.live import LiveState
 from api.request_context import RequestContextMiddleware, RequestIdFilter
@@ -120,6 +121,8 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     # The last middleware added is the outermost: the origin guard runs inside the request context (request id).
     app.add_middleware(OriginGuardMiddleware)
     app.add_middleware(RequestContextMiddleware)
+    # Demo mode (BF_DEMO=1): outermost, so every body, error pages included, leaves with the names replaced.
+    app.add_middleware(DemoRedaction)
     install_error_handlers(app)
     app.include_router(system.router)
     app.include_router(auth.router)

@@ -1,5 +1,5 @@
 /**
- * Sample values for the chart section of the component catalogue: smooth, deterministic and plausible for BF-02,
+ * Sample values for the chart section of the component catalogue: smooth, deterministic and plausible for a blast furnace,
  * but not plant data. Coke rates in kg/tHM, hot-metal temperature in °C, heat loads in GJ/h.
  */
 import type { TimeSeries } from '#lib/charts/timeseries.ts';
@@ -97,9 +97,9 @@ export const HEAT_LOADS = [1.18, 1.94, 1.07, 0.98];
 
 export const BLEND: DonutSegment[] = [
 	{ id: 'sinter', label: 'Sinter', value: 68 },
-	{ id: 'pellet', label: 'Lloyds pellet', value: 17.5 },
-	{ id: 'lump', label: 'Donimalai lump', value: 9 },
-	{ id: 'clo', label: 'Lloyds CLO', value: 3.5 },
+	{ id: 'pellet', label: 'Source B pellet', value: 17.5 },
+	{ id: 'lump', label: 'Source C lump', value: 9 },
+	{ id: 'clo', label: 'Source B CLO', value: 3.5 },
 	{ id: 'quartzite', label: 'Quartzite', value: 1.2 },
 	{ id: 'dolomite', label: 'Dolomite', value: 0.8 }
 ];

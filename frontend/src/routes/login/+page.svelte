@@ -1,6 +1,7 @@
 <!--
 Sign-in page (SV-0.4, #273), in the V-OptimAIse product layout: product panel on the left, form on the right.
-Accounts and roles are those of the Streamlit app (Neon identity.users).
+Accounts and roles are those of the Streamlit app (Neon identity.users). In demo mode the page names the demo's
+furnace and site, shows the demo notice and leaves out the Streamlit link.
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
@@ -9,11 +10,13 @@ Accounts and roles are those of the Streamlit app (Neon identity.users).
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Flame from '@lucide/svelte/icons/flame';
+	import Info from '@lucide/svelte/icons/info';
 	import Lock from '@lucide/svelte/icons/lock';
 	import OctagonAlert from '@lucide/svelte/icons/octagon-alert';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import { ApiError } from '#lib/api/client.ts';
 	import { describeError } from '#lib/api/describe.ts';
+	import { plant } from '#lib/plant.svelte.ts';
 	import ShiftBand from '#lib/components/shell/ShiftBand.svelte';
 	import { safeNext } from '#lib/session/guard.ts';
 	import { session } from '#lib/session/session.svelte.ts';
@@ -86,21 +89,26 @@ Accounts and roles are those of the Streamlit app (Neon identity.users).
 </script>
 
 <div class="login">
-	<section class="product" aria-label="V-OptimAIse BF-02 console">
+	<section class="product" aria-label="{plant.product} {plant.furnace} console">
 		<div class="brand">
 			<span class="mark" aria-hidden="true"><Flame size={20} strokeWidth={2.25} /></span>
-			<span class="word">V-OptimAIse</span>
+			<span class="word">{plant.product}</span>
 		</div>
 
 		<div class="pitch">
-			<p class="eyebrow">BF-02 digital twin, Evonith Steel</p>
+			<p class="eyebrow">{plant.furnace} digital twin{plant.site ? `, ${plant.site}` : ''}</p>
 			<p class="headline">
 				<span>Coke rate, HMT and blend</span>
 				<span class="accent">from one furnace model.</span>
 			</p>
 			<p class="lede">
-				TRACE, FORGE and STRATA evaluated every hour on plant data, with the lowest-cost blend for the next
-				shift.
+				{#if plant.demo}
+					Physics and AI models evaluated every hour on plant data, with the lowest-cost blend and fuel plan
+					for the next shift.
+				{:else}
+					TRACE, FORGE and STRATA evaluated every hour on plant data, with the lowest-cost blend for the next
+					shift.
+				{/if}
 			</p>
 		</div>
 
@@ -136,9 +144,16 @@ Accounts and roles are those of the Streamlit app (Neon identity.users).
 		</div>
 
 		<div class="column">
-			<p class="eyebrow light">Welcome to the BF-02 console</p>
+			<p class="eyebrow light">Welcome to the {plant.furnace} console</p>
 			<h1>Sign in</h1>
-			<p class="intro">Use your Streamlit account; the roles are the same.</p>
+			{#if plant.notice}
+				<p class="demo" role="note">
+					<Info size={16} strokeWidth={2} aria-hidden="true" />
+					<span>{plant.notice}</span>
+				</p>
+			{:else}
+				<p class="intro">Use your Streamlit account; the roles are the same.</p>
+			{/if}
 
 			<form onsubmit={submit} novalidate aria-describedby={failure ? 'login-failure' : undefined}>
 				<label class="field">
@@ -191,10 +206,15 @@ Accounts and roles are those of the Streamlit app (Neon identity.users).
 
 			<p class="note">
 				<ShieldCheck size={18} strokeWidth={1.75} />
-				<span
-					>Ask your administrator for an account or a different role. The Streamlit pages stay available under
-					<a href={legacyHref()} rel="external">/legacy</a>.</span
-				>
+				{#if plant.demo}
+					<span>Ask your contact at V-OptimAIse for a demo account.</span>
+				{:else}
+					<span
+						>Ask your administrator for an account or a different role. The Streamlit pages stay available
+						under
+						<a href={legacyHref()} rel="external">/legacy</a>.</span
+					>
+				{/if}
 			</p>
 		</div>
 	</main>
@@ -445,6 +465,25 @@ Accounts and roles are those of the Streamlit app (Neon identity.users).
 	.failure :global(svg) {
 		flex: none;
 		margin-top: 1px;
+	}
+	.demo {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--vo-space-2);
+		margin: 0 0 var(--vo-space-4);
+		padding: var(--vo-space-2) var(--vo-space-3);
+		border-radius: var(--vo-radius-control);
+		background: var(--vo-info-bg);
+		color: var(--vo-info);
+		font-size: var(--vo-fs-label);
+		line-height: 1.5;
+	}
+	.demo span {
+		color: var(--vo-text);
+	}
+	.demo :global(svg) {
+		flex: none;
+		margin-top: 2px;
 	}
 	.note {
 		display: flex;

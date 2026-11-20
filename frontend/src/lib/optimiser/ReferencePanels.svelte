@@ -4,6 +4,7 @@ Page 11's two reference expanders: the facts the result rests on (the fact regis
 the MOD / VAL facts with Fixed-ω and STRATA-ω side by side), and the assumptions with what the engine does not see.
 -->
 <script lang="ts">
+	import { plant } from '../plant.svelte.ts';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import Info from '@lucide/svelte/icons/info';
 	import DataTable from '../components/DataTable.svelte';
@@ -90,8 +91,8 @@ the MOD / VAL facts with Fixed-ω and STRATA-ω side by side), and the assumptio
 						maxHeight="28rem"
 					/>
 					<p class="note">
-						Statuses: Model = follows from the balance; Supported = BF-02 data agree; Validated = tested out
-						of sample; Assumed = literature or judgement; Modelled only = too few days to test. Retired facts
+						Statuses: Model = follows from the balance; Supported = {plant.furnace} data agree; Validated = tested
+						out of sample; Assumed = literature or judgement; Modelled only = too few days to test. Retired facts
 						are never used.
 					</p>
 				{:else}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { plant } from '#lib/plant.svelte.ts';
 	import Check from '@lucide/svelte/icons/check';
 	import Download from '@lucide/svelte/icons/download';
 	import GitCompare from '@lucide/svelte/icons/git-compare';
@@ -625,7 +626,7 @@
 						<Panel
 							title="Trial list"
 							note={register?.trial_rules?.['ranking'] ??
-								'The planned BF-02 trials that would settle the open facts.'}
+								`The planned ${plant.furnace} trials that would settle the open facts.`}
 							flush
 						>
 							<DataTable

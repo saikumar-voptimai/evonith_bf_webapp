@@ -30,7 +30,7 @@ trigger that refuses it on PostgreSQL. A version of ``operator_inputs`` can only
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -49,6 +49,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    event,
     false,
     func,
     text,
@@ -634,3 +635,22 @@ TIME_INDEXED = {
     "fm_feedback": ("updated_at",),
     "whatif_case": ("updated_at",),
 }
+
+
+def _utc_on_sqlite(target: Any, context: Any, *_: Any) -> None:
+    """SQLite keeps no time zone: a ``timestamptz`` column comes back naive (the UTC it was written in). Rows loaded
+    from a SQLite store (the demo's, the outage buffer's) get UTC attached, so every view serialises them as on
+    PostgreSQL (with an offset) and the SPA does not read them as local time. Set through ``__dict__``: nothing is
+    marked changed."""
+    session = getattr(context, "session", None)
+    bind = session.get_bind() if session is not None else None
+    if bind is None or bind.dialect.name != "sqlite":
+        return
+    for prop in target.__mapper__.column_attrs:
+        value = target.__dict__.get(prop.key)
+        if isinstance(value, datetime) and value.tzinfo is None:
+            target.__dict__[prop.key] = value.replace(tzinfo=UTC)
+
+
+event.listen(TwinBase, "load", _utc_on_sqlite, propagate=True)
+event.listen(TwinBase, "refresh", _utc_on_sqlite, propagate=True)
