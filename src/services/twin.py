@@ -38,6 +38,10 @@ PLANT_TZ = ce.PLANT_TZ
 MODEL = "coke_energy pipeline windows (SV-1.1)"
 HOUR = pd.Timedelta(hours=1)
 PENDING_FLAG = "last_row_pending"
+# Dry basis of the coke rates a snapshot stores (``versions.coke_basis``). Since 25 Nov 2026 the coke and nut coke are
+# dry on the laboratory's total moisture; a snapshot without this value was evaluated on the dataset's inherent
+# moisture (coke about 2 % heavy) and is evaluated again when it lies in the backfill period.
+COKE_BASIS = "total_moisture"
 
 
 @dataclass(frozen=True)
@@ -207,7 +211,7 @@ def snapshot_values(
         "omega_cal": ev.omega_cal,
         "quantities": dict(ev.quantities),
         "flags": {**ev.flags, "notes": list(ev.notes)},
-        "versions": {"model": MODEL, **dict(ev.versions), **dict(versions or {})},
+        "versions": {"model": MODEL, "coke_basis": COKE_BASIS, **dict(ev.versions), **dict(versions or {})},
     }
 
 
@@ -298,9 +302,10 @@ def due_windows(
 ) -> list[pd.Timestamp]:
     """``window_end`` and the windows before it to evaluate again (IST, oldest first):
 
-    * in the last ``backfill_hours``: the window ends without a snapshot, stored with their last hourly row missing, or
+    * in the last ``backfill_hours``: the window ends without a snapshot, stored with their last hourly row missing,
       stored as ``failed`` (a source that was missing then, such as the day's DPR, may be there now; a failed window
-      stops early, before the balances, so the retry is cheap);
+      stops early, before the balances, so the retry is cheap), or stored on another coke basis than ``COKE_BASIS``
+      (the coke rates of one series are then on one basis; a longer backfill moves more of the history over);
     * in the last ``max(backfill_hours, provisional_hours)``, when ``provisional_dates`` is given: the windows evaluated
       on a DPR carried forward (``provisional_dpr``) whose date is no longer provisional, i.e. the day's DPR has been
       entered since. Each is evaluated once more, then its flag is gone."""
@@ -317,6 +322,8 @@ def due_windows(
         row = stored.get(end)
         flags = (row.flags or {}) if row is not None else {}
         if end in recent and (row is None or bool(flags.get(PENDING_FLAG)) or row.status == "failed"):
+            return True
+        if end in recent and (getattr(row, "versions", None) or {}).get("coke_basis") != COKE_BASIS:
             return True
         if provisional_dates is None or row is None or not flags.get("provisional_dpr"):
             return False

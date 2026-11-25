@@ -25,6 +25,83 @@ and each gives a number:
 Pearson's r alone is not enough: two series can correlate perfectly and differ by 10 kg/tHM. CCC is 1 only when the
 series are identical; C_b (≤ 1) is the level-and-scale part, r the scatter part.
 
+## Update 25 Nov 2026: the charged coke was wet, not dry
+
+**Finding.** The charge record weighs coke and nut coke wet. The plant's own rate tags (coke rate, nut-coke rate, the
+total fuel rate) are dry. The model converted with the hourly dataset's `COKE_MOIST%` and `NUTCOKE_MOIST%`, and since
+7 Dec 2025 those columns hold the **inherent** moisture of the air-dried laboratory sample (about 0.45 %), not the
+**total** moisture of the coke as charged. Both come from `offline_feed.fuel_chemistry`: `moisture` is the inherent
+one, `tm` the total one. Up to 6 Dec 2025 the dataset carried the total moisture; the change came with the move of
+the offline feed to the new tables.
+
+| Month | Coke total moisture % | Nut coke total moisture % | Inherent % |
+|---|---:|---:|---:|
+| Dec 2025 | 3.6 | 7.0 | 0.41 |
+| Mar 2026 | 2.1 | 6.1 | 0.39 |
+| Jun 2026 | 2.0 | 5.5 | 0.38 |
+| Sep 2026 | 2.5 | 8.1 | 0.44 |
+| Nov 2026 | 2.6 | 5.7 | 0.45 |
+
+Coke is two hoppers: online coke (`coke_1`, 2.2 %) and offline coke (`coke_2`, 3–9 %, about a quarter of the charge
+when it is used); the hour's moisture is the tonnes-weighted latest sample of each. The offline coke has not been
+sampled since 25 Sep 2026 and is still charged, so its 3.9 % is carried; a fresh sample is worth asking for.
+
+**Effect.** The "dry" coke was 1.5–3.5 % too heavy and the dry nut coke 5–8 %. That is why the plant's fuel rate came
+out below our coke rate + nut coke + PCI.
+
+**The check.** On the corrected basis the charge record equals the plant's tags:
+
+| Charge record against | As it was | On total moisture |
+|---|---:|---:|
+| Coke-rate tag, median over all shifts | +2.1 % | 0.0 % |
+| Coke-rate tag, each month Jun–Nov 2026 | +1.8 to +2.5 % | −0.2 to +0.3 % |
+| Fuel-rate tag (coke + nut coke + PCI), median | +2.9 % as charged | +0.5 % |
+
+The fuel-rate tag is the coke rate + the nut-coke rate + the PCI rate, coke and nut coke dry: in Nov 2026 it reads
+563.0 = 300.0 + 70.8 + 192.2 kg/tHM, and the wet record gives 309.7 + 75.1 + 193.8 = 578.6.
+
+**What changed in the model** (same sources, 25 Nov 2026, before → after):
+
+| | Before | After |
+|---|---:|---:|
+| Charged coke, Jun–Nov 2026 median, kg/tHM dry | 306.8 | 300.8 |
+| Burnt coke (TRACE) | 305.9 | 300.6 |
+| Energy balance (FORGE) | 306.6 | 300.9 |
+| Nut coke, dry | 74.6 | 70.4 |
+| Fuel rate, dry | 564.2 | 553.9 |
+| Balanced / stable shifts | 824 / 667 | 828 / 655 |
+| FORGE − TRACE, SD over stable shifts | 5.8 | 6.0 |
+| FORGE − charged, SD | 10.6 | 10.0 |
+| TRACE − charged, SD | 10.6 | 10.3 |
+| CCC burnt against charged, all shifts: shift / day / week | 0.80 / 0.89 / 0.95 | 0.80 / 0.86 / 0.93 |
+| CCC, stable shifts: shift / day / 2 weeks | 0.87 / 0.91 / 0.97 | 0.87 / 0.92 / 0.98 |
+| Raw mass closure (raw burnt / charged) | 100.4 % | 103.8 % |
+
+The models agree with each other as before, because both are calibrated to the charged coke of the stable shifts and
+follow its level down. Two things are different in kind:
+
+* **The raw oxygen balance no longer closes by itself.** The blast the meter reports burns 3.8 % more coke than was
+  charged dry (the meter reads about 5 % above the blast the carbon balance needs; +1 % before). The wet coke had
+  hidden most of that. The offset TRACE carries is therefore about −13 kg/tHM through most of 2026 and close to zero
+  since October 2026, when the metered air per tonne came down. The level agreement of TRACE with charged coke
+  remains by construction; the closure figure is now the honest size of the meter question.
+* **The calibrated heat losses are smaller.** Less coke in means less heat to account for: the lower-zone loss falls
+  by 13–20 GJ/h and the upper-zone loss by 6–9 GJ/h, ω by about 0.01 (shipped Jul–Oct 2026 calibration: K 305.5 →
+  300.8, ω 0.801 → 0.781, Q_LZ 44.5 → 25.3, Q_UZ 21.5 → 13.3 GJ/h). The measured stave cooling is about 8 GJ/h, so the
+  new values are the more plausible ones.
+
+**Checks that sit on the coke basis.** The charge-record check now compares on the tag's basis (dry coke + dry nut
+coke + PCI as injected): the record runs 0.5 % above the tag (robust SD 2.4 %), band ±9 %. The stable-shift band of
+the blast meter (−9 to +15 %) was reviewed and kept: moving it changes the stable shifts by under 1 %.
+
+**PCI** is injected dried and is left as it is (its inherent moisture, 1.5 %, is deducted as before).
+
+**Where it is in the code.** `utils/coke_energy/fuel_moisture.py` (hourly total moisture from the laboratory and the
+charge record), `data/coke_energy/sources.fetch_fuel_moisture`, `services.coke_energy.hourly_frame` (the frame the
+page and the twin both build from). The dataset's `COKE_MOIST%` keeps its values: it is a feature of the data-driven
+models; the dataset builder adds `COKE_TM%` and `NUTCOKE_TM%` beside it. Twin snapshots carry `versions.coke_basis`;
+snapshots without it are evaluated again when they lie in the backfill period, so one series is on one basis.
+
 ## Update 21 Nov 2026: the charged − burnt step of 18–20 Nov
 
 From about 12 Nov charged coke ran above TRACE and FORGE, by 35–45 kg/tHM raw (charged − raw burnt) on 18–20 Nov

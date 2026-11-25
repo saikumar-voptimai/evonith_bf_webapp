@@ -209,6 +209,23 @@ def test_failed_windows_of_the_backfill_period_are_due_again(store) -> None:
     assert due == [pd.Timestamp("2026-05-21 08:00"), pd.Timestamp("2026-05-21 09:00"), end]  # 08:00 has no row
 
 
+def test_windows_on_the_old_coke_basis_are_due_again(store) -> None:
+    """25 Nov 2026: a snapshot evaluated before the coke went onto its total moisture carries no ``coke_basis``."""
+    end = pd.Timestamp("2026-05-21 12:00")
+    for hour in ("07:00", "09:00", "10:00", "11:00"):
+        stored_window(store, f"2026-05-21 {hour}", "complete")
+    for hour in ("07:00", "10:00"):  # 07:00 lies outside a 3-h backfill
+        ev = WindowEvaluation(Window.ending(pd.Timestamp(f"2026-05-21 {hour}"), 8), "complete")
+        old = twin.snapshot_values(ev, evaluated_at=utc_of(f"2026-05-21 {hour}") + timedelta(minutes=10))
+        del old["versions"]["coke_basis"]
+        store.snapshots.upsert(old)
+    assert store.snapshots.get(utc_of("2026-05-21 11:00")).versions["coke_basis"] == twin.COKE_BASIS
+    assert twin.due_windows(store, end, 3) == [pd.Timestamp("2026-05-21 10:00"), end]
+    stored_window(store, "2026-05-21 06:00", "complete")
+    stored_window(store, "2026-05-21 08:00", "complete")
+    assert twin.due_windows(store, end, 6) == [pd.Timestamp("2026-05-21 07:00"), pd.Timestamp("2026-05-21 10:00"), end]
+
+
 def test_provisional_dpr_windows_are_due_once_the_days_dpr_has_arrived(store) -> None:
     end = pd.Timestamp("2026-05-21 12:00")
     stored_window(store, "2026-05-19 10:00", "complete", provisional_dpr=True)  # window of 19 May (starts 02:00)
