@@ -7,6 +7,7 @@ Method: docs/burnt_vs_charged_coke.md.
 -->
 <script lang="ts">
 	import ArrowDownUp from '@lucide/svelte/icons/arrow-down-up';
+	import Ban from '@lucide/svelte/icons/ban';
 	import Droplets from '@lucide/svelte/icons/droplets';
 	import History from '@lucide/svelte/icons/history';
 	import Scale from '@lucide/svelte/icons/scale';
@@ -18,6 +19,7 @@ Method: docs/burnt_vs_charged_coke.md.
 		blandAltman,
 		closureSeries,
 		DEFAULT_WINDOW,
+		excludedNote,
 		HEADLINE_WINDOWS,
 		isBasis,
 		KG,
@@ -44,6 +46,7 @@ Method: docs/burnt_vs_charged_coke.md.
 		type AgreementStats,
 		type Basis,
 		type BurntVsCharged,
+		type BvcExcludedShift,
 		type BvcClosureMonth,
 		type BvcSplitWindow,
 		type LeakStep,
@@ -65,7 +68,7 @@ Method: docs/burnt_vs_charged_coke.md.
 	import { formatNumber, formatQuantity, formatSigned, isNumber } from '#lib/format/number.ts';
 	import { JobTracker } from '#lib/live/jobs.svelte.ts';
 	import { live, type StreamEvent } from '#lib/live/stream.svelte.ts';
-	import { formatDay } from '#lib/time/format.ts';
+	import { formatDay, istDateTime } from '#lib/time/format.ts';
 	import { agreementLines, cccState, JOB_KIND, limitsText, refreshFor } from '#lib/trace/trace.ts';
 
 	// ------------------------------------------------------------ data
@@ -124,6 +127,13 @@ Method: docs/burnt_vs_charged_coke.md.
 			? `${formatDay(data.first_day)} to ${formatDay(data.last_day)}, ${formatNumber(data.shifts)} shifts`
 			: 'no shifts'
 	);
+	const excluded = $derived(data?.excluded ?? []);
+	const leftOut = $derived(excludedNote(excluded));
+	const excludedColumns: Column<BvcExcludedShift>[] = [
+		{ key: 'skey', label: 'Shift', sortable: true },
+		{ key: 'start', label: 'Start (IST)', sortable: true, format: (r) => istDateTime(new Date(r.start)) },
+		{ key: 'reason', label: 'Data error', sortable: false }
+	];
 
 	// ------------------------------------------------------------ rebuild
 	const rebuild = new JobTracker();
@@ -305,7 +315,7 @@ Method: docs/burnt_vs_charged_coke.md.
 			<Panel
 				title="Burnt against charged coke"
 				icon={Scale}
-				note="TRACE (calibrated) against the coke charged over {basisNote}: {span}. Over a day or more the two should agree within the measurement error."
+				note="TRACE (calibrated) against the coke charged over {basisNote}: {span}. Over a day or more the two should agree within the measurement error. {leftOut}"
 				{updatedAt}
 				warnAfterMin={WARN_MIN}
 				staleAfterMin={STALE_MIN}
@@ -663,6 +673,31 @@ Method: docs/burnt_vs_charged_coke.md.
 				{/if}
 			</Panel>
 		</div>
+
+		<!-- shifts left out as data errors -->
+		{#if excluded.length}
+			<div class="span-12">
+				<Panel
+					title="Shifts left out"
+					icon={Ban}
+					note="{leftOut} The pipeline balances none of them: a charge record that disagrees with the plant fuel rate, or an ore moisture that cannot be real, would make every coke figure of the shift wrong."
+					{updatedAt}
+					warnAfterMin={WARN_MIN}
+					staleAfterMin={STALE_MIN}
+					busy={loading}
+					flush
+				>
+					<DataTable
+						caption="Shifts left out as data errors, oldest first"
+						rows={excluded}
+						columns={excludedColumns}
+						rowKey={(r) => r.skey}
+						maxHeight="18rem"
+						dense
+					/>
+				</Panel>
+			</div>
+		{/if}
 	{/if}
 </div>
 

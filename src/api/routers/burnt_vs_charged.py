@@ -3,8 +3,8 @@
 ``GET /api/admin/burnt-vs-charged`` serves the analysis ``twin.trace`` builds with the TRACE view every hour at :20
 (``services.burnt_vs_charged``): agreement per averaging window from one shift to one month (Lin's CCC, Bland-Altman),
 the split SD(W)^2 = A/W^2 + B/W + C, the lag scan, the raw mass closure and the leak-water check, on every balanced
-shift or on the stable shifts. A request never computes: before the first build the route answers 503. Coke rates
-are kg/tHM dry, masses t, times UTC, days IST plant dates.
+shift or on the stable shifts, and the shifts left out as data errors. A request never computes: before the first
+build the route answers 503. Coke rates are kg/tHM dry, masses t, times UTC, days IST plant dates.
 """
 
 from __future__ import annotations
@@ -160,6 +160,13 @@ class LeakCheck(BaseModel):
     settings: LeakSettings
 
 
+class BvcExcludedShift(BaseModel):
+    skey: str = Field(..., description="Shift key YYYY-MM-DD_A|B|C")
+    start: datetime = Field(..., description="Shift start (UTC)")
+    end: datetime = Field(..., description="Shift end (UTC)")
+    reason: str = Field(..., description="The data error in words, e.g. a charge record against the plant fuel rate")
+
+
 class BurntVsCharged(BaseModel):
     job_kind: str = Field(trace.JOB_KIND, description="Job kind that builds the analysis")
     built_at: datetime = Field(..., description="Time of the build (UTC)")
@@ -177,6 +184,10 @@ class BurntVsCharged(BaseModel):
     lag: BvcLag
     closure: BvcClosure | None = Field(None, description="Raw mass closure; null without a raw burnt coke")
     leak: LeakCheck
+    excluded: list[BvcExcludedShift] = Field(
+        default_factory=list,
+        description="Shifts with enough data left out as data errors (in neither basis), oldest first",
+    )
 
 
 @router.get("", response_model=BurntVsCharged, summary="Burnt against charged coke")
@@ -208,4 +219,5 @@ def burnt_vs_charged(
         lag=part["lag"],
         closure=part["closure"],
         leak={**part["leak"], "settings": stored["leak_settings"]},
+        excluded=stored.get("excluded") or [],
     )

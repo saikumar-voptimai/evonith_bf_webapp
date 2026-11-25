@@ -11,16 +11,17 @@ event (``services.events.TwinSnapshotData``).
 Hourly job (``twin.evaluate`` at HH:10, SV-1.7): the window ending HH:00 needs the hourly row HH-1, which the
 published dataset first holds in its build of about HH:06 (``ensure_dataset`` fetches it when the local copy lacks
 it); at HH:05 the window would have been evaluated on 7 of its 8 hours. ``due_windows`` adds the windows of the
-backfill period that have no snapshot or were stored with their last row missing; ``evaluate_and_store`` evaluates
-and upserts one window.
+backfill period that have no snapshot, were stored with their last row missing or failed, and the windows built on a
+carried-forward DPR whose day's DPR has arrived since (``provisional_dates``, the frames' ``provisional``);
+``evaluate_and_store`` evaluates and upserts one window.
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +32,7 @@ from services import coke_energy as ce
 from services import source_health, transit
 from services.events import TwinSnapshotData
 from utils.coke_energy.pipeline import PipelineSettings
-from utils.coke_energy.twin import Window, WindowEvaluation, evaluate_window
+from utils.coke_energy.twin import WINDOW_HOURS, Window, WindowEvaluation, evaluate_window
 
 PLANT_TZ = ce.PLANT_TZ
 MODEL = "coke_energy pipeline windows (SV-1.1)"
@@ -279,16 +280,46 @@ def ensure_dataset(
     return state.holds(last_row), state
 
 
-def due_windows(store: Any, window_end: pd.Timestamp, backfill_hours: int) -> list[pd.Timestamp]:
-    """``window_end`` and, before it, the window ends of the last ``backfill_hours`` without a snapshot or stored
-    with their last hourly row missing (IST, oldest first)."""
-    ends = [window_end - HOUR * k for k in range(int(backfill_hours), 0, -1)]
+def provisional_dpr_dates(cfg: Mapping[str, Any] | None = None) -> tuple:
+    """The DPR dates the sources still carry forward provisionally (the twin frames' ``provisional``)."""
+    cfg = ce.config() if cfg is None else cfg
+    return load_frames(ce.data_keys(cfg, 0)).provisional
+
+
+def due_windows(
+    store: Any,
+    window_end: pd.Timestamp,
+    backfill_hours: int,
+    provisional_dates: Collection[date] | None = None,
+    provisional_hours: int = 0,
+) -> list[pd.Timestamp]:
+    """``window_end`` and the windows before it to evaluate again (IST, oldest first):
+
+    * in the last ``backfill_hours``: the window ends without a snapshot, stored with their last hourly row missing, or
+      stored as ``failed`` (a source that was missing then, such as the day's DPR, may be there now; a failed window
+      stops early, before the balances, so the retry is cheap);
+    * in the last ``max(backfill_hours, provisional_hours)``, when ``provisional_dates`` is given: the windows evaluated
+      on a DPR carried forward (``provisional_dpr``) whose date is no longer provisional, i.e. the day's DPR has been
+      entered since. Each is evaluated once more, then its flag is gone."""
+    hours = max(int(backfill_hours), int(provisional_hours) if provisional_dates is not None else 0)
+    ends = [window_end - HOUR * k for k in range(hours, 0, -1)]
     if not ends:
         return [window_end]
     rows = store.snapshots.series(to_utc(ends[0]), to_utc(window_end))
     stored = {ist_naive(_aware_utc(r.window_end)): r for r in rows}
-    due = [e for e in ends if e not in stored or bool((stored[e].flags or {}).get(PENDING_FLAG))]
-    return [*due, window_end]
+    recent = set(ends[-int(backfill_hours) :]) if int(backfill_hours) > 0 else set()
+    still_provisional = set(provisional_dates or ())
+
+    def due(end: pd.Timestamp) -> bool:
+        row = stored.get(end)
+        flags = (row.flags or {}) if row is not None else {}
+        if end in recent and (row is None or bool(flags.get(PENDING_FLAG)) or row.status == "failed"):
+            return True
+        if provisional_dates is None or row is None or not flags.get("provisional_dpr"):
+            return False
+        return (end - WINDOW_HOURS * HOUR).date() not in still_provisional  # the window's date is its start's
+
+    return [*(e for e in ends if due(e)), window_end]
 
 
 def _aware_utc(value: Any) -> pd.Timestamp:

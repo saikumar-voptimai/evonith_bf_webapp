@@ -4,8 +4,10 @@
    first holds in its build of about HH:06; without it the local copy is fetched again (``services.twin.
    ensure_dataset``). Still missing: try again in 5 min (to HH:25); the last try evaluates on the rows there are and
    flags every window whose last row is missing, which a later run evaluates again.
-2. The windows of the last ``backfill_hours`` that have no snapshot, or were flagged so, are evaluated first (oldest
-   first), then W; each is upserted into ``twin.snapshot`` with this job's id.
+2. The windows of the last ``backfill_hours`` that have no snapshot, were flagged so or failed, and the windows of the
+   last ``dpr_carry_forward_days`` built on a carried-forward DPR whose day's DPR has arrived since
+   (``services.twin.due_windows``), are evaluated first (oldest first), then W; each is upserted into
+   ``twin.snapshot`` with this job's id.
 3. The implied-omega drift alarm runs on the stored series (``services.drift.run``: ``alarm.raised`` /
    ``alarm.cleared``), then the Live Twin alarms (``services.twin_alarms.run``: STRATA - TRACE gap, stale sources,
    implied lag; SV-1.9), and W is published as ``twin.snapshot``.
@@ -34,6 +36,14 @@ from worker.runtime import JobContext, SkipJob, TransientJobError, handles
 
 BACKFILL_SOLVERS_FROM = 3  # windows from which their network solves run in solver processes
 SOURCES = ("hourly", "influxdb", "hm_slag", "dpr")  # the evaluation's sources; a down one skips the job
+
+
+def _provisional_dates() -> tuple | None:
+    """The DPR dates still carried forward, or None when the sources cannot say (no provisional re-evaluation)."""
+    try:
+        return twin.provisional_dpr_dates()
+    except Exception:  # noqa: BLE001 - the windows of a provisional DPR are found by a later run
+        return None
 
 
 def _outage_note(step: str, exc: BaseException) -> str:
@@ -68,7 +78,10 @@ async def evaluate(job: JobContext, params: TwinEvaluateParams) -> dict[str, Any
         if store.pending and not store.holding:  # Neon may be back: the queued writes first (SV-6.5)
             await asyncio.to_thread(store.replay)
         try:
-            windows = await asyncio.to_thread(twin.due_windows, store, end, params.backfill_hours)
+            provisional = await asyncio.to_thread(_provisional_dates)
+            windows = await asyncio.to_thread(
+                twin.due_windows, store, end, params.backfill_hours, provisional, 24 * ce.dpr_carry_forward_days()
+            )
         except Exception as exc:
             if not outbox.is_outage(exc):
                 raise

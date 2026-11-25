@@ -27,6 +27,7 @@ from services.events import MemoryEventBus
 from services.jobs import CATALOG, JobRecord, NoParams, OptimiserRunParams, TwinEvaluateParams, input_hash
 from tests.redis_server import needs_redis, redis_server
 from tests.twin_data import synthetic_frames
+from utils.coke_energy.twin import Window, WindowEvaluation
 from worker.kinds import calibration as calibration_kind
 from worker.kinds import learn as learn_kind
 from worker.kinds import optimiser as optimiser_kind
@@ -95,6 +96,18 @@ def store(tmp_path):
 
 
 # ----------------------------------------------------------------------------------------------- twin.evaluate
+@pytest.fixture(autouse=True)
+def no_live_dpr_lookup(monkeypatch):
+    """The twin job asks the live sources which DPR dates are still carried forward; the tests have none."""
+    monkeypatch.setattr(twin, "provisional_dpr_dates", lambda cfg=None: ())
+
+
+def stored_window(store, end: str, status: str, **flags: Any) -> None:
+    """A snapshot row of the window ending ``end`` (IST) with ``status`` and ``flags``."""
+    ev = WindowEvaluation(Window.ending(pd.Timestamp(end), 8), status, flags=dict(flags))
+    store.snapshots.upsert(twin.snapshot_values(ev, evaluated_at=utc_of(end) + timedelta(minutes=10)))
+
+
 @pytest.fixture(scope="module")
 def synthetic_evaluate():
     fd, m10, hm, dpr = synthetic_frames(start="2026-05-01", days=18)
@@ -184,6 +197,42 @@ def test_a_late_dataset_is_retried_and_its_window_evaluated_again_later(store, s
     assert (
         not out["last_row_pending"] and twin.PENDING_FLAG not in store.snapshots.get(utc_of("2026-05-15 11:00")).flags
     )
+
+
+def test_failed_windows_of_the_backfill_period_are_due_again(store) -> None:
+    end = pd.Timestamp("2026-05-21 12:00")
+    stored_window(store, "2026-05-21 09:00", "failed", notes=["no DPR dust for the date"])
+    stored_window(store, "2026-05-21 10:00", "complete")
+    stored_window(store, "2026-05-21 11:00", "partial")
+    stored_window(store, "2026-05-21 06:00", "failed")  # outside a 4-h backfill
+    due = twin.due_windows(store, end, 4)
+    assert due == [pd.Timestamp("2026-05-21 08:00"), pd.Timestamp("2026-05-21 09:00"), end]  # 08:00 has no row
+
+
+def test_provisional_dpr_windows_are_due_once_the_days_dpr_has_arrived(store) -> None:
+    end = pd.Timestamp("2026-05-21 12:00")
+    stored_window(store, "2026-05-19 10:00", "complete", provisional_dpr=True)  # window of 19 May (starts 02:00)
+    stored_window(store, "2026-05-20 10:00", "complete", provisional_dpr=True)  # window of 20 May
+    stored_window(store, "2026-05-20 11:00", "complete")
+    still = (pd.Timestamp("2026-05-20").date(), pd.Timestamp("2026-05-21").date())  # the DPR of 19 May is in
+    windows = set(pd.date_range("2026-05-19 13:00", "2026-05-21 11:00", freq="h"))
+    for w in windows - {pd.Timestamp("2026-05-19 10:00"), pd.Timestamp("2026-05-20 10:00"),
+                        pd.Timestamp("2026-05-20 11:00")}:  # fmt: skip
+        stored_window(store, str(w), "complete")
+    due = twin.due_windows(store, end, 0, provisional_dates=still, provisional_hours=72)
+    assert due == [pd.Timestamp("2026-05-19 10:00"), end]
+    assert twin.due_windows(store, end, 0, provisional_dates=None, provisional_hours=72) == [end]  # sources unknown
+    assert twin.due_windows(store, end, 0, provisional_dates=still, provisional_hours=24) == [end]  # 19 May too old
+
+
+def test_the_hourly_job_evaluates_a_failed_window_again(store, synthetic_evaluate, monkeypatch) -> None:
+    monkeypatch.setattr(twin, "evaluate", synthetic_evaluate)
+    monkeypatch.setattr(twin, "ensure_dataset", ready(True))
+    stored_window(store, "2026-05-15 09:00", "failed", notes=["no DPR dust for the date"])
+    job, _ = context("twin.evaluate", record("twin.evaluate", slot=utc_of("2026-05-15 10:10")))
+    out = asyncio.run(twin_kind.evaluate(job, TwinEvaluateParams(backfill_hours=1, strata=False)))
+    assert [w["window_end"] for w in out["windows"]] == ["2026-05-15T09:00:00", "2026-05-15T10:00:00"]
+    assert store.snapshots.get(utc_of("2026-05-15 09:00")).status == "complete"
 
 
 def test_the_window_end_of_a_request_a_slot_or_now() -> None:

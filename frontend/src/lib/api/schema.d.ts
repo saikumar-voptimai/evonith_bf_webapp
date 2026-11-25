@@ -3236,6 +3236,11 @@ export interface components {
             /** @description Raw mass closure; null without a raw burnt coke */
             closure?: components["schemas"]["BvcClosure"] | null;
             /**
+             * Excluded
+             * @description Shifts with enough data left out as data errors (in neither basis), oldest first
+             */
+            excluded?: components["schemas"]["BvcExcludedShift"][];
+            /**
              * First Day
              * @description First shift date (IST)
              */
@@ -3375,6 +3380,31 @@ export interface components {
              * @description End of the shift (UTC)
              */
             t: string;
+        };
+        /** BvcExcludedShift */
+        BvcExcludedShift: {
+            /**
+             * End
+             * Format: date-time
+             * @description Shift end (UTC)
+             */
+            end: string;
+            /**
+             * Reason
+             * @description The data error in words, e.g. a charge record against the plant fuel rate
+             */
+            reason: string;
+            /**
+             * Skey
+             * @description Shift key YYYY-MM-DD_A|B|C
+             */
+            skey: string;
+            /**
+             * Start
+             * Format: date-time
+             * @description Shift start (UTC)
+             */
+            start: string;
         };
         /** BvcLag */
         BvcLag: {

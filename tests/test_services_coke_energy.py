@@ -152,3 +152,18 @@ def test_streamlit_loader_keeps_the_page_interface() -> None:
     for name in ("clear_caches", "data_keys", "page_data", "rist_frames", "DataKeys", "PageData"):
         assert hasattr(st_loaders, name), name
     assert st_loaders.data_keys is svc.data_keys
+
+
+def test_the_dpr_is_carried_forward_for_the_configured_days() -> None:
+    assert svc.dpr_carry_forward_days({}) == 3  # the code default
+    assert svc.dpr_carry_forward_days({"dpr_carry_forward_days": 7}) == 7
+    assert svc.dpr_carry_forward_days(svc.config()) == 7  # coke_energy.yml (21 Nov 2026)
+    from data.coke_energy import sources
+
+    dpr = pd.DataFrame(
+        {"hm_t": [2200.0, 2250.0], "dc_dust_t": [30.0, 31.0], "gcp_dust_t": [10.0, 11.0]},
+        index=pd.DatetimeIndex(["2026-11-16", "2026-11-17"]),
+    )
+    extended, provisional = sources.extend_dpr_provisional(dpr, pd.Timestamp("2026-11-21 10:00"), max_days=7)
+    assert sorted(str(d) for d in provisional) == ["2026-11-18", "2026-11-19", "2026-11-20", "2026-11-21"]
+    assert extended.index.max() == pd.Timestamp("2026-11-21")

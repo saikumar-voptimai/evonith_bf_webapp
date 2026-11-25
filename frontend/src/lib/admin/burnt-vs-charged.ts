@@ -24,6 +24,7 @@ export type LeakCheck = Schemas['LeakCheck'];
 export type LeakStep = Schemas['LeakStep'];
 export type LeakShift = Schemas['LeakShift'];
 export type LeakModel = Schemas['LeakModel'];
+export type BvcExcludedShift = Schemas['BvcExcludedShift'];
 
 export type Basis = 'all' | 'stable';
 export type Signal = LeakStep['key'];
@@ -73,6 +74,21 @@ export function perWindow(window: string): string {
 export function windowNote(stats: AgreementStats | null): string {
 	if (!stats || !stats.n) return 'No windows';
 	return `r ${formatNumber(stats.r, 3)} · Cb ${formatNumber(stats.cb, 3)} · ${formatNumber(stats.n)} windows`;
+}
+
+/**
+ * `12 shifts left out as data errors, 16 Oct 2026 to 21 Oct 2026.` for the shifts the pipeline did not balance (a
+ * charge record against the plant fuel rate, an ore moisture that cannot be real); empty without any.
+ */
+export function excludedNote(excluded: BvcExcludedShift[] | null | undefined): string {
+	const rows = excluded ?? [];
+	if (!rows.length) return '';
+	const days = rows.map((r) => r.skey.slice(0, 10)).sort();
+	const first = days[0] as string;
+	const last = days[days.length - 1] as string;
+	const n = rows.length;
+	const span = first === last ? formatDay(first) : `${formatDay(first)} to ${formatDay(last)}`;
+	return `${formatNumber(n)} ${n === 1 ? 'shift' : 'shifts'} left out as data errors, ${span}.`;
 }
 
 /** Bland–Altman scatter of one window: mean of burnt and charged across, burnt − charged up. */

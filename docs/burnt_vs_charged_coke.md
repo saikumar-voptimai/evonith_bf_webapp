@@ -25,6 +25,96 @@ and each gives a number:
 Pearson's r alone is not enough: two series can correlate perfectly and differ by 10 kg/tHM. CCC is 1 only when the
 series are identical; C_b (≤ 1) is the level-and-scale part, r the scatter part.
 
+## Update 21 Nov 2026: the charged − burnt step of 18–20 Nov
+
+From about 12 Nov charged coke ran above TRACE and FORGE, by 35–45 kg/tHM raw (charged − raw burnt) on 18–20 Nov
+against 5–10 on 8–11 Nov. TRACE (oxygen balance) and FORGE (energy balance) agreed with each other at ~290–300
+throughout. Nearly every shift from 17 Nov C failed the stable filter's blast-meter test (the same gap seen from the
+other side), so the TRACE offset stayed at ~14.7 kg/tHM and did not follow (by design; decision 21 Nov 2026: diagnose
+before changing the calibration).
+
+Attribution (one input group at a time set to its 8–12 Nov stable-shift mean, raw burnt coke re-solved with
+`burnt.k_burnt`; 13 baseline and 9 recent shifts):
+
+| | 8–12 Nov (stable) | 18–20 Nov | Step |
+|---|---:|---:|---:|
+| Charged coke, dry | 302.0 | 312.9 | +10.9 |
+| Raw burnt coke | 295.8 | 278.7 | −17.1 |
+| Gap | 6.2 | 34.2 | +28.0 |
+
+Raw burnt coke, contribution of each input to the −17.1 (sum −16.8): metered blast air per tHM −8.9, nut coke rate
+−3.5, PCI rate −1.9, DPR dust −1.7, coke analysis −1.5, hot metal −0.6, burden −0.4, O₂/air +0.4, ηH₂ +0.6, ηCO +0.8.
+Charged coke: the coke-rate set point went 296.5 → 303.9 (+7.4) and the charge record ran a further +3.5 above it.
+
+Two observations point at the measurements rather than the furnace:
+
+* **The hot furnace that surplus coke makes did not happen.** On 14–16 Nov the record showed ~327 kg/tHM and Si
+  went to 0.7–0.8 % (TRACE followed charged then). On 18–20 Nov hot metal stayed at 1,481–1,489 °C, Si 0.41–0.46 %.
+* **Hot-blast volume per tHM fell by about the oxygen flow on 18–19 Nov** (1,188 → 1,127–1,134 Nm³/tHM while O₂ rose
+  to 69–71 Nm³/tHM). The balance takes blast air = hot-blast volume − O₂ (plant confirmation of 14 Oct 2026 that the
+  tag includes the enrichment oxygen). If the oxygen joined after the meter on those days, blast air was read ~6 %
+  low, about the −8.9 kg/tHM above.
+
+Checks for the plant: where the enrichment O₂ joins relative to the hot-blast flow meter since 18 Nov; the coke
+batch weights against the 304 kg/tHM set point; the coke moisture (a flat ~0.45 % for a month reads like a default).
+No leak: the leak check reads `gap_only` (H₂ step 0.0 against the ~1.9 pt a leak of that size would give).
+
+## Update 20 Nov 2026: charge-record errors spoiled the all-shift comparison
+
+The admin page showed CCC 0.32 / 0.29 / 0.25 / 0.04 (shift / day / week / month) over every balanced shift, a floor
+of ±67 kg/tHM (95 %) that did not average out and a raw closure of 104 %, while the stable shifts gave 0.87 / 0.91 /
+0.96. The cause is not the calibration and not the descent time. It is the charge record (the hourly dataset's
+`*_CALC_MT`), which was wrong in three periods:
+
+| Period | What the record says | What the plant's own tags say | Effect |
+|---|---|---|---|
+| 1 Nov - 5 Dec 2025 | coke about 165 kg/tHM | coke-rate tag about 315, fuel-rate tag 520-545 | charged coke half; raw closure −9,100 t |
+| 6-16 Dec 2025 | PCI 200-250 kg/tHM | PCI tag 150-180 | burnt coke low by the extra PCI carbon |
+| 16-21 Oct 2026 | PCI about 420 kg/tHM | DPR PCI 190-195, fuel-rate tag 555-563 | burnt coke 30-60 kg/tHM (the PCI takes the oxygen); raw closure +3,500 t |
+
+None of these shifts was stable (they fail the carbon closure or the blast-meter test), so the calibrated offset
+of TRACE, FORGE's ω and the optimiser's calibration never used them. They entered only what is computed over every
+balanced shift: the agreement, the variance split, the raw closure and the twin windows of those days.
+
+**Check.** The plant's fuel-rate tag (`ACT. FUEL RATE`, kg/tHM) is an independent record of the same fuel. On
+normal shifts the charge record's coke + nut coke + PCI runs 3.0 % above the tag (robust SD 2.2 %, the same each
+month from Jan to Nov 2026). The pipeline now treats a shift whose record lies outside −6 % to +12 % of the tag
+(±4 SD) as a data error, as it already did for an impossible ore moisture: it is not balanced, the twin window
+fails with the reason, and the admin page lists it under *Shifts left out*
+(`pipeline.exclusion_reasons`, `coke_energy.yml → charge_record_check.fuel_rate_band_pct`). On the record to 14 Nov
+2026, 133 of 930 valid shifts are left out (Nov 2025 77, Dec 2025 29, Oct 2026 18, nine others); no stable shift is
+among them.
+
+Every balanced shift, 6 Sep 2025 - 14 Nov 2026, before → after the check:
+
+| Window | CCC before | CCC after | SD before, kg/tHM | SD after |
+|---|---:|---:|---:|---:|
+| Shift (8 h) | 0.315 | 0.811 | 42.4 | 13.9 |
+| 1 day | 0.293 | 0.896 | 39.7 | 8.4 |
+| 3 days | 0.383 | 0.944 | 33.0 | 6.2 |
+| 1 week | 0.247 | 0.958 | 33.4 | 4.5 |
+| 2 weeks | 0.516 | 0.973 | 21.6 | 3.9 |
+
+Floor √C 34.3 → 4.0 kg/tHM, raw closure 104.2 % → 100.7 %, C_b 0.67-0.79 → 0.995-0.999. The stable basis does not
+change (shift 0.870, day 0.907, week 0.957; floor 1.7 kg/tHM).
+
+**Tried and not adopted.**
+
+* *Robust calibration.* A weighted median, a 3-MAD trimmed mean and Huber means (c 1.0, 1.5) in place of the
+  tracker's weighted mean: no better on either basis (stable week SD 3.1 → 3.2-3.3; FORGE − TRACE SD 5.89 → 5.90-6.37).
+  The stable filter already keeps outliers out of the pool.
+* *Charged coke moved earlier by the descent time.* Charged coke over the 8 h window τ hours earlier
+  (τ = 0-12 h): the day SD is flat for τ = 0-3 h (8.4-8.7 kg/tHM) and grows beyond. With the coke content of the
+  burden (coke / ferrous) instead, the stable shifts peak at τ = 2-3 h, but the gain is below 0.2 kg/tHM. Over a day
+  or more the change of coke in transit is small against the measurement error. Shift-resolution data cannot
+  show a 4-7 h delay; hourly charge times against an hourly burnt coke are still needed for that.
+
+What remains on the all-shift basis is the blast meter against the carbon balance on unsteady shifts (blast-meter
+test failed, burnt − charged −20 to −65 kg/tHM on single shifts), which averages out as it should (day SD 8.4,
+week 4.5). In Nov 2026 the raw burnt coke runs 4 % below charged (closure 95.9 %, blast meter −4 % against the carbon
+balance); the tracker's offset (+10 to +12 kg/tHM) follows it. That is worth checking against the leak-water check
+and the meter's calibration.
+
 ## Update 24 Oct 2026: recomputed on the pipeline of that day (RH-scaled blast moisture)
 
 The pipeline of 24 Oct took blast moisture from the RH-scaled weather record (DATA-11), which enters the oxygen

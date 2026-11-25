@@ -3,6 +3,7 @@ import {
 	band95,
 	blandAltman,
 	closureSeries,
+	excludedNote,
 	isBasis,
 	lagBars,
 	lagLabel,
@@ -174,6 +175,27 @@ describe('windows', () => {
 	it('knows the bases', () => {
 		expect(isBasis('stable')).toBe(true);
 		expect(isBasis('unstable')).toBe(false);
+	});
+});
+
+describe('shifts left out', () => {
+	const row = (skey: string) => ({
+		skey,
+		start: '2026-10-16T08:30:00Z',
+		end: '2026-10-16T16:30:00Z',
+		reason: 'data error: charge record fuel 800 kg/tHM is +43 % against the plant fuel rate 559 kg/tHM'
+	});
+
+	it('counts them with the span of their days', () => {
+		expect(excludedNote([row('2026-10-21_B'), row('2026-10-16_B'), row('2026-10-18_C')])).toBe(
+			'3 shifts left out as data errors, 16 Oct 2026 to 21 Oct 2026.'
+		);
+		expect(excludedNote([row('2026-10-16_B')])).toBe('1 shift left out as data errors, 16 Oct 2026.');
+	});
+
+	it('says nothing without any', () => {
+		expect(excludedNote([])).toBe('');
+		expect(excludedNote(undefined)).toBe('');
 	});
 });
 

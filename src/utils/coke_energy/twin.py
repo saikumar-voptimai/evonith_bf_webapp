@@ -51,7 +51,7 @@ from utils.coke_energy.pipeline import (
     _with_dates,
     build_cases,
     calibration_values,
-    excluded_shifts,
+    exclusion_reasons,
     run_shift_balances,
     shift_params,
     valid_shift_mask,
@@ -247,10 +247,9 @@ def evaluate_window(
     if not bool(valid_shift_mask(S).loc[key]):
         ev.notes.extend(_invalid_reasons(row))
         return ev
-    if key in excluded_shifts(S, settings):
-        ev.notes.append(
-            f"data error: ore moisture {row.get('ORE_TM%'):.1f} % above {settings.max_ore_moisture_pct:g} %"
-        )
+    error = exclusion_reasons(S, settings).get(key)
+    if error is not None:
+        ev.notes.append(error)
         return ev
 
     params = shift_params(S, S.index, settings)

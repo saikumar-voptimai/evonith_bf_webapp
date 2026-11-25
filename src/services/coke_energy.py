@@ -121,8 +121,15 @@ def load_neon(start: str, clock: str, nonce: int) -> tuple[pd.DataFrame, pd.Data
     end = pd.Timestamp.now(tz=PLANT_TZ).tz_localize(None)
     hm = sources.fetch_hm_slag(pd.Timestamp(start), end)
     dpr = sources.fetch_dpr_daily(pd.Timestamp(start) - pd.Timedelta(days=1), end)
-    dpr, provisional = sources.extend_dpr_provisional(dpr, end)
+    dpr, provisional = sources.extend_dpr_provisional(dpr, end, max_days=dpr_carry_forward_days())
     return hm, dpr, sorted(provisional)
+
+
+def dpr_carry_forward_days(cfg: Mapping | None = None) -> int:
+    """Days after the last DPR the dust rates are carried forward (``coke_energy.yml → dpr_carry_forward_days``,
+    default 3); the windows of those days are flagged provisional and evaluated again when the DPR arrives."""
+    cfg = config() if cfg is None else cfg
+    return max(0, int(cfg.get("dpr_carry_forward_days", 3)))
 
 
 def load_lab_samples(start: str, clock: str, nonce: int) -> tuple[pd.DataFrame, pd.DataFrame]:

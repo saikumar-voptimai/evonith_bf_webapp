@@ -23,6 +23,16 @@ Calibration of the burnt-coke offset and of the energy model (``PipelineSettings
 
 The heat-loss allowance U of the oxygen-balance model stays on the 14-day median in both modes.
 
+Data errors (``exclusion_reasons``): a shift is not balanced when it is on the ``bad_shifts`` list, when its ore
+moisture cannot be real, or (``PipelineSettings.fuel_rate_band_pct``) when its charge record disagrees with the plant's
+fuel rate. The charge record's fuel (coke + nut coke + PCI, t as charged, per tonne of hot metal) is compared with the plant's
+fuel-rate tag (``ACT. FUEL RATEKG/THM.``, its hourly mean over the shift), an independent record of the same fuel. On
+normal shifts the record runs 3 % above the tag (robust SD 2.2 %, Sep 2025 - Nov 2026); outside the band the record is
+wrong and every balance of the shift with it: coke counted at half in Nov 2025 (-21 to -33 %), PCI read 40-70 kg/tHM
+high on 6-16 Dec 2025 (+10 to +18 %), PCI read about 420 kg/tHM on 16-21 Oct 2026 (+43 %; burnt coke 30-60 kg/tHM).
+The stable filter kept those shifts out of every calibration already; they spoiled the comparisons over every balanced
+shift, the raw mass closure and the twin windows of those days. A shift without the tag is not checked.
+
 ``case_from_shift`` is the slow part of a shift (a wide row read field by field), and the web scripts rebuilt the same
 case in every step. Here each shift's case is built once (``build_cases``) and every step gets a deep copy, so the
 results are identical (``calibrate_shifts`` is ``twozone_shifts.calibrate_all`` on the cached cases; a test holds them
@@ -71,6 +81,9 @@ SHIFT_HOURS = 8.0
 # windows, the pool shift ended before the target began (6 min of tolerance).
 TRACKER_MIN_AGE_H = SHIFT_HOURS - 0.1
 CALIBRATION_METHODS = ("median", "exponential")
+# Shift-input column of the plant's fuel-rate tag (kg/tHM, hourly mean over the shift) and the charge-record fuels.
+FUEL_RATE_TAG = "h_ACT. FUEL RATEKG/THM."
+CHARGED_FUELS = ("COKE_CALC_MT", "NUTCOKE_CALC_MT", "PCI_CALC_MT")
 
 
 @dataclass(frozen=True)
@@ -89,12 +102,18 @@ class PipelineSettings:
     calibration: str = "median"
     half_life_days: float = 3.0
     tracker_min_shifts: int = 4
+    # (low, high) % of the charge record's fuel against the plant's fuel-rate tag; outside it the shift is a data error.
+    # None = no check (the web model)
+    fuel_rate_band_pct: tuple[float, float] | None = None
 
     def __post_init__(self) -> None:
         if self.calibration not in CALIBRATION_METHODS:
             raise ValueError(f"calibration {self.calibration!r}: one of {', '.join(CALIBRATION_METHODS)}")
         if not self.half_life_days > 0:
             raise ValueError("half_life_days must be positive")
+        band = self.fuel_rate_band_pct
+        if band is not None and not (len(band) == 2 and band[0] < band[1]):
+            raise ValueError(f"fuel_rate_band_pct {band!r}: (low, high) with low below high")
 
     @property
     def calibration_min_shifts(self) -> int:
@@ -114,6 +133,7 @@ class PipelineSettings:
         """Build from the ``coke_energy`` block of ``coke_energy.yml``."""
 
         tracker = dict(cfg.get("calibration_tracker") or {})
+        band = (cfg.get("charge_record_check") or {}).get("fuel_rate_band_pct")
         return cls(
             history_start=str(cfg.get("history_start", cls.history_start)),
             predict_from=str(cfg.get("predict_from", cls.predict_from)),
@@ -125,6 +145,7 @@ class PipelineSettings:
             calibration=str(tracker.get("method", cls.calibration)),
             half_life_days=float(tracker.get("half_life_days", cls.half_life_days)),
             tracker_min_shifts=int(tracker.get("min_shifts", cls.tracker_min_shifts)),
+            fuel_rate_band_pct=None if band is None else (float(band[0]), float(band[1])),
         )
 
 
@@ -170,6 +191,8 @@ class PipelineResult:
     shifts: pd.DataFrame
     settings: PipelineSettings
     errors: list[str] = field(default_factory=list)
+    # shifts with enough data that were left out as data errors -> the error in words (``exclusion_reasons``)
+    excluded: dict[str, str] = field(default_factory=dict)
 
 
 def valid_shift_mask(S: pd.DataFrame) -> pd.Series:
@@ -179,13 +202,51 @@ def valid_shift_mask(S: pd.DataFrame) -> pd.Series:
             S.chem_pct_fe.notna() & S.slag_pct_al2o3.notna() & S.dpr_dc_dust_kgthm.notna() & (S.COKE_CALC_MT > 0))
 
 
-def excluded_shifts(S: pd.DataFrame, settings: PipelineSettings) -> set[str]:
-    """Shifts with a known data error: the web BAD list plus an ore-moisture reading that cannot be real."""
+def charge_record_fuel(S: pd.DataFrame) -> pd.Series:
+    """Fuel of the charge record, kg per tonne of hot metal as charged: (coke + nut coke + PCI) / production."""
 
-    bad = set(settings.bad_shifts)
+    if any(c not in S.columns for c in (*CHARGED_FUELS, "PRODUCTIONTONNESPERHR")):
+        return pd.Series(np.nan, index=S.index)
+    prod = S["PRODUCTIONTONNESPERHR"].where(S["PRODUCTIONTONNESPERHR"] > 0)
+    return S[list(CHARGED_FUELS)].sum(axis=1, min_count=len(CHARGED_FUELS)) * 1000 / prod
+
+
+def charge_record_deviation(S: pd.DataFrame) -> pd.Series:
+    """The charge record's fuel against the plant's fuel-rate tag, % (record / tag - 1); NaN without the tag."""
+
+    if FUEL_RATE_TAG not in S.columns:
+        return pd.Series(np.nan, index=S.index)
+    tag = S[FUEL_RATE_TAG].where(S[FUEL_RATE_TAG] > 0)
+    return 100 * (charge_record_fuel(S) / tag - 1)
+
+
+def exclusion_reasons(S: pd.DataFrame, settings: PipelineSettings) -> dict[str, str]:
+    """Shifts with a known data error, each with the error in words: the web BAD list, an ore-moisture reading that
+    cannot be real and, with ``settings.fuel_rate_band_pct``, a charge record outside the band of the plant's fuel
+    rate. The first error found is the one given."""
+
+    out = {str(k): "data error: on the list of known bad shifts" for k in settings.bad_shifts}
     if "ORE_TM%" in S.columns:
-        bad |= set(S.index[S["ORE_TM%"] > settings.max_ore_moisture_pct])
-    return bad
+        for k, v in S.loc[S["ORE_TM%"] > settings.max_ore_moisture_pct, "ORE_TM%"].items():
+            out.setdefault(str(k), f"data error: ore moisture {v:.1f} % above {settings.max_ore_moisture_pct:g} %")
+    band = settings.fuel_rate_band_pct
+    if band is not None:
+        dev = charge_record_deviation(S)
+        fuel = charge_record_fuel(S)
+        lo, hi = band
+        for k in S.index[(dev < lo) | (dev > hi)]:
+            out.setdefault(
+                str(k),
+                f"data error: charge record fuel {fuel[k]:.0f} kg/tHM is {dev[k]:+.0f} % against the plant fuel rate "
+                f"{S.at[k, FUEL_RATE_TAG]:.0f} kg/tHM (accepted {lo:+g} to {hi:+g} %)",
+            )
+    return out
+
+
+def excluded_shifts(S: pd.DataFrame, settings: PipelineSettings) -> set[str]:
+    """Shifts with a known data error (``exclusion_reasons``)."""
+
+    return set(exclusion_reasons(S, settings))
 
 
 # Per-shift memo. Values are never mutated by the callers (rows go into DataFrames, cases are deep-copied).
@@ -533,13 +594,15 @@ def run_pipeline(fd: pd.DataFrame, m10: pd.DataFrame, hm: pd.DataFrame, dpr: pd.
         warnings.simplefilter("ignore")
         S = build_shift_inputs(fd, m10, hm, dpr, start=settings.history_start)
         good = valid_shift_mask(S)
-        keys = S.index[good & ~S.index.isin(excluded_shifts(S, settings))]
+        reasons = exclusion_reasons(S, settings)
+        keys = S.index[good & ~S.index.isin(list(reasons))]
+        excluded = {k: why for k, why in reasons.items() if k in S.index and bool(good.loc[k])}
         fps = row_fingerprints(S, keys)
         params = shift_params(S, keys, settings)
         R, errors = run_shift_balances(S, keys, fps, params)
         if R.empty:
             empty = pd.DataFrame()
-            return PipelineResult(S, R, empty, empty, empty, empty, empty, settings, errors)
+            return PipelineResult(S, R, empty, empty, empty, empty, empty, settings, errors, excluded)
         cases = build_cases(S, R.index, fps)
         P = oxygen_balance_model(S, R, settings, cases, fps, params)
         B = burnt_coke(S, R, settings, cases, fps, params)
@@ -548,4 +611,4 @@ def run_pipeline(fd: pd.DataFrame, m10: pd.DataFrame, hm: pd.DataFrame, dpr: pd.
         T = shift_table(R, P, B, Z, O2, provisional_dates)
         T["slag_superheat_c"] = pd.Series({k: params[k]["slag_T_above_HM"] for k in T.index})
         T["slag_al2o3_pct"] = S["slag_pct_al2o3"].reindex(T.index)
-    return PipelineResult(S, R, P, B, Z, O2, T, settings, errors)
+    return PipelineResult(S, R, P, B, Z, O2, T, settings, errors, excluded)

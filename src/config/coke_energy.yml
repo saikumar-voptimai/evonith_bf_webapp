@@ -62,6 +62,25 @@ coke_energy:
   bad_shifts: ["2026-10-07_C"]
   max_ore_moisture_pct: 15.0
 
+  # Charge-record check (20 Nov 2026): a shift (or twin window) whose charge record disagrees with the plant's own fuel
+  # rate is a data error and is not balanced. Charge record = coke + nut coke + PCI as charged (hourly dataset *_CALC_MT)
+  # per tonne of hot metal; plant fuel rate = the ACT. FUEL RATE tag of the hourly dataset, mean over the shift. On
+  # normal shifts the record runs 3.0 % above the tag (robust SD 2.2 %, Sep 2025 - Nov 2026); the band is that +-4 SD.
+  # It catches coke counted at half in Nov 2025 (-21 to -33 %), PCI read 40-70 kg/tHM high on 6-16 Dec 2025 (+10 to
+  # +18 %) and PCI read about 420 kg/tHM on 16-21 Oct 2026 (+43 %; TRACE 30-60 kg/tHM). None of those shifts was
+  # stable, so no calibration changes; over every balanced shift TRACE against charged coke went from CCC 0.32 / 0.29 /
+  # 0.25 (shift / day / week) to 0.81 / 0.90 / 0.96 and the raw mass closure from 104.2 % to 100.7 %
+  # (docs/burnt_vs_charged_coke.md, update of 20 Nov 2026). A shift without the tag is not checked; null turns it off.
+  charge_record_check:
+    fuel_rate_band_pct: [-6.0, 12.0]
+
+  # DPR carry-forward (21 Nov 2026): the plant enters the DPR a day or more late (on 21 Nov the last one was 17 Nov), and
+  # a shift or twin window needs its day's dust-catcher and GCP dust. Days after the last DPR, up to this many, use the
+  # median dust per tonne of the week before; their shifts and windows are flagged provisional, and the hourly twin
+  # job evaluates such a window again once its day's DPR has arrived (services.twin.due_windows). Was 3 (code
+  # default): every window of 21 Nov failed "no DPR dust for the date" until the DPR was entered.
+  dpr_carry_forward_days: 7
+
   # Slag temperature above hot metal (plant practice, 15 Oct 2026): about 30 degC for a low-Al2O3 slag (~16 %), rising
   # with Al2O3 to about 60 degC. Linear between the two points, flat outside them; each shift uses its measured slag
   # Al2O3. The high point is at 21 % (the 95th percentile of tap analyses since Aug 2025 is 20.6 %). The web model used

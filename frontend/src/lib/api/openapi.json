@@ -2882,6 +2882,14 @@
             ],
             "description": "Raw mass closure; null without a raw burnt coke"
           },
+          "excluded": {
+            "description": "Shifts with enough data left out as data errors (in neither basis), oldest first",
+            "items": {
+              "$ref": "#/components/schemas/BvcExcludedShift"
+            },
+            "title": "Excluded",
+            "type": "array"
+          },
           "first_day": {
             "anyOf": [
               {
@@ -3155,6 +3163,40 @@
           "skey"
         ],
         "title": "BvcClosurePoint",
+        "type": "object"
+      },
+      "BvcExcludedShift": {
+        "properties": {
+          "end": {
+            "description": "Shift end (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "reason": {
+            "description": "The data error in words, e.g. a charge record against the plant fuel rate",
+            "title": "Reason",
+            "type": "string"
+          },
+          "skey": {
+            "description": "Shift key YYYY-MM-DD_A|B|C",
+            "title": "Skey",
+            "type": "string"
+          },
+          "start": {
+            "description": "Shift start (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skey",
+          "start",
+          "end",
+          "reason"
+        ],
+        "title": "BvcExcludedShift",
         "type": "object"
       },
       "BvcLag": {

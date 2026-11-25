@@ -220,6 +220,12 @@ def test_the_process_store_and_the_heartbeat_replay(buffered, neon) -> None:
 
 
 # ------------------------------------------------------------------------------------- twin.evaluate in an outage
+@pytest.fixture(autouse=True)
+def no_live_dpr_lookup(monkeypatch):
+    """The twin job asks the live sources which DPR dates are still carried forward; the tests have none."""
+    monkeypatch.setattr(twin, "provisional_dpr_dates", lambda cfg=None: ())
+
+
 def stub_evaluation(t: Any, strata: bool = True) -> WindowEvaluation:
     window = Window.ending(pd.Timestamp(t), 8)
     sources = {"influxdb": utc_of(str(window.end)).isoformat()}

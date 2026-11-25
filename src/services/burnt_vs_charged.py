@@ -12,6 +12,8 @@ shift table (page 10's values, the table page 11's *Burnt against charged coke* 
                  burnt (``transit.closure`` on the raw burnt coke, before the 14-day correction)
     leak         step of (charged - raw burnt) and of top-gas H2 with RAFT unchanged (``utils.coke_energy.leak_check``
                  with ``utils.strata_flow.plant_effects.leak_for_gap``)
+    excluded     the shifts the pipeline left out as data errors, with the error (``pipeline.exclusion_reasons``: a
+                 charge record outside the band of the plant's fuel rate, an ore moisture that cannot be real)
 
 on two bases: every balanced shift (the TRACE page's basis) and the stable shifts only. One basis reads every window
 of the record (about 4 s for 15 months of shifts on a laptop), so a request never computes it: ``twin.trace``
@@ -36,7 +38,7 @@ import pandas as pd
 from services.twin_views import number
 from utils.coke_energy import leak_check
 from utils.coke_energy import transit as tr
-from utils.coke_energy.pipeline import PipelineResult
+from utils.coke_energy.pipeline import PipelineResult, shift_midpoints
 from utils.memo import memo
 
 VERSION = 1
@@ -298,8 +300,25 @@ def analysis(T: pd.DataFrame, settings: leak_check.LeakCheckSettings) -> dict[st
     }
 
 
+def excluded_rows(result: PipelineResult) -> list[dict[str, Any]]:
+    """Shifts with enough data that the pipeline left out as data errors (``PipelineResult.excluded``), oldest first:
+    the shift, its window (UTC) and the error in words. In neither basis."""
+    S = result.S if result.S is not None else pd.DataFrame()
+    rows = []
+    for skey, reason in (getattr(result, "excluded", None) or {}).items():
+        if skey not in S.index or "sdate" not in S or "shift" not in S:
+            continue
+        mid = shift_midpoints(pd.Series([S.at[skey, "sdate"]]), pd.Series([S.at[skey, "shift"]])).iloc[0]
+        if pd.isna(mid):
+            continue
+        rows.append({"skey": str(skey), "start": mid - SHIFT / 2, "end": mid + SHIFT / 2, "reason": str(reason)})
+    rows.sort(key=lambda r: r["start"])
+    return [{**r, "start": utc_text(r["start"]), "end": utc_text(r["end"])} for r in rows]
+
+
 def build(result: PipelineResult, cfg: Mapping[str, Any] | None = None, *, now: Any = None) -> dict[str, Any]:
-    """Both bases of one pipeline result (``now``: build time, IST tz-naive or aware)."""
+    """Both bases of one pipeline result and the shifts it left out as data errors (``now``: build time, IST tz-naive
+    or aware)."""
     now = pd.Timestamp.now(tz=PLANT_TZ) if now is None else pd.Timestamp(now)
     settings = settings_from(cfg)
     T = shift_table(result)
@@ -309,6 +328,7 @@ def build(result: PipelineResult, cfg: Mapping[str, Any] | None = None, *, now: 
         "windows": [{"window": label, "shifts": w, "hours": w * tr.SHIFT_H} for label, w in WINDOWS.items()],
         "leak_settings": settings.as_dict(),
         "bases": {name: analysis(basis_table(T, stable), settings) for name, stable in BASES.items()},
+        "excluded": excluded_rows(result),
     }
 
 
