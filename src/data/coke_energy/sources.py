@@ -256,6 +256,54 @@ def fetch_charges(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     return charge_table(raw, _to_ist_naive(raw.index), _received(raw))
 
 
+# Total moisture of the coke types (the SQL is fixed in code, so it reads the tables directly as the freshness check
+# does). Samples from well before the start: an offline coke can go two months without a sample and is still charged.
+FUEL_MOISTURE_LOOKBACK = pd.Timedelta(days=180)
+_FUEL_CODES = ("coke_1", "coke_2", "nut_coke_1", "nut_coke_2")
+_FUEL_SAMPLES_SQL = """
+select material_code as material, date_time as t, tm
+  from offline_feed.fuel_chemistry
+ where tm is not null and date_time >= :samples_from and material_code in :codes
+ order by date_time
+"""
+_FUEL_CHARGED_SQL = f"""
+select date_trunc('hour', date_time at time zone '{PLANT_TZ}') as hour,
+       {", ".join(f"sum({c}_mt) as {c}" for c in _FUEL_CODES)}
+  from offline_feed.charge_data
+ where date_time >= :start
+ group by 1
+ order by 1
+"""
+
+
+def fetch_fuel_moisture(start: pd.Timestamp) -> pd.DataFrame:
+    """Total moisture of the coke and nut coke charged per IST hour since ``start`` (``COKE_TM%``, ``NUTCOKE_TM%``):
+    the laboratory's ``tm`` of each coke type weighted by the tonnes of that type in the charge record
+    (``utils.coke_energy.fuel_moisture.hourly_total_moisture``)."""
+
+    from sqlalchemy import bindparam, text
+
+    from furnace_data.relational.engine import build_relational_engine
+    from utils.coke_energy.fuel_moisture import hourly_total_moisture
+
+    start_utc = _ist_to_utc(pd.Timestamp(start))
+    engine = build_relational_engine()
+    try:
+        with engine.connect() as con:
+            samples = pd.read_sql(
+                text(_FUEL_SAMPLES_SQL).bindparams(bindparam("codes", expanding=True)), con,
+                params={"samples_from": _ist_to_utc(pd.Timestamp(start) - FUEL_MOISTURE_LOOKBACK),
+                        "codes": list(_FUEL_CODES)})
+            charged = pd.read_sql(text(_FUEL_CHARGED_SQL), con, params={"start": start_utc})
+    finally:
+        engine.dispose()
+    samples["t"] = pd.to_datetime(samples["t"], utc=True).dt.tz_convert(PLANT_TZ).dt.tz_localize(None)
+    samples["tm"] = pd.to_numeric(samples["tm"], errors="coerce")
+    charged["hour"] = pd.to_datetime(charged["hour"])
+    charged = charged.set_index("hour").apply(pd.to_numeric, errors="coerce")
+    return hourly_total_moisture(charged, samples)
+
+
 def fetch_dpr_daily(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     """One row per IST date with the columns the web DPR reader produced (hm_t, dc_dust_t, gcp_dust_t, rates)."""
 

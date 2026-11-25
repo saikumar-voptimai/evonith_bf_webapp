@@ -12,7 +12,8 @@ a manual refresh counter), never on the large frames themselves:
 
     hourly dataset    re-read when the CSV file changes
     10-min online     disk cache per month (data.coke_energy.sources); re-read at most every refresh interval
-    Neon              HM/slag taps, DPR and the lab-sample times for the freshness notices
+    Neon              HM/slag taps, DPR, the total moisture of the coke charged (laboratory x charge record) and the
+                      lab-sample times for the freshness notices
     pipeline          re-run when any of the above changed (per-shift results are memoised, so this is quick)
     Rist frames       per set of shifts
 """
@@ -32,6 +33,7 @@ from config.config_loader import load_config
 from data.coke_energy import sources
 from data.coke_energy.freshness import fetch_offline_samples, material_names
 from utils.coke_energy.bf_balance import DEFAULTS, calibrate_loss
+from utils.coke_energy.fuel_moisture import with_total_moisture
 from utils.coke_energy.pipeline import PipelineResult, PipelineSettings, run_pipeline, shift_params
 from utils.coke_energy.rist_diagram import RistShift, shift_rist
 from utils.coke_energy.run_shifts import case_from_shift
@@ -125,6 +127,16 @@ def load_neon(start: str, clock: str, nonce: int) -> tuple[pd.DataFrame, pd.Data
     return hm, dpr, sorted(provisional)
 
 
+def load_fuel_moisture(start: str, clock: str, nonce: int) -> pd.DataFrame:
+    """Total moisture of the coke and nut coke charged per hour, from the laboratory and the charge record."""
+    return sources.fetch_fuel_moisture(pd.Timestamp(start))
+
+
+def no_fuel_moisture(start: str, clock: str, nonce: int) -> None:
+    """A loader set without the laboratory's moisture: the balance reads the hourly dataset's own columns."""
+    return None
+
+
 def dpr_carry_forward_days(cfg: Mapping | None = None) -> int:
     """Days after the last DPR the dust rates are carried forward (``coke_energy.yml → dpr_carry_forward_days``,
     default 3); the windows of those days are flagged provisional and evaluated again when the DPR arrives."""
@@ -147,13 +159,14 @@ def load_names() -> dict:
 
 @dataclass(frozen=True)
 class Loaders:
-    """The five loading steps; the Streamlit page passes its own cached versions."""
+    """The loading steps; the Streamlit page passes its own cached versions."""
 
     hourly: Callable[[str, int], pd.DataFrame]
     online: Callable[[str, str, int, str, str, float], pd.DataFrame]
     neon: Callable[[str, str, int], tuple[pd.DataFrame, pd.DataFrame, list]]
     lab: Callable[[str, str, int], tuple[pd.DataFrame, pd.DataFrame]]
     names: Callable[[], dict]
+    moisture: Callable[[str, str, int], pd.DataFrame | None] = no_fuel_moisture
 
 
 # Memoised steps for the API and the worker (same lifetimes as the Streamlit page: two loads each, names one day).
@@ -163,6 +176,7 @@ CACHED_LOADERS = Loaders(
     neon=memo(max_entries=2)(load_neon),
     lab=memo(max_entries=2)(load_lab_samples),
     names=memo(ttl_seconds=24 * 3600)(load_names),
+    moisture=memo(max_entries=2)(load_fuel_moisture),
 )
 
 
@@ -197,10 +211,18 @@ def source_times(
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=["source", "material", "t"])
 
 
+def hourly_frame(keys: DataKeys, loaders: Loaders, fd: pd.DataFrame | None = None) -> pd.DataFrame:
+    """The hourly dataset with the total moisture of the coke and nut coke charged (``COKE_TM%``, ``NUTCOKE_TM%``):
+    the frame every balance is built from, for the page and the twin alike."""
+
+    fd = loaders.hourly(keys.hourly_path, keys.hourly_mtime_ns) if fd is None else fd
+    return with_total_moisture(fd, loaders.moisture(keys.history_start, keys.clock, keys.nonce))
+
+
 def build_page_data(keys: DataKeys, settings: PipelineSettings, loaders: Loaders) -> PageData:
     """Load every source through ``loaders`` and run the pipeline (no caching of its own)."""
 
-    fd = loaders.hourly(keys.hourly_path, keys.hourly_mtime_ns)
+    fd = hourly_frame(keys, loaders)
     m10 = loaders.online(
         keys.history_start, keys.clock, keys.nonce, keys.fields_json, keys.cache_dir, keys.online_refresh_minutes
     )

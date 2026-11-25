@@ -43,12 +43,18 @@ def lab_samples(start: str, clock: str, nonce: int) -> tuple[pd.DataFrame, pd.Da
     return svc.load_lab_samples(start, clock, nonce)
 
 
+@st.cache_data(show_spinner="Reading the coke moisture from the laboratory…", max_entries=2)
+def fuel_moisture(start: str, clock: str, nonce: int) -> pd.DataFrame:
+    return svc.load_fuel_moisture(start, clock, nonce)
+
+
 @st.cache_data(show_spinner=False, ttl=24 * 3600)
 def names() -> dict:
     return svc.load_names()
 
 
-_LOADERS = svc.Loaders(hourly=hourly_dataset, online=online_data, neon=neon_data, lab=lab_samples, names=names)
+_LOADERS = svc.Loaders(hourly=hourly_dataset, online=online_data, neon=neon_data, lab=lab_samples, names=names,
+                       moisture=fuel_moisture)
 
 
 @st.cache_data(show_spinner="Balancing every shift and running both models…", max_entries=2)

@@ -72,6 +72,9 @@ def load_frames(keys: ce.DataKeys, loaders: ce.Loaders = ce.CACHED_LOADERS) -> T
     )
     try:
         hm, dpr, provisional = loaders.neon(keys.history_start, keys.clock, keys.nonce)
+        # the same database: without the laboratory's total moisture the coke's dry basis would be wrong, so the
+        # window waits as it does for the taps
+        fd = ce.hourly_frame(keys, loaders, fd)
     except Exception as exc:
         for key in ("hm_slag", "dpr"):  # one Neon fetch serves both
             health.record_failure(key, exc)

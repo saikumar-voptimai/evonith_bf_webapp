@@ -340,6 +340,7 @@ def test_dataset_service_maps_fuel_moisture_to_moisture_and_im(monkeypatch) -> N
             return pd.DataFrame(
                 {
                     "material_code": ["coke_1", "nut_coke_1", "pci_1"],
+                    "tm": [2.5, 6.0, None],
                     "moisture": [5.0, 7.0, 1.5],
                     "ash": [12.0, 13.0, 8.0],
                     "vm": [2.0, 3.0, 18.0],
@@ -377,6 +378,9 @@ def test_dataset_service_maps_fuel_moisture_to_moisture_and_im(monkeypatch) -> N
     assert float(df.iloc[0]["coke_im_pct"]) == 5.0
     assert float(df.iloc[0]["nutcoke_moist_pct"]) == 7.0
     assert float(df.iloc[0]["nutcoke_im_pct"]) == 7.0
+    # total moisture of the coke as charged, beside the inherent moisture (dry basis of the charge record)
+    assert float(df.iloc[0]["coke_tm_pct"]) == 2.5
+    assert float(df.iloc[0]["nutcoke_tm_pct"]) == 6.0
     assert float(df.iloc[0]["pci2_im_pct"]) == 1.5
     assert float(df.iloc[0]["pci2_ash_pct"]) == 8.0
     assert float(df.iloc[0]["pci2_vm_pct"]) == 18.0

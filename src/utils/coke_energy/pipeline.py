@@ -83,7 +83,9 @@ TRACKER_MIN_AGE_H = SHIFT_HOURS - 0.1
 CALIBRATION_METHODS = ("median", "exponential")
 # Shift-input column of the plant's fuel-rate tag (kg/tHM, hourly mean over the shift) and the charge-record fuels.
 FUEL_RATE_TAG = "h_ACT. FUEL RATEKG/THM."
-CHARGED_FUELS = ("COKE_CALC_MT", "NUTCOKE_CALC_MT", "PCI_CALC_MT")
+# The plant's fuel-rate tag is its coke rate + nut-coke rate + PCI rate, with the coke and nut coke DRY (25 Nov 2026).
+# The charge record on that basis: dry coke and dry nut coke (wet tonnes less the total moisture) and PCI as injected.
+RECORD_FUELS = ("COKE_DRY", "NUT_DRY", "PCI_CALC_MT")
 
 
 @dataclass(frozen=True)
@@ -203,12 +205,13 @@ def valid_shift_mask(S: pd.DataFrame) -> pd.Series:
 
 
 def charge_record_fuel(S: pd.DataFrame) -> pd.Series:
-    """Fuel of the charge record, kg per tonne of hot metal as charged: (coke + nut coke + PCI) / production."""
+    """Fuel of the charge record on the basis of the plant's fuel-rate tag, kg per tonne of hot metal: (dry coke + dry
+    nut coke + PCI as injected) / production."""
 
-    if any(c not in S.columns for c in (*CHARGED_FUELS, "PRODUCTIONTONNESPERHR")):
+    if any(c not in S.columns for c in (*RECORD_FUELS, "PRODUCTIONTONNESPERHR")):
         return pd.Series(np.nan, index=S.index)
     prod = S["PRODUCTIONTONNESPERHR"].where(S["PRODUCTIONTONNESPERHR"] > 0)
-    return S[list(CHARGED_FUELS)].sum(axis=1, min_count=len(CHARGED_FUELS)) * 1000 / prod
+    return S[list(RECORD_FUELS)].sum(axis=1, min_count=len(RECORD_FUELS)) * 1000 / prod
 
 
 def charge_record_deviation(S: pd.DataFrame) -> pd.Series:

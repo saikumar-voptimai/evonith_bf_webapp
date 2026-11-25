@@ -15,6 +15,8 @@ import re
 
 import pandas as pd, numpy as np
 
+from utils.coke_energy.fuel_moisture import on_total_moisture
+
 
 def shift_key(ts):
     h = ts.dt.hour
@@ -53,6 +55,9 @@ def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01', key_fn=shift_key):
     f = fd.copy()
     f = f[f.time >= start]
     f['skey'], f['sdate'], f['shift'] = key_fn(f.time)
+    # coke and nut coke are weighed wet: their dry basis is the laboratory's TOTAL moisture where the loader joined it
+    # (COKE_TM%, NUTCOKE_TM%); the dataset's own COKE_MOIST% holds the inherent moisture since 7 Dec 2025
+    f = on_total_moisture(f)
     f['ORE_DRY'] = f['ORE_CALC_MT'] * (1 - f['ORE_TM%'].clip(0, 15) / 100)
     f['PEL_DRY'] = f['TOTAL_PELLET_CALC_MT'] * (1 - f['PELLET_PCT_TM'].clip(0, 15) / 100)
     f['SIN_DRY'] = f['SINTER_CALC_MT']

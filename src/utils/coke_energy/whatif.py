@@ -16,6 +16,11 @@ from utils.coke_energy.run_shifts import case_from_shift, cooling_losses
 
 # Stability filter of the calibration pool: column of the shift balance -> inclusive band. Charged coke kg/tHM dry,
 # C and Fe closure %, blast meter against the reconciled blast %, cooling losses MJ/tHM, production t/h.
+# Blast-meter band reviewed on 25 Nov 2026, when the coke and nut coke went onto their total moisture: the carbon
+# charged is about 2 % lower and the reconciled blast with it, so the meter reads 5 % above it over Aug 2025 - Nov 2026
+# (median of the shifts passing the other tests; +1 % before) and 1 % under it since Oct 2026. Both lie well inside
+# -9 to +15 %, and moving the band changes the stable shifts by under 1 % (659 / 664 / 669 of 961 for -9..15, -7..17,
+# -6..18), so the web model's band stays.
 STABLE_BOUNDS = {"coke_kgthm_dry": (220, 400), "C_closure_pct": (-20, 5), "blast_meter_vs_reconciled_pct": (-9, 15),
                  "R_out_cooling_total": (40, 400), "Fe_closure_pct": (-6, 6), "prod_th": (75, 110)}
 

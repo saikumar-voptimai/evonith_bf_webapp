@@ -62,17 +62,18 @@ coke_energy:
   bad_shifts: ["2026-10-07_C"]
   max_ore_moisture_pct: 15.0
 
-  # Charge-record check (20 Nov 2026): a shift (or twin window) whose charge record disagrees with the plant's own fuel
-  # rate is a data error and is not balanced. Charge record = coke + nut coke + PCI as charged (hourly dataset *_CALC_MT)
-  # per tonne of hot metal; plant fuel rate = the ACT. FUEL RATE tag of the hourly dataset, mean over the shift. On
-  # normal shifts the record runs 3.0 % above the tag (robust SD 2.2 %, Sep 2025 - Nov 2026); the band is that +-4 SD.
+  # Charge-record check (20 Nov 2026; dry basis 25 Nov 2026): a shift (or twin window) whose charge record disagrees with
+  # the plant's own fuel rate is a data error and is not balanced. The plant's fuel-rate tag (ACT. FUEL RATE of the
+  # hourly dataset, mean over the shift) is its coke rate + nut-coke rate + PCI rate with the coke and nut coke DRY, so
+  # the record is put on that basis: dry coke + dry nut coke (wet tonnes less the laboratory's total moisture) + PCI as
+  # injected, per tonne of hot metal. On normal shifts the record then runs 0.5 % above the tag (robust SD 2.4 %,
+  # Sep 2025 - Nov 2026; as charged, wet, it ran 2.9 % above); the band is +-9 % (3.7 SD), as wide as before.
   # It catches coke counted at half in Nov 2025 (-21 to -33 %), PCI read 40-70 kg/tHM high on 6-16 Dec 2025 (+10 to
   # +18 %) and PCI read about 420 kg/tHM on 16-21 Oct 2026 (+43 %; TRACE 30-60 kg/tHM). None of those shifts was
-  # stable, so no calibration changes; over every balanced shift TRACE against charged coke went from CCC 0.32 / 0.29 /
-  # 0.25 (shift / day / week) to 0.81 / 0.90 / 0.96 and the raw mass closure from 104.2 % to 100.7 %
-  # (docs/burnt_vs_charged_coke.md, update of 20 Nov 2026). A shift without the tag is not checked; null turns it off.
+  # stable, so no calibration changes (docs/burnt_vs_charged_coke.md, updates of 20 and 25 Nov 2026). A shift without
+  # the tag is not checked; null turns it off.
   charge_record_check:
-    fuel_rate_band_pct: [-6.0, 12.0]
+    fuel_rate_band_pct: [-9.0, 9.0]
 
   # DPR carry-forward (21 Nov 2026): the plant enters the DPR a day or more late (on 21 Nov the last one was 17 Nov), and
   # a shift or twin window needs its day's dust-catcher and GCP dust. Days after the last DPR, up to this many, use the

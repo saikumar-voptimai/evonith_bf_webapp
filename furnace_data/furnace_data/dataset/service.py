@@ -445,7 +445,12 @@ class DatasetService:
                     quantities,
                     fuel,
                     material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("coke_")},
+                    # ``moisture`` is the inherent moisture of the air-dried sample (about 0.45 %); ``tm`` is the
+                    # total moisture of the coke as charged (2-6 %), the one that turns wet tonnes into dry tonnes.
+                    # coke_moist_pct keeps the inherent moisture it has carried since 7 Dec 2025: it is a feature
+                    # of the data-driven models.
                     column_map={
+                        "tm": "coke_tm_pct",
                         "moisture": ["coke_moist_pct", "coke_im_pct"],
                         "ash": "coke_ash_pct",
                         "vm": "coke_vm_pct",
@@ -457,6 +462,7 @@ class DatasetService:
                     fuel,
                     material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("nut_coke_")},
                     column_map={
+                        "tm": "nutcoke_tm_pct",
                         "moisture": ["nutcoke_moist_pct", "nutcoke_im_pct"],
                         "ash": "nutcoke_ash_pct",
                         "vm": "nutcoke_vm_pct",

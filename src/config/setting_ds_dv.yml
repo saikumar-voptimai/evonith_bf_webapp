@@ -688,6 +688,7 @@ rename_dict:
     "total_heat_load": "TOTAL HEAT LOAD"
 
     "nutcoke_moist_pct": "NUTCOKE_MOIST%"
+    "nutcoke_tm_pct": "NUTCOKE_TM%"
     "nutcoke_prime_mt": "NUTCOKE_CALC_MT"
     "nutcoke_vm_pct": "NUTCOKE_VM%"
     "nutcoke_im_pct": "NUTCOKE_IM%"
@@ -726,6 +727,7 @@ rename_dict:
     "coke_im_pct": "COKE_IM%"
     "coke_fc_pct": "COKE_FC%"
     "coke_moist_pct": "COKE_MOIST%"
+    "coke_tm_pct": "COKE_TM%"
     "coke_mt": "COKE_CALC_MT"
     "coke_off_mt": "COKE_OFF_MT"
     "coke_on_mt": "COKE_ON_MT"
@@ -851,12 +853,14 @@ cleaning:
       - coke_im_pct
       - coke_fc_pct
       - coke_moist_pct
+      - coke_tm_pct
       - coke_mt
       - coke_m40
       - coke_m10
       - coke_csr
       - coke_cri
       - nutcoke_moist_pct
+      - nutcoke_tm_pct
       - nutcoke_vm_pct
       - nutcoke_im_pct
       - nutcoke_fc_pct
