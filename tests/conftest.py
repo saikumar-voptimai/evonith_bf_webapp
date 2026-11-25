@@ -11,6 +11,8 @@ import pytest
 os.environ.setdefault("COKE_ENERGY_WEATHER_LIVE", "0")      # no Open-Meteo request from the test suite
 os.environ.setdefault("COKE_ENERGY_TODAY", "2026-10-15")   # fixed plan day: its Open-Meteo moisture is in the shipped file
 os.environ.setdefault("BF_TWIN_DB_URL", "off")             # no job archive into a DATABASE_URL of the developer's shell
+# The admin's plant tables on the test's twin store, never on DATABASE_URL (data.db loads the developer's .env).
+os.environ.setdefault("BF_PLANT_DB_URL", "twin")
 # A test worker schedules no job that reads plant data (forecasts, twin, optimiser, calibration, STRATA-Learn, shift
 # reports, STRATA live point, shift records) and catches up nothing at start; the schedule tests enable both explicitly.
 os.environ.setdefault("BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.,strata.,shift.")

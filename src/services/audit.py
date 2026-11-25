@@ -16,7 +16,9 @@ ends, the audit row is added to the same transaction, so the change and its row 
 None, is refused and rolled back. Read the object ``FOR UPDATE`` when two administrators can change it at once, so
 that ``before`` is the value the write replaced. The guarantee covers writes through ``write.session`` (the twin
 store's database, any schema in it); a change elsewhere (Redis, a file) made inside the block is kept when the audit
-row fails, so make it the block's last step.
+row fails, so make it the block's last step. A write on another database (``target=``, the plant tables of
+``services.plant_db``) gets its own transaction: both are flushed before either commits, then the audit row commits
+before the change.
 
 Values are stored as JSON (``json_safe``); ``changes`` lists the fields that differ. Pure apart from the store calls;
 no Streamlit (tests/test_services_architecture.py).
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import math
 import uuid
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -38,11 +41,13 @@ from pathlib import PurePath
 from typing import Any, Literal
 
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from data.twin.models import AuditLog
 from data.twin.repositories import Actor, TwinStore, audit_row, utcnow
 from services.twin_views import utc
+
+log = logging.getLogger(__name__)
 
 #: Lengths of the audit log's columns (``data.twin.models.AuditLog``).
 MAX_ACTION = 64
@@ -114,9 +119,16 @@ def admin_write(
     *,
     details: Mapping[str, Any] | None = None,
     at: datetime | None = None,
+    target: sessionmaker[Session] | None = None,
 ) -> Iterator[AdminWrite]:
     """A transaction on the twin store for one admin write and its audit row (one row, with ``before`` and
-    ``after``). An exception in the block, or in writing the row, rolls back both."""
+    ``after``). An exception in the block, or in writing the row, rolls back both.
+
+    ``target``: the sessions of another database holding the object (``services.plant_db``: the plant tables);
+    ``write.session`` is then a transaction there. Both are flushed before either commits, so a refused write or audit
+    row leaves both unchanged; then the audit row commits first and the change second, so no change is ever stored
+    without its row. Should the change's commit fail after that (the connection lost between the two), the error is
+    logged with the audit row's id and raised."""
     _checked_text("an actor", actor.name, MAX_ACTOR)
     _checked_text("an action", action, MAX_ACTION)
     _checked_text("an object type", object_type, MAX_OBJECT_TYPE)
@@ -124,25 +136,48 @@ def admin_write(
     if at is not None and (at.tzinfo is None or at.utcoffset() is None):
         raise ValueError(f"at must be timezone-aware, got {at!r}")
     when = utc(at) if at is not None else utcnow()
-    with store.sessions.begin() as session:
-        write = AdminWrite(session, actor, action, object_type, key, when, dict(details or {}))
+    if target is None or target is store.sessions:
+        with store.sessions.begin() as session:
+            write = AdminWrite(session, actor, action, object_type, key, when, dict(details or {}))
+            yield write
+            _add_entry(write, session)
+        return
+    with target() as change, store.sessions() as session:
+        write = AdminWrite(change, actor, action, object_type, key, when, dict(details or {}))
         yield write
-        before, after = _values("before", write.before), _values("after", write.after)
-        if before is None and after is None:
-            raise AuditIncomplete("an admin write changes an object: before and after cannot both be None")
-        session.flush()  # the write's own statements first: a refused write fails before its audit row is added
-        write.entry = audit_row(
-            session,
-            actor,
-            action,
-            object_type,
-            write.object_id,
-            json_safe(write.details),
-            when,
-            before=before,
-            after=after,
-        )
-        session.flush()
+        _add_entry(write, session)
+        session.commit()
+        try:
+            change.commit()
+        except Exception:
+            log.error(
+                "admin write %s on %s %s: audit row %s committed, the change failed to commit",
+                action,
+                object_type,
+                write.object_id,
+                write.entry.id if write.entry is not None else None,
+            )
+            raise
+
+
+def _add_entry(write: AdminWrite, session: Session) -> None:
+    """Flush the write's own statements, then add and flush its audit row to ``session`` (the twin store's)."""
+    before, after = _values("before", write.before), _values("after", write.after)
+    if before is None and after is None:
+        raise AuditIncomplete("an admin write changes an object: before and after cannot both be None")
+    write.session.flush()  # the write's own statements first: a refused write fails before its audit row is added
+    write.entry = audit_row(
+        session,
+        write.actor,
+        write.action,
+        write.object_type,
+        write.object_id,
+        json_safe(write.details),
+        write.at,
+        before=before,
+        after=after,
+    )
+    session.flush()
 
 
 # ------------------------------------------------------------------------------------------------------ values

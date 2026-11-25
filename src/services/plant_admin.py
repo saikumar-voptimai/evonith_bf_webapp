@@ -12,10 +12,12 @@ History is SCD Type-2 as wide snapshots: an assignment or a burden change adds a
 before the effective time, with the changed fields) and leaves every earlier row as it is; the current mapping is the
 latest snapshot. Deleting a snapshot is an explicit admin action, as in the Streamlit tools.
 
-The tables are read and written on the twin store's database (``BF_TWIN_DB_URL``, else ``DATABASE_URL``: the plant's
-Neon database, which holds the ``identity``, ``plant_master`` and ``ops_config`` schemas), so every write commits
-together with its audit row (``services.audit.admin_write``: ``user.create``, ``hopper.assign``, ``hopper.delete``,
-``burden.update``, ``burden.delete``). Audit rows record the stored values (material codes, never a password hash).
+The tables are read and written on the plant database (``services.plant_db``: ``BF_PLANT_DB_URL``, else
+``DATABASE_URL``, the database of the Streamlit tools, the sign-in and the data fetches), not on the twin store's
+(``BF_TWIN_DB_URL`` may be a Neon branch whose copies of these tables are stale). Every write has its audit row in the
+twin store (``services.audit.admin_write``: ``user.create``, ``hopper.assign``, ``hopper.delete``, ``burden.update``,
+``burden.delete``): in the same transaction when both are one database, else committed just before the change.
+Audit rows record the stored values (material codes, never a password hash).
 
 Times are timezone-aware (UTC in the responses). No Streamlit (tests/test_services_architecture.py).
 """
@@ -41,7 +43,8 @@ from furnace_data.relational import (
     UserRepository,
     UserRole,
 )
-from services import audit
+from services import audit, plant_db
+from services.plant_db import PlantDatabase
 from services.twin_views import utc
 
 ROLES: tuple[str, ...] = tuple(role.value for role in (UserRole.USER, UserRole.SUPERVISOR, UserRole.ADMIN))
@@ -51,7 +54,7 @@ _SCHEMAS = "identity, plant_master and ops_config"
 
 
 class Unavailable(RuntimeError):
-    """The plant configuration tables cannot be read on the twin store's database."""
+    """The plant configuration tables cannot be read on the plant database."""
 
 
 class Invalid(ValueError):
@@ -66,11 +69,15 @@ class NotFound(LookupError):
     """History rows that do not exist."""
 
 
-def _unavailable(exc: Exception) -> Unavailable:
+def _unavailable(exc: Exception, plant: PlantDatabase) -> Unavailable:
     return Unavailable(
-        f"The plant configuration tables ({_SCHEMAS}) are not readable on the twin store's database: "
+        f"The plant configuration tables ({_SCHEMAS}) are not readable on the plant database ({plant.label}): "
         f"{type(exc).__name__}."
     )
+
+
+def _plant(store: TwinStore) -> PlantDatabase:
+    return plant_db.for_store(store)
 
 
 def _now(now: datetime | None) -> datetime:
@@ -105,10 +112,11 @@ def _unique_ids(ids: Iterable[int]) -> list[int]:
 def users_view(store: TwinStore) -> dict[str, Any]:
     """Every account (active or not) by username with its role and role assignments, and the roles a new account
     can have."""
+    plant = _plant(store)
     try:
-        users = UserRepository(store.sessions).list_users()
+        users = UserRepository(plant.sessions).list_users()
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     return {
         "roles": list(ROLES),
         "users": [{**u, "created_at": utc(u["created_at"]), "updated_at": utc(u["updated_at"])} for u in users],
@@ -131,8 +139,9 @@ def register_user(store: TwinStore, actor: Actor, username: str, password: str, 
         raise Invalid(f"Unknown role {role!r}: one of {', '.join(ROLES)}")
     if len(name) > audit.MAX_OBJECT_ID:
         raise Invalid(f"A username has at most {audit.MAX_OBJECT_ID} characters")
+    plant = _plant(store)
     try:
-        with audit.admin_write(store, actor, "user.create", "user", name) as write:
+        with audit.admin_write(store, actor, "user.create", "user", name, target=plant.sessions) as write:
             try:
                 user = UserRepository.create_user(
                     write.session, username=name, password_hash=password_digest(secret), role=role
@@ -152,18 +161,18 @@ def register_user(store: TwinStore, actor: Actor, username: str, password: str, 
                 "updated_at": utc(user.updated_at),
             }
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     return {"user": view, "audit_id": int(write.entry.id)}
 
 
 # ------------------------------------------------------------------------------------------------------- hoppers
 
 
-def _hopper_service(store: TwinStore) -> HopperConfigService:
+def _hopper_service(plant: PlantDatabase) -> HopperConfigService:
     try:
-        return HopperConfigService(session_factory=store.sessions)
+        return HopperConfigService(session_factory=plant.sessions)
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     except ValueError as exc:  # materials_map.yml names a material that plant_master does not hold
         raise Unavailable(f"The material map does not match plant_master: {exc}") from exc
 
@@ -174,20 +183,21 @@ def _hopper_audit(row: HopperRawMaterialHistory | None) -> dict[str, Any] | None
     return {"date_time": row.date_time, **{column: getattr(row, column) for column in HOPPER_COLUMNS}}
 
 
-def _usernames(store: TwinStore) -> dict[str, str]:
-    return UserRepository(store.sessions).usernames_by_id()
+def _usernames(plant: PlantDatabase) -> dict[str, str]:
+    return UserRepository(plant.sessions).usernames_by_id()
 
 
 def hopper_view(store: TwinStore) -> dict[str, Any]:
     """The active hoppers in plant order, the materials an assignment can name (``UNASSIGNED`` first, then the client
     names of ``materials_map.yml`` active in ``plant_master``), the current mapping (the latest snapshot, as the
     Streamlit tool shows it) and every snapshot newest first, materials as client names."""
-    service = _hopper_service(store)
+    plant = _plant(store)
+    service = _hopper_service(plant)
     try:
         history = service.get_hopper_material_history()
-        names = _usernames(store)
+        names = _usernames(plant)
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     rows = [
         {
             "id": int(row["id"]),
@@ -219,7 +229,8 @@ def assign_hoppers(
         Invalid: a hopper that is not active, a changed hopper whose material is not offered, a time without its zone.
     """
     when = _aware("effective_from", effective_from)
-    service = _hopper_service(store)
+    plant = _plant(store)
+    service = _hopper_service(plant)
     unknown = sorted(set(materials) - set(service.hoppers))
     if unknown:
         raise Invalid(f"Unknown or inactive hopper(s): {', '.join(unknown)}")
@@ -237,7 +248,12 @@ def assign_hoppers(
         except ValueError as exc:  # a material inactive in plant_master
             raise Invalid(str(exc)) from exc
         with audit.admin_write(
-            store, actor, "hopper.assign", "hopper_mapping", details={"effective_from": when, "changed": changed}
+            store,
+            actor,
+            "hopper.assign",
+            "hopper_mapping",
+            details={"effective_from": when, "changed": changed},
+            target=plant.sessions,
         ) as write:
             base, row = HopperHistoryRepository.add_snapshot(
                 write.session,
@@ -250,7 +266,7 @@ def assign_hoppers(
             write.details["based_on"] = None if base is None else int(base.id)
             write.before, write.after = _hopper_audit(base), _hopper_audit(row)
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     return {"written": True, "id": int(row.id), "changed": list(changed), "audit_id": int(write.entry.id)}
 
 
@@ -262,8 +278,11 @@ def delete_hopper_history(store: TwinStore, actor: Actor, ids: Iterable[int]) ->
         Invalid: no id. NotFound: an id that does not exist (nothing is deleted).
     """
     wanted = _unique_ids(ids)
+    plant = _plant(store)
     try:
-        with audit.admin_write(store, actor, "hopper.delete", "hopper_mapping", _ids_text(wanted)) as write:
+        with audit.admin_write(
+            store, actor, "hopper.delete", "hopper_mapping", _ids_text(wanted), target=plant.sessions
+        ) as write:
             rows = HopperHistoryRepository.delete_rows(write.session, wanted)
             missing = sorted(set(wanted) - {int(r.id) for r in rows})
             if missing:
@@ -271,7 +290,7 @@ def delete_hopper_history(store: TwinStore, actor: Actor, ids: Iterable[int]) ->
             write.before = {str(r.id): _hopper_audit(r) for r in rows}
             write.after = None
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     return {"deleted": wanted, "audit_id": int(write.entry.id)}
 
 
@@ -330,12 +349,13 @@ def burden_view(store: TwinStore, now: datetime | None = None) -> dict[str, Any]
     """The fields, the snapshot in force at ``now`` (as the Streamlit tool shows it) and every snapshot newest first.
     Numbers: rings in chute rotations, angles in °, discharge times in s."""
     at = _now(now)
-    repository = BurdenHistoryRepository(store.sessions)
+    plant = _plant(store)
+    repository = BurdenHistoryRepository(plant.sessions)
     try:
         history = repository.get_burden_history()
-        names = _usernames(store)
+        names = _usernames(plant)
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     rows = [
         {
             "id": int(row["id"]),
@@ -368,8 +388,9 @@ def update_burden(
     """
     when = _aware("effective_from", effective_from)
     at = _now(now)
+    plant = _plant(store)
     try:
-        current = BurdenHistoryRepository(store.sessions).get_all_current_burden_values(at)
+        current = BurdenHistoryRepository(plant.sessions).get_all_current_burden_values(at)
         try:
             changed = plant_config.burden_changes(values, current)
         except ValueError as exc:
@@ -377,7 +398,12 @@ def update_burden(
         if not changed:
             return {"written": False, "id": None, "changed": [], "audit_id": None}
         with audit.admin_write(
-            store, actor, "burden.update", "burden_distribution", details={"effective_from": when}
+            store,
+            actor,
+            "burden.update",
+            "burden_distribution",
+            details={"effective_from": when},
+            target=plant.sessions,
         ) as write:
             base, row = BurdenHistoryRepository.add_snapshot(
                 write.session,
@@ -391,7 +417,7 @@ def update_burden(
             write.details["based_on"] = None if base is None else int(base.id)
             write.before, write.after = _burden_audit(base), _burden_audit(row)
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     return {"written": True, "id": int(row.id), "changed": list(changed), "audit_id": int(write.entry.id)}
 
 
@@ -403,8 +429,11 @@ def delete_burden_history(store: TwinStore, actor: Actor, ids: Iterable[int]) ->
         Invalid: no id. NotFound: an id that does not exist (nothing is deleted).
     """
     wanted = _unique_ids(ids)
+    plant = _plant(store)
     try:
-        with audit.admin_write(store, actor, "burden.delete", "burden_distribution", _ids_text(wanted)) as write:
+        with audit.admin_write(
+            store, actor, "burden.delete", "burden_distribution", _ids_text(wanted), target=plant.sessions
+        ) as write:
             rows = BurdenHistoryRepository.delete_rows(write.session, wanted)
             missing = sorted(set(wanted) - {int(r.id) for r in rows})
             if missing:
@@ -412,7 +441,7 @@ def delete_burden_history(store: TwinStore, actor: Actor, ids: Iterable[int]) ->
             write.before = {str(r.id): _burden_audit(r) for r in rows}
             write.after = None
     except ProgrammingError as exc:
-        raise _unavailable(exc) from exc
+        raise _unavailable(exc, plant) from exc
     return {"deleted": wanted, "audit_id": int(write.entry.id)}
 
 

@@ -38,7 +38,7 @@ from furnace_data.relational import (
     build_relational_session_factory,
 )
 from furnace_data.relational import Base as RelationalBase
-from services import audit, plant_admin
+from services import audit, plant_admin, plant_db
 from tests.module_stubs import import_with_stubs
 from tests.pg_server import fresh_database, needs_postgres, postgres_server
 from tests.test_twin_store import alembic_config
@@ -534,6 +534,79 @@ def test_the_views_read_the_accounts_hoppers_and_burden(database, store) -> None
     assert burden["at"] == T_ASSIGN and burden["current"]["date_time"] == T_IMPORT  # in force now, not the future
     assert burden["current"]["values"]["coke_discharge_time"] == 92.0
     assert burden["history"][0]["user_name"] == "adm" and len(burden["history"]) == 2
+
+
+def test_the_plant_database_is_the_plant_url_else_the_twin_store(monkeypatch) -> None:
+    twin = TwinStore.from_url("postgresql://bf@twin.example:5432/neondb")
+    assert twin is not None
+    try:
+        monkeypatch.setenv(plant_db.PLANT_URL_ENV, "twin")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://bf@plant.example:5432/evonith_db")
+        assert plant_db.plant_url() is None
+        assert plant_db.for_store(twin) == plant_db.PlantDatabase(twin.sessions, True, "twin.example/neondb")
+        monkeypatch.delenv(plant_db.PLANT_URL_ENV)
+        assert plant_db.plant_url() == "postgresql://bf@plant.example:5432/evonith_db"
+        plant = plant_db.for_store(twin)
+        assert (plant.shared, plant.label) == (False, "plant.example/evonith_db")
+        assert plant_db.for_store(twin) is plant  # one engine per URL
+        # The same database under another password or options is the twin store's.
+        monkeypatch.setenv(plant_db.PLANT_URL_ENV, "postgresql://bf:secret@twin.example:5432/neondb?sslmode=require")
+        assert plant_db.for_store(twin).shared
+        monkeypatch.delenv(plant_db.PLANT_URL_ENV)
+        monkeypatch.delenv("DATABASE_URL")
+        assert plant_db.for_store(twin).shared
+    finally:
+        plant_db.dispose()
+        twin.dispose()
+
+
+@needs_postgres
+def test_on_a_separate_plant_database_the_rows_go_there_and_the_audit_rows_to_the_twin_store(
+    pg_server, monkeypatch
+) -> None:
+    with fresh_database(pg_server) as plant_url, fresh_database(pg_server) as twin_url:
+        seed(plant_url)
+        command.upgrade(alembic_config(twin_url), "head")  # the twin schema only, no plant tables
+        monkeypatch.setenv(plant_db.PLANT_URL_ENV, plant_url)
+        twin = TwinStore.from_url(twin_url)
+        assert twin is not None
+        try:
+            before = dump(plant_url)
+            view = plant_admin.hopper_view(twin)
+            assert view["current"]["date_time"] == T_IMPORT
+            assigned = plant_admin.assign_hoppers(
+                twin, ACTOR, hopper_form(view["current"]["materials"], **ASSIGN), T_ASSIGN
+            )
+            created = plant_admin.register_user(twin, ACTOR, "qa", "pw", "user")
+            burden_id = plant_admin.burden_view(twin)["history"][0]["id"]
+            changed = plant_admin.update_burden(twin, ACTOR, {"coke_p03_angles": 31.5}, T_ASSIGN)
+            after = dump(plant_url)
+            assert [r["date_time"] for r in after["hoppers"]] == [T_IMPORT, T_ASSIGN]
+            assert after["hoppers"][1]["user_modified"] == "adm"
+            assert [u["username"] for u in after["users"]] == ["adm", "admin", "qa"]
+            assert [r["coke_p03_angles"] for r in after["burden"]] == [before["burden"][0]["coke_p03_angles"], 31.5]
+            assert audit_rows(plant_url) == []
+            assert [(r["id"], r["action"]) for r in audit_rows(twin_url)] == [
+                (assigned["audit_id"], "hopper.assign"),
+                (created["audit_id"], "user.create"),
+                (changed["audit_id"], "burden.update"),
+            ]
+            assert plant_admin.users_view(twin)["users"][-1]["username"] == "qa"
+
+            # A refused change or a refused audit row leaves both databases as they were.
+            with pytest.raises(plant_admin.Conflict):
+                plant_admin.register_user(twin, ACTOR, "qa", "pw", "user")
+
+            def refuse(*args, **kwargs):
+                raise RuntimeError("audit log refused")
+
+            monkeypatch.setattr(audit, "audit_row", refuse)
+            with pytest.raises(RuntimeError, match="audit log refused"):
+                plant_admin.delete_burden_history(twin, ACTOR, [burden_id])
+            assert dump(plant_url) == after and len(audit_rows(twin_url)) == 3
+        finally:
+            twin.dispose()
+            plant_db.dispose()
 
 
 @needs_postgres

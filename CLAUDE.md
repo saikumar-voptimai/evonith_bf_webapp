@@ -1041,6 +1041,16 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   model `strata_flow.plant_effects.leak_for_gap`, thresholds `coke_energy.yml -> twin.burnt_vs_charged.leak_check`),
   bases all / stable; 8 s for both on 1,325 shifts, so `twin.trace` builds it after the TRACE view (`trace.refresh`) into
   `burnt_vs_charged.json` beside it; `GET /api/admin/burnt-vs-charged?basis=` (`api/routers/burnt_vs_charged.py`, admin).
+  Charge-record check (20 Nov 2026): the pipeline leaves out a shift whose charge record (coke + nut coke + PCI as
+  charged) lies outside −6 to +12 % of the plant's fuel-rate tag (`ACT. FUEL RATE`; `pipeline.exclusion_reasons`,
+  `coke_energy.yml → charge_record_check`, `PipelineSettings.fuel_rate_band_pct`, None = the web model): coke counted
+  at half in Nov 2025, PCI read high on 6-16 Dec 2025 and 16-21 Oct 2026. The twin window fails with the reason; the
+  analysis lists them (`excluded`, page panel *Shifts left out*). All-shift CCC 0.32 / 0.29 / 0.25 → 0.81 / 0.90 / 0.96
+  (shift / day / week); no stable shift is among them (docs/burnt_vs_charged_coke.md, update of 20 Nov 2026).
+  Re-evaluation (21 Nov 2026): `services.twin.due_windows` also takes failed windows of the backfill period and, over
+  `coke_energy.yml → dpr_carry_forward_days` (7; was a fixed 3), windows flagged `provisional_dpr` whose day's DPR has
+  arrived since (`twin.provisional_dpr_dates`); before, a window that failed on a late DPR stayed failed. The
+  18–20 Nov charged − burnt step (+28 kg/tHM) is attributed in docs/burnt_vs_charged_coke.md (update of 21 Nov 2026).
 - Calibration console (SV-4.6, `/admin/calibration`): `services/calibration_console.py` reads what `calibration.nightly`
   stored (`day_calibration`, now with the window's `mask` = `utils.burden_engine.calibration.shift_mask` over
   `whatif.STABLE_BOUNDS` and the calibration `settings`; values unrounded = `live_calibration`), the Jacobian cache
@@ -1051,9 +1061,12 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
 - User, hopper and burden admin (SV-4.7, `/admin/users`, tabs `?tab=hoppers|burden`): the Welcome page's tools
   (`ui/user_management`, `hopper_admin_page`, `burden_admin_page`) and `services/plant_admin.py` share the form logic
   (`domain/plant_config.py`) and the session-level writes of `furnace_data.relational` (`UserRepository.create_user`,
-  `HopperHistoryRepository` / `BurdenHistoryRepository.add_snapshot` and `delete_rows`); the service writes them on the
-  twin store's database (Neon `identity` / `plant_master` / `ops_config`) inside `audit.admin_write` (`user.create`,
-  `hopper.assign`, `hopper.delete`, `burden.update`, `burden.delete`). A save adds a wide snapshot effective from an
+  `HopperHistoryRepository` / `BurdenHistoryRepository.add_snapshot` and `delete_rows`); the service reads and writes
+  them on the plant database (`services/plant_db.py`: `BF_PLANT_DB_URL`, else `DATABASE_URL` = the Streamlit tools',
+  the sign-in's and the data fetches'; 25 Nov 2026: `BF_TWIN_DB_URL` is the Neon `developer` branch, whose `identity` /
+  `plant_master` / `ops_config` copies stop in May 2026) inside `audit.admin_write(..., target=)` (`user.create`,
+  `hopper.assign`, `hopper.delete`, `burden.update`, `burden.delete`; audit row in the twin store, one transaction when
+  both are one database, else the audit row commits just before the change). A save adds a wide snapshot effective from an
   aware time and keeps the earlier rows (SCD-2). `GET/POST /api/admin/users|hoppers|burden`, `DELETE
   .../hoppers|burden/history?ids=` (admin); 503 when the plant tables are missing.
 - Validation and STRATA-Learn console (SV-4.5, `/admin/validation`): `services/learn_console.py` reads what `learn.shadow`
@@ -1298,4 +1311,6 @@ Worker:     BF_REDIS_URL (API and worker), BF_WORKER_POOL, BF_WORKER_MAX_JOBS, B
             BF_WORKER_LIVE_STATUS (0 = no live furnace-status snapshots from the heartbeat; tests: 0),
             BF_STRATA_SOLVERS (network-solver processes per STRATA-ω run; default min(8, cpus); 0 or 1 = serial; tests: 0)
 Twin store: BF_TWIN_DB_URL (default DATABASE_URL; `off` disables), BF_TEST_DATABASE_URL (tests; else a local cluster)
+Plant admin: BF_PLANT_DB_URL (admin users / hoppers / burden; default DATABASE_URL; `twin` = the twin store's database;
+            tests: twin, since data.db loads .env)
 ```
