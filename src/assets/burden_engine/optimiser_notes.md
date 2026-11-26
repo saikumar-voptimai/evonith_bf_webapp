@@ -223,9 +223,9 @@ The page opens with the model against the furnace, before any plan.
   blast +40 °C 177 / 187, slag cap +10 kg/tHM 51 / 46, CaO/SiO₂ floor −0.01 3 / 2; pellet floor −2 pt 42 under
   Fixed-ω (STRATA's single-step re-run stops at a local optimum; the sweep below gives Rs 11 for 10 → 7.5 %).
 * **Against the figures of 25 Oct 2026** (Fixed-ω coke 303.2 kg/tHM, Rs 29,828/tHM, same yard, prices and plan day):
-  the PCI and nut-coke inputs became dry (−2.8 kg/tHM coke); the recalibration lowered the calibration's own PCI and
-  nut coke, so the plan's 190 and 70 kg/tHM lie further above it (−7.8); page 9's slag basis removed the limestone
-  (−2.8). Earlier-basis figures in decks and documents dated before 25 Nov 2026 are not comparable with these.
+  the PCI and nut-coke inputs became dry (−2.8 kg/tHM coke); the recalibration −7.8, mainly because the calibration's
+  own PCI and nut coke are lower, so the plan's 190 and 70 kg/tHM lie further above it (−6.1); page 9's slag basis
+  removed the limestone (−2.8). Earlier-basis figures in decks and documents dated before 25 Nov 2026 are not comparable with these.
 * Pellet share at 2,270 t/d (rest re-optimised, 10 % yard floor relaxed): STRATA-ω coke falls about 1.2 kg/tHM per
   2.5 pt; its cost is flat within Rs 30/tHM between 0 and 10 % pellet (lowest Rs 29,710 at 0 %) and rises to
   Rs 29,851 at 25 %; tiers High to 15 %, Medium to 20 %, Low to 25 %, Investigate above. Fixed-ω coke is flat and its
