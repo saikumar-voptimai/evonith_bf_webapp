@@ -69,7 +69,8 @@ TRANSIT_UNITS = {
 }
 OPTIMISER_UNITS = {
     "cost": "Rs/tHM (ore + flux + fuel - slag credit); saving_lakh_rs_d lakh Rs/d",
-    "coke": "kg/tHM dry unless named wet; fuel rate kg/tHM; burden and flux kg/tHM",
+    "coke": "coke and nut coke kg/tHM dry unless named wet (as charged), PCI as injected; fuel_rate_kg_thm = coke dry "
+    "+ nut coke dry + PCI (the plant's fuel-rate basis), fuel_charged_kg_thm the as-charged sum; burden and flux kg/tHM",
     "production": "t/d (production_t_h t/h)",
     "process": "temperatures degC, pressures bar g (pressure drop bar), gas flows Nm3/h",
     "times": "ISO 8601, IST (+05:30)",

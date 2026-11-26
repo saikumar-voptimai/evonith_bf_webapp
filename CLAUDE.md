@@ -843,7 +843,10 @@ day's limits. Coke for every candidate blend comes from the two-zone (Rist) bala
 (page 10's model, unchanged), calibrated on the last 14 days of stable shifts. PCI and nut coke are fixed inputs per
 run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI the live tag's 1-h mean
 (`services.optimiser.live_pci_kg_thm`, `BF_LIVE_PCI=0` in tests; else the regime median, then the calibration), nut coke
-70 kg/tHM; page 11 has an *Override PCI* toggle, the SPA field overrides when filled.
+70 kg/tHM **dry, the plant's nut-coke rate** (26 Nov 2026: every boundary input — the config, the API's
+`nut_coke_kg_thm`, page 11's field — is the dry rate and `scenarios.nut_as_charged` converts it once to the engine's
+`Settings.nut_plant`, as charged, with the calibration case's nut-coke moisture; an explicit `nut_plant=` stays as
+charged); page 11 has an *Override PCI* toggle, the SPA field overrides when filled.
 
 - **Modes:** Step 1 cheapest production level (`Engine.min_total_cost` + frontier), Step 2 fixed production
   (`min_cost(fuel=True)` next to `fuel=False`, the page-9 objective), maximum production (`max_production`).
@@ -853,9 +856,13 @@ run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI th
   (`run_today`, last 24 h of `charge_data`) and shows the saving against it. A second tab compares burnt with charged
   coke per averaging window (`utils/coke_energy/transit.py`, CCC and Bland–Altman; `docs/burnt_vs_charged_coke.md`).
 - **Layout and commentary:** results follow page 9 (overview strip, Cost / Fuel / Slag / Charging panels with the plant
-  bands from `utils/slag_bands.py`, blend table beside a donut; user decision 11 Nov 2026: fuel figures as charged
-  (wet coke, dry alongside) and blend shares / kg with two decimals on page 11 and the SPA, so the parts add up as
-  shown; the run list's `coke_kg_thm` is wet). *Generate commentary* sends the optimiser notes
+  bands from `utils/slag_bands.py`, blend table beside a donut; blend shares / kg with two decimals on page 11 and the
+  SPA, so the parts add up as shown (user decision 11 Nov 2026). **Fuel figures on the plant's basis since 26 Nov 2026**
+  (the plant's rate tags are dry; this replaces "as charged first" of 11 Nov): coke dry + nut coke dry + PCI as
+  injected = fuel rate (`out.fuel_rate`, BAND-01's basis in the LP row and `violation`; `scenarios.fuel_split`), with
+  the as-charged figures beside (`K_wet`, `nut_wet`, `fuel_charged`; API `coke_wet_kg_thm`, `nut_coke_wet_kg_thm`,
+  `fuel_charged_kg_thm`); the run list's `coke_kg_thm` is dry (a run stored before keeps the as-charged value it was
+  stored with); cost and charging tonnes stay on as-charged tonnes). *Generate commentary* sends the optimiser notes
   (`src/assets/burden_engine/optimiser_notes.md`), the fact register as a table and the run to the LLM; context is
   built in `utils/burden_engine/commentary.py` (pure, tested), the panel is `ui/burden_optimiser/commentary.py`.
 - **Engine:** `src/utils/burden_engine/` — pure numerical (no Streamlit). Sequential LP (HiGHS) re-linearising the
@@ -964,7 +971,9 @@ run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI th
   calls without settings). `COKE_ENERGY_TODAY=YYYY-MM-DD` fixes the plan day (tests: 2026-10-15). The 16 Oct case report
   (15 g/Nm³) is reproduced by the tests on `tests/fixtures/cal_2z_jul_oct_2026_case_report_15g.json`. The asset's
   `moisture.source` must match (tested).
-- **Fact register:** `src/config/facts_register.json` v1.8, 116 facts (schema in `config/schemas/`). Every coefficient outside the
+- **Fact register:** `src/config/facts_register.json` v1.9, 117 facts (schema in `config/schemas/`; v1.9 of 25 Nov 2026: DATA-17, the dry
+  basis of coke and nut coke = charge record less the laboratory's total moisture, BAND-01 on the plant's fuel-rate basis
+  (coke dry + nut coke dry + PCI as injected), MOD on the re-solved shipped calibration). Every coefficient outside the
   balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
   Change values there, not in code; retired facts are refused by `FactRegister.active()`. The register also holds the
   **trial list** (`trials`, `trial_rules`; user decision 13 Nov 2026, from slides 36 and 46 of the client deck of 27 Oct
@@ -1034,15 +1043,16 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   administrator; writes audited (`facts.propose`, `facts.review`). `utils.burden_engine.facts.load_register()` = the file
   with the latest approved overlay made against its version (`services.facts.approved_overlay`, memo 60 s), else the
   file; `load_register(path)` / `overlay=False` read the file only; retired facts refused (`RetiredFactError`). The
-  export is the next file version (v1.8 -> v1.9, changed facts stamped with the approval day IST, revision-log entry).
+  export is the next file version (v1.9 -> v1.10, changed facts stamped with the approval day IST, revision-log entry).
 - Burnt vs charged (SV-4.4, `/admin/burnt-vs-charged`): `services/burnt_vs_charged.py` (windows 1 shift - 1 month via
   `transit.window_pairs` + `concordance` = `window_agreement`, `decompose_window_sd`, `lag_scan`, `closure` + per month;
   leak-water check `utils/coke_energy/leak_check.py`: recent 3 d vs 14 d step of charged - raw burnt, top-gas H2, RAFT,
   model `strata_flow.plant_effects.leak_for_gap`, thresholds `coke_energy.yml -> twin.burnt_vs_charged.leak_check`),
   bases all / stable; 8 s for both on 1,325 shifts, so `twin.trace` builds it after the TRACE view (`trace.refresh`) into
   `burnt_vs_charged.json` beside it; `GET /api/admin/burnt-vs-charged?basis=` (`api/routers/burnt_vs_charged.py`, admin).
-  Charge-record check (20 Nov 2026): the pipeline leaves out a shift whose charge record (coke + nut coke + PCI as
-  charged) lies outside −6 to +12 % of the plant's fuel-rate tag (`ACT. FUEL RATE`; `pipeline.exclusion_reasons`,
+  Charge-record check (20 Nov 2026; dry basis 25 Nov 2026): the pipeline leaves out a shift whose charge record on
+  the tag's basis (dry coke + dry nut coke + PCI as injected, `pipeline.RECORD_FUELS`) lies outside ±9 % of the
+  plant's fuel-rate tag (`ACT. FUEL RATE`; `pipeline.exclusion_reasons`,
   `coke_energy.yml → charge_record_check`, `PipelineSettings.fuel_rate_band_pct`, None = the web model): coke counted
   at half in Nov 2025, PCI read high on 6-16 Dec 2025 and 16-21 Oct 2026. The twin window fails with the reason; the
   analysis lists them (`excluded`, page panel *Shifts left out*). All-shift CCC 0.32 / 0.29 / 0.25 → 0.81 / 0.90 / 0.96
@@ -1051,6 +1061,30 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `coke_energy.yml → dpr_carry_forward_days` (7; was a fixed 3), windows flagged `provisional_dpr` whose day's DPR has
   arrived since (`twin.provisional_dpr_dates`); before, a window that failed on a late DPR stayed failed. The
   18–20 Nov charged − burnt step (+28 kg/tHM) is attributed in docs/burnt_vs_charged_coke.md (update of 21 Nov 2026).
+- **Dry basis of coke and nut coke (25 Nov 2026, branch `fuel_correction`, user decision):** the charge record weighs
+  coke and nut coke wet; the plant's coke-rate, nut-coke-rate and fuel-rate tags are dry (fuel-rate tag = coke rate +
+  nut-coke rate + PCI rate). `offline_feed.fuel_chemistry` holds `tm` (total moisture as charged: coke 2-6 %, nut coke
+  5-10 %) and `moisture` (inherent, 0.45 %). The hourly dataset's `COKE_MOIST%` / `NUTCOKE_MOIST%` held the total
+  moisture up to 6 Dec 2025 and hold the inherent one since; **they keep their values** (features of the BMO fuel, Si
+  and unit-cost models), the dataset builder adds `COKE_TM%` / `NUTCOKE_TM%` beside them. The balance takes the total
+  moisture from the laboratory: `utils/coke_energy/fuel_moisture.py` (`hourly_total_moisture`: each coke type's latest
+  `tm` before the hour ends, weighted by the tonnes of that type in `charge_data`; `with_total_moisture`;
+  `on_total_moisture` in `build_shift_inputs`), `data.coke_energy.sources.fetch_fuel_moisture`, the `moisture` step of
+  `services.coke_energy.Loaders` and `hourly_frame` (page 10 and `services.twin.load_frames` build from the same frame;
+  a window fails as on a missing tap when the laboratory cannot be read; a loader set without the step reads the
+  dataset's columns). PCI is left as it is (inherent moisture deducted). On the dry basis the record equals the
+  coke-rate tag within 0.3 % per month (was +2.1 %); charged, TRACE and FORGE are 5-6 kg/tHM lower, the raw oxygen
+  balance closes at 103.8 % (the blast meter reads 5 % high; TRACE offset about −13 kg/tHM in 2026, near 0 since Oct
+  2026), calibrated Q_LZ / Q_UZ 13-20 / 6-9 GJ/h lower (docs/burnt_vs_charged_coke.md, update of 25 Nov 2026). The
+  stable filter's blast-meter band moved with the basis, `whatif.STABLE_BOUNDS` -9..+15 -> -5..+19 % (every shift's
+  meter-against-reconciled figure rose about 4 points; the same shifts stay stable, and the STRATA 1.5 scales refitted
+  on the new-basis evidence stay within 1 se, so the asset and its seed are unchanged). Shipped calibration
+  `cal_2z_jul_oct_2026.json` recalibrated (81 shifts: K 300.0, nut coke 69.3 dry, omega 0.781, Q_LZ 24.0, Q_UZ 12.9
+  GJ/h, 17.8 g/Nm3; the 15 g case-report fixture is unchanged). Test data: `tests/twin_data.TOTAL_MOISTURE` puts the
+  synthetic world on the basis, `shift_rows()` the recorded fixture rows (`golden_web.json` checks them as recorded). Twin
+  snapshots carry `versions.coke_basis` (`services.twin.COKE_BASIS`); `due_windows` takes stored windows of the
+  backfill period on another basis (after a release run `twin.evaluate` with `backfill_hours: 168` once). Page 9's
+  fuel-ash inputs already used `tm` (`data/bmo/context_provider.py`). Tests `tests/test_coke_energy_fuel_moisture.py`.
 - Calibration console (SV-4.6, `/admin/calibration`): `services/calibration_console.py` reads what `calibration.nightly`
   stored (`day_calibration`, now with the window's `mask` = `utils.burden_engine.calibration.shift_mask` over
   `whatif.STABLE_BOUNDS` and the calibration `settings`; values unrounded = `live_calibration`), the Jacobian cache

@@ -54,7 +54,8 @@ without any lab chemistry are listed and left out.
 
 **Layout (as page 9).** Each plan opens with its title and a feasibility badge, an overview strip (ore + flux + fuel,
 production, burden Fe, saving against today's blend in Rs lakh/day or the change of production against today), then
-four bordered panels in process order: 💰 Cost (ore, flux, fuel, total), 🔥 Fuel rates (coke dry, nut coke, PCI, total),
+four bordered panels in process order: 💰 Cost (ore, flux, fuel, total), 🔥 Fuel rates (coke dry, nut coke dry, PCI,
+fuel rate; as charged in the caption),
 🌋 Slag (rate, t/d, Al₂O₃, MgO; CaO/SiO₂, T-basicity and IB4 against the plant's own p5–p95 bands, MgO/Al₂O₃) and
 🚚 Charging (coke, nut coke and PCI t/d, charges/h, hot metal per charge, flux rate). With today's blend the panels
 show the change from it. The 🧱 Blend tab is the comparison table beside a donut of the ferrous charge (Plan / Today,
@@ -95,12 +96,12 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
   dust, packed-bed anchor. Fewer than 10 stable shifts → the shipped Jul–Oct 2026 calibration, and the page says so.
 * **Operating regime**: 14-day medians of HBT, blast, O₂, pressures, ΔP, HMT, Si, production, ηCO, top gas.
   These pre-fill the controls (Step 2) and appear as "today" next to each limit.
-* **Fact register** (`src/config/facts_register.json`, v1.8): every coefficient outside the balance, the plausibility
+* **Fact register** (`src/config/facts_register.json`, v1.9): every coefficient outside the balance, the plausibility
   bands and the default limits. Retired facts (COKE-17 webapp hand coefficients, DATA-10 regressed RAFT) are
   refused in code.
-* **Bands.** Fuel rate (coke wet + nut + PCI) above 600 kg/tHM is a limit row; below 520 the result is marked
-  infeasible and not reported (a row there would make the optimiser burn coke). HMT outside 1,440–1,520 °C and Si
-  outside 0.20–0.80 % are refused.
+* **Bands.** Fuel rate (coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag) above
+  600 kg/tHM is a limit row; below 520 the result is marked infeasible and not reported (a row there would make the
+  optimiser burn coke). HMT outside 1,440–1,520 °C and Si outside 0.20–0.80 % are refused.
 * **RAFT** is the plant workbook (`utils.energy_balance.raft`) at the input blast moisture (not measured at BF-02;
   default = the day's Open-Meteo estimate, DATA-11).
 
@@ -221,7 +222,11 @@ baseline)** — omega held at the calibration, ASM-01; the default on the page, 
   and, for nut coke, (3) a data term +0.0010 ± 0.0003 ω per kg (GAS-23: nut coke mixed in the ore layer raises the
   shaft efficiency; out-of-sample coke skill 0.120 with it, 0.105 without). A PCI data term lowers the
   skill (0.098) and is not used. The page defaults PCI to the live tag's 1-h mean (else the regime window's median) and nut coke to 70 kg/tHM
-  (user decision 7 Nov 2026); an override replaces either.
+  (user decision 7 Nov 2026); an override replaces either. The nut-coke input (config, page, API) is the plant's
+  nut-coke rate, dry; `scenarios.nut_as_charged` converts it once to the engine's as-charged `Settings.nut_plant` at
+  the nut-coke moisture of the calibration (70 dry is about 74 as charged). Fuel figures are reported on the plant's
+  basis (coke dry + nut coke dry + PCI as injected = fuel rate, BAND-01), the as-charged figures beside them
+  (`scenarios.fuel_split`); costs and charging tonnes stay on the as-charged tonnes.
 * **Uncertainty and certainty** (`omega_model.OmegaModel`): σ(omega) from the posterior of the blend scales, the
   other-operation scale and the nut-coke coefficient, converted with the loop-inclusive dK/dω.
   Tiers (GAS-18): **High** σ ≤ 2 kg/tHM and inside the 1st–99th percentile of what BF-02 ran; **Medium** σ ≤ 5 and
@@ -378,7 +383,7 @@ Nightly run: `python -m utils.burden_engine.learn.run --evidence <store.csv> --a
 | `src/data/burden_engine/inputs.py` | Yard / prices / limits from the BMO provider and `bmo_operator_inputs.yml`; today's charged blend |
 | `src/data/burden_engine/calibration.py` | Live calibration over the window, with fallback |
 | `src/config/burden_optimiser.yml` | Page config (yard window, charging, thermal basis, frontier grid, calibration window, model check) |
-| `src/config/facts_register.json` + `schemas/facts_register.schema.json` | Fact register v1.8 (116 facts) |
+| `src/config/facts_register.json` + `schemas/facts_register.schema.json` | Fact register v1.9 (117 facts) |
 | `src/assets/burden_engine/` | Reference yard (16 Oct 2026 UAT) and Jul–Oct 2026 calibration |
 | `scripts/compare_bmo_vs_burden_engine.py` | Page-9 LP against the engine (ore + flux objective) |
 | `scripts/replay_slag_vs_lab.py` | Both slag calculations on each day's actual charge against the lab's slag analysis |

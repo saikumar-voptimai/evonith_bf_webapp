@@ -30,13 +30,25 @@ PCI_MAX_KG_THM = 260.0
 
 
 # ---------------------------------------------------------------------------------------------- starting point
+def nut_moisture_pct(cal: Mapping[str, Any]) -> float:
+    """Nut-coke moisture of the calibration case, % (the laboratory's total moisture)."""
+    case = cal.get("case", {}) if isinstance(cal, Mapping) else {}
+    return float((case.get("nut") or {}).get("moist_pct", 0.0))
+
+
+def nut_as_charged(nut_dry_kg_thm: float, cal: Mapping[str, Any]) -> float:
+    """Nut coke as charged, kg/tHM (the engine's ``Settings.nut_plant``), from the plant's nut-coke rate, which is
+    dry: dry / (1 - moisture) with the nut-coke moisture of the calibration case."""
+    return float(nut_dry_kg_thm) / (1 - nut_moisture_pct(cal) / 100.0)
+
+
 def fuel_defaults(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], cal: Mapping[str, Any],
                   live_pci: float | None = None) -> dict[str, Any]:
-    """PCI and nut coke defaults, kg/tHM as injected / as charged (user decision 7 Nov 2026). PCI: the live tag's
-    1-h mean (``live_pci``, the Blend Mix Optimiser's reading; ignored above ``PCI_MAX_KG_THM``: the tag spikes when
+    """PCI and nut coke defaults, kg/tHM (user decision 7 Nov 2026). PCI as injected: the live tag's 1-h mean
+    (``live_pci``, the Blend Mix Optimiser's reading; ignored above ``PCI_MAX_KG_THM``: the tag spikes when
     production stops and stuck at about 430 on 16-21 Oct 2026), else the regime window's median, else the
-    calibration's, else the page config. Nut coke: the page config (70 kg/tHM). Returns pci_kg_thm, nut_kg_thm and the
-    source of each."""
+    calibration's, else the page config. Nut coke: the page config, the plant's nut-coke rate, dry (70 kg/tHM;
+    ``nut_as_charged`` gives the engine's as-charged value). Returns pci_kg_thm, nut_kg_thm and the source of each."""
     case = cal.get("case", {}) if isinstance(cal, Mapping) else {}
     reg = dict(regime or {})
     out: dict[str, Any] = {}
@@ -57,7 +69,8 @@ def fuel_defaults(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], 
 def settings_from_regime(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], cal: Mapping[str, Any],
                          **overrides: Any) -> Settings:
     """Today's controls: the regime's medians where known, else the calibration's; thermal targets from the page config
-    (client basis, ASM-08); PCI and nut coke from ``fuel_defaults`` (regime median PCI, nut coke from the config)."""
+    (client basis, ASM-08); PCI and nut coke from ``fuel_defaults`` (regime median PCI; nut coke the config's dry rate,
+    converted to as charged). An ``nut_plant`` override is as charged, as the engine's field."""
     case = cal.get("case", {})
     reg = dict(regime or {})
     pick = lambda key, fallback: float(reg[key]) if reg.get(key) is not None and np.isfinite(reg[key]) else float(fallback)
@@ -67,7 +80,7 @@ def settings_from_regime(regime: Mapping[str, Any] | None, thermal: Mapping[str,
         humidity_g=None,                 # today's Open-Meteo blast moisture, fetched live (DATA-11)
         HMT=float(thermal.get("HMT", Settings.HMT)), hm_Si=float(thermal.get("hm_Si", Settings.hm_Si)),
         pci_plant=float(fuel_defaults(regime, thermal, cal)["pci_kg_thm"]),
-        nut_plant=float(fuel_defaults(regime, thermal, cal)["nut_kg_thm"]),
+        nut_plant=nut_as_charged(fuel_defaults(regime, thermal, cal)["nut_kg_thm"], cal),
         Pb=pick("Pb", Settings.Pb), Pt=pick("Pt", Settings.Pt),
     )
     return replace(s, **overrides)
@@ -180,6 +193,7 @@ def frontier_table(rows: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
         recs.append(dict(prod_t_day=r["P_tday"], cost_rs_thm=r["cost"]["total"], ore_flux_rs_thm=r["cost"]["ore"] + r["cost"]["flux"],
                          fuel_rs_thm=r["cost"]["fuel"], coke_dry=r["out"]["K"],
                          coke_wet=r["out"].get("K_wet", r["out"]["K"]), fuel_rate=r["out"]["fuel_rate"],
+                         fuel_charged=r["out"].get("fuel_charged"),
                          slag=r["out"]["slag"], HBT=r["settings"]["HBT"], enrich_tag=r["enrich_tag"], blast_nm3h=r["blast_nm3h"],
                          O2_nm3h=r["O2_nm3h"], Pb_needed=r["Pb_needed"], charges_per_h=r["charges_per_h"],
                          binding=", ".join(b for b in r.get("binding", []) if not b.startswith(("min share", "max share")))))
@@ -267,10 +281,24 @@ def flux_compare_table(r: Mapping[str, Any], others: Sequence[tuple[str, Mapping
     return pd.DataFrame(rows)
 
 
+def fuel_split(r: Mapping[str, Any]) -> dict[str, float]:
+    """A plan's fuel, kg/tHM, on the plant's basis with the as-charged figures beside: ``coke_dry`` + ``nut`` (dry) +
+    ``pci`` (as injected) = ``total``, the plant's fuel rate (its fuel-rate tag, BAND-01); ``coke_wet`` + ``nut_wet`` +
+    ``pci`` = ``total_charged``. Built from the parts, so a result stored before the engine reported the plant basis
+    reads the same."""
+    o, s = r["out"], r["settings"]
+    coke_dry, coke_wet = float(o["K"]), float(o.get("K_wet", o["K"]))
+    nut_wet, pci = float(s["nut_plant"]), float(s["pci_plant"])
+    nut = float(o.get("nut_dry", nut_wet))
+    return dict(coke_dry=coke_dry, coke_wet=coke_wet, nut=nut, nut_wet=nut_wet, pci=pci, total=coke_dry + nut + pci,
+                total_charged=coke_wet + nut_wet + pci)
+
+
 def plan_tiles(r: Mapping[str, Any], flux_ids: Sequence[str] = ()) -> dict[str, dict[str, float]]:
-    """The figures of the page-9-style result panels, grouped as the furnace runs: cost (Rs/tHM), fuel (kg/tHM),
-    slag (rate, t/d, chemistry and the three basicity ratios) and charging (t/d, charges/h, hot metal per charge,
-    flux kg/tHM). Coke, nut coke and PCI tonnages are as charged (wet coke, the operator's nut coke and PCI)."""
+    """The figures of the page-9-style result panels, grouped as the furnace runs: cost (Rs/tHM), fuel (kg/tHM,
+    ``fuel_split``: the plant's dry basis with as charged beside), slag (rate, t/d, chemistry and the three basicity
+    ratios) and charging (t/d, charges/h, hot metal per charge, flux kg/tHM). Coke, nut coke and PCI tonnages are as
+    charged (wet coke and nut coke, PCI as injected)."""
 
     o, c, s = r["out"], r["cost"], r["settings"]
     P_t = float(r["P_tday"])
@@ -284,8 +312,7 @@ def plan_tiles(r: Mapping[str, Any], flux_ids: Sequence[str] = ()) -> dict[str, 
         cost=dict(ore=float(c["ore"]), flux=float(c["flux"]), fuel=float(c["fuel"]), coke=float(c["coke"]),
                   nut=float(c["nut"]), pci=float(c["pci"]), slag_credit=float(c.get("slag_credit", 0.0)),
                   gross=float(c.get("gross", c["total"])), total=float(c["total"])),
-        fuel=dict(coke_dry=float(o["K"]), coke_wet=float(o.get("K_wet", o["K"])), nut=float(s["nut_plant"]),
-                  pci=float(s["pci_plant"]), total=float(o["fuel_rate"])),
+        fuel=fuel_split(r),
         slag=dict(rate=float(o["slag"]), t_day=float(o["slag"]) * P_t / 1000.0, Al2O3_pct=float(o["Al2O3_pct"]),
                   MgO_pct=float(o["MgO_pct"]), b2=ratio(ox["CaO"], ox["SiO2"]),
                   t_basicity=ratio(ox["CaO"] + ox["MgO"], ox["SiO2"]),
@@ -303,27 +330,32 @@ def plan_sentence(r: Mapping[str, Any], names: Mapping[str, str], flux_ids: list
     today's blend. kind is "saving", "dearer" or "plain" (no comparison)."""
     fer = sorted(((names.get(i, i), sh) for i, sh in r["share_wet"].items() if sh > 0.05), key=lambda t: -t[1])
     flux = [(names.get(i, i), r["wet_kg"].get(i, 0.0)) for i in flux_ids if r["wet_kg"].get(i, 0.0) >= 0.5]
-    # two decimals on the shares, flux and coke (user decision 11 Nov 2026); coke as charged (wet), the client's basis
+    # two decimals on the shares, flux and coke (user decision 11 Nov 2026); coke dry, the plant's basis, as charged
+    # in brackets
     text = "**Charge** " + ", ".join(f"{n} {sh:.2f} %" for n, sh in fer)
     text += (" with " + ", ".join(f"{n.lower()} {kg:.2f} kg/tHM" for n, kg in flux)) if flux else ", no flux"
-    text += f": Rs {r['cost']['total']:,.0f}/tHM, coke {r['out'].get('K_wet', r['out']['K']):.2f} kg/tHM as charged."
+    text += (f": Rs {r['cost']['total']:,.0f}/tHM, coke {r['out']['K']:.2f} kg/tHM dry "
+             f"({r['out'].get('K_wet', r['out']['K']):.2f} as charged).")
     if today is None:
         return "plain", text
     d = today["cost"]["total"] - r["cost"]["total"]
     if abs(d) < 0.5:
         return "plain", text + " Same cost as today's blend."
     lakh = abs(d) * r["P_tday"] / 1e5
-    dk = r["out"].get("K_wet", r["out"]["K"]) - today["out"].get("K_wet", today["out"]["K"])
+    dk = r["out"]["K"] - today["out"]["K"]
     text += (f" **Rs {abs(d):,.0f}/tHM {'less' if d > 0 else 'more'} than today's blend** (Rs {lakh:,.1f} lakh/day at "
-             f"this output; coke {dk:+.2f} kg/tHM).")
+             f"this output; coke {dk:+.2f} kg/tHM dry).")
     return ("saving" if d > 0 else "dearer"), text
 
 
 def cost_table(r: Mapping[str, Any]) -> pd.DataFrame:
-    c, o, s = r["cost"], r["out"], r["settings"]
+    """Cost per item, Rs/tHM, with its rate: dry first (the plant's basis), as charged (what is paid for) in
+    brackets."""
+    c, o, f = r["cost"], r["out"], fuel_split(r)
     rows = [("Ore", c["ore"], ""), ("Flux", c["flux"], ""),
-            ("Coke", c["coke"], f"{o['K_wet']:.1f} kg/tHM wet ({o['K']:.1f} dry)"),
-            ("Nut coke", c["nut"], f"{s['nut_plant']:.0f} kg/tHM"), ("PCI", c["pci"], f"{s['pci_plant']:.0f} kg/tHM")]
+            ("Coke", c["coke"], f"{f['coke_dry']:.1f} kg/tHM dry ({f['coke_wet']:.1f} as charged)"),
+            ("Nut coke", c["nut"], f"{f['nut']:.1f} kg/tHM dry ({f['nut_wet']:.1f} as charged)"),
+            ("PCI", c["pci"], f"{f['pci']:.0f} kg/tHM as injected")]
     if c.get("slag_credit", 0.0):
         rows.append(("Slag credit", -c["slag_credit"], f"{o['slag']:.0f} kg/tHM at Rs {c.get('slag_price', 0.0):,.0f}/t"))
     rows.append(("Total", c["total"], f"{c['total'] * r['P_tday'] / 1e5:,.1f} lakh Rs/day"))
@@ -523,7 +555,8 @@ def process_table(r: Mapping[str, Any]) -> pd.DataFrame:
     o, s, L = r["out"], r["settings"], r["limits"]
     rows = [
         ("Production", f"{r['P_th']:.1f} t/h · {r['P_tday']:,.0f} t/d", ""),
-        ("Fuel rate (coke wet + nut + PCI)", f"{o['fuel_rate']:.1f} kg/tHM", f"{L['fuel_min']:.0f} – {L['fuel_max']:.0f} (BAND-01)"),
+        ("Fuel rate (coke dry + nut coke dry + PCI)", f"{fuel_split(r)['total']:.1f} kg/tHM",
+         f"{L['fuel_min']:.0f} – {L['fuel_max']:.0f} (BAND-01)"),
         ("ηCO / top gas", f"{o['eta']:.1f} % · {o['T_top']:.0f} °C", f"top gas ≥ {L['T_top_min']:.0f} °C"),
         ("Shaft efficiency ω", f"{o['omega']:.3f}" + (f" ± {r['omega']['sigma_omega']:.3f}" if (r.get("omega") or {}).get("mode") == "blend" else ""),
          "STRATA-ω, " + (r.get("omega") or {}).get("certainty", "") + " certainty"

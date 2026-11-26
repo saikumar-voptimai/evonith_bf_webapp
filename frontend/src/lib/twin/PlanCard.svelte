@@ -117,7 +117,7 @@ to today's charged blend; certainty tier; the three largest critical assumptions
 
 		<div class="figures">
 			<div>
-				<span class="muted">Coke</span>
+				<span class="muted">Coke, dry</span>
 				<span class="vo-num big"
 					>{formatNumber(plan.cokeKgThm, 1)}{#if plan.cokeSdKgThm}&nbsp;±{formatNumber(
 							plan.cokeSdKgThm,

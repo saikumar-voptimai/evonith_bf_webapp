@@ -217,10 +217,11 @@ def test_critical_assumptions(eng):
 
 # ---------------------------------------------------------------------------------------------- engine
 def test_fixed_mode_unchanged(eng):
-    # at the calibration point (window's Open-Meteo moisture) the shipped calibration gives the case-report plan
+    # at the calibration point (window's Open-Meteo moisture) on the shipped calibration, whose coke and nut coke are
+    # dry on the laboratory's total moisture (305.7 kg/tHM and Rs 30,139 on the earlier basis)
     r = eng.min_cost(prod_t_day=2270, s=eng.cal_settings(), L=Limits())
-    assert r["out"]["K"] == pytest.approx(305.7, abs=0.15)
-    assert r["cost"]["total"] == pytest.approx(30139, abs=5)
+    assert r["out"]["K"] == pytest.approx(297.7, abs=0.15)
+    assert r["cost"]["total"] == pytest.approx(30033, abs=5)
     assert r["out"]["sig_K"] == 0.0 and r["omega"]["mode"] == "fixed" and r["omega"]["certainty"] == "Held"
     assert r["cost"]["sigma"] == 0.0 and r["cost"]["risk_adjusted"] == pytest.approx(r["cost"]["total"])
 
@@ -414,7 +415,7 @@ def test_nut_coke_term(eng):
 
 def test_fuel_defaults_from_regime(eng):
     """PCI defaults to the live tag, else the regime window's median (as injected), else the calibration; nut coke to
-    the config (70 kg/tHM)."""
+    the config (70 kg/tHM, the plant's dry rate, which the settings hold as charged)."""
     from utils.burden_engine.scenarios import fuel_defaults, settings_from_regime
     cal = eng.cal
     d = fuel_defaults({"pci_kgthm_dry": 170.0, "nut_kgthm_dry": 60.0}, {}, cal)
@@ -429,7 +430,8 @@ def test_fuel_defaults_from_regime(eng):
     assert d0["pci_kg_thm_source"] == "calibration"
     assert d0["pci_kg_thm"] == pytest.approx(cal["case"]["pci_kg"] / (1 - cal["case"]["pci"]["moist_pct"] / 100))
     s = settings_from_regime({"pci_kgthm_dry": 170.0, "nut_kgthm_dry": 60.0}, {}, cal)
-    assert s.pci_plant == pytest.approx(d["pci_kg_thm"]) and s.nut_plant == pytest.approx(d["nut_kg_thm"])
+    assert s.pci_plant == pytest.approx(d["pci_kg_thm"])
+    assert s.nut_plant == pytest.approx(d["nut_kg_thm"] / (1 - cal["case"]["nut"]["moist_pct"] / 100))
 
 
 def test_search_tolerance_and_refine(eng):

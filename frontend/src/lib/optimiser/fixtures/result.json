@@ -17,6 +17,8 @@
       "omega": 0.799914621,
       "Q_LZ_GJh": 47.418939944,
       "Q_UZ_GJh": 21.595484014,
+      "coke_moisture_pct": 0.432230762,
+      "nut_coke_moisture_pct": 0.454442736,
       "message": "The shipped Jul-Oct 2026 calibration was requested.",
       "basis": "reference"
     },
@@ -116,9 +118,11 @@
         "coke_dry_kg_thm": 302.169378573,
         "coke_wet_kg_thm": 303.48111732,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 69.681890085,
+        "nut_coke_wet_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 563.48111732
+        "fuel_rate_kg_thm": 561.851268658,
+        "fuel_charged_kg_thm": 563.48111732
       },
       "slag": {
         "rate_kg_thm": 340.0,
@@ -537,7 +541,7 @@
       ],
       "warnings": [],
       "limited_by": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "ore_flux_plan": {
       "label": "Ore + flux objective (page 9)",
@@ -658,9 +662,11 @@
         "coke_dry_kg_thm": 305.866429664,
         "coke_wet_kg_thm": 307.194217572,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 69.681890085,
+        "nut_coke_wet_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 567.194217572
+        "fuel_rate_kg_thm": 565.548319749,
+        "fuel_charged_kg_thm": 567.194217572
       },
       "slag": {
         "rate_kg_thm": 340.0,
@@ -1091,7 +1097,7 @@
       ],
       "warnings": [],
       "limited_by": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, charging rate, slag rate cap",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "today_plan": {
       "label": "Today's charged blend, modelled (from 15 Oct 06:00 to 16 Oct 06:00 IST)",
@@ -1191,9 +1197,11 @@
         "coke_dry_kg_thm": 301.347290361,
         "coke_wet_kg_thm": 302.655460364,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 69.681890085,
+        "nut_coke_wet_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 562.655460364
+        "fuel_rate_kg_thm": 561.029180446,
+        "fuel_charged_kg_thm": 562.655460364
       },
       "slag": {
         "rate_kg_thm": 328.271796146,
@@ -1612,7 +1620,7 @@
       ],
       "warnings": [],
       "limited_by": "",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "saving_rs_thm": 181.589236672,
     "saving_lakh_rs_d": 4.122075672,
@@ -1697,14 +1705,15 @@
     "solves": null,
     "lead": {
       "kind": "saving",
-      "text": "**Charge** SINTER (SP-02) 62.54 %, GEOMIN CLO 14.07 %, LLOYDS CLO 13.40 %, LLOYDS PELLET 10.00 % with quartz 2.45 kg/tHM: Rs 30,092/tHM, coke 303.48 kg/tHM as charged. **Rs 182/tHM less than today's blend** (Rs 4.1 lakh/day at this output; coke +0.83 kg/tHM)."
+      "text": "**Charge** SINTER (SP-02) 62.54 %, GEOMIN CLO 14.07 %, LLOYDS CLO 13.40 %, LLOYDS PELLET 10.00 % with quartz 2.45 kg/tHM: Rs 30,092/tHM, coke 302.17 kg/tHM dry (303.48 as charged). **Rs 182/tHM less than today's blend** (Rs 4.1 lakh/day at this output; coke +0.82 kg/tHM dry)."
     },
     "case": {
       "settings": {
         "hmt_c": 1470.0,
         "hm_si_pct": 0.3836,
         "pci_kg_thm": 190.0,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 69.681890085,
+        "nut_coke_wet_kg_thm": 70.0,
         "blast_moisture_g_nm3": 15.0,
         "hbt_c": 1188.4,
         "o2_per_air": 0.05209,
@@ -2015,6 +2024,8 @@
       "omega": 0.799914621,
       "Q_LZ_GJh": 47.418939944,
       "Q_UZ_GJh": 21.595484014,
+      "coke_moisture_pct": 0.432230762,
+      "nut_coke_moisture_pct": 0.454442736,
       "message": "The shipped Jul-Oct 2026 calibration was requested.",
       "basis": "reference"
     },
@@ -2114,9 +2125,11 @@
         "coke_dry_kg_thm": 302.169378573,
         "coke_wet_kg_thm": 303.48111732,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 69.681890085,
+        "nut_coke_wet_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 563.48111732
+        "fuel_rate_kg_thm": 561.851268658,
+        "fuel_charged_kg_thm": 563.48111732
       },
       "slag": {
         "rate_kg_thm": 340.0,
@@ -2535,7 +2548,7 @@
       ],
       "warnings": [],
       "limited_by": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "ore_flux_plan": null,
     "today_plan": null,
@@ -2639,9 +2652,11 @@
         "coke_dry_kg_thm": 298.851884922,
         "coke_wet_kg_thm": 300.149222193,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 69.681890085,
+        "nut_coke_wet_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 560.149222193
+        "fuel_rate_kg_thm": 558.533775007,
+        "fuel_charged_kg_thm": 560.149222193
       },
       "slag": {
         "rate_kg_thm": 307.062960663,
@@ -3060,7 +3075,7 @@
       ],
       "warnings": [],
       "limited_by": "CaO/SiO\u2082 floor, charging rate",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "frontier": [
       {
@@ -3070,7 +3085,8 @@
         "fuel_rs_thm": 15774.135560772,
         "coke_dry_kg_thm": 303.326759137,
         "coke_wet_kg_thm": 304.643522155,
-        "fuel_rate_kg_thm": 564.643522155,
+        "fuel_rate_kg_thm": 563.008649222,
+        "fuel_charged_kg_thm": 564.643522155,
         "slag_kg_thm": 340.0,
         "hbt_c": 1188.4,
         "enrichment_tag_pct": 4.158921765,
@@ -3089,7 +3105,8 @@
         "fuel_rs_thm": 15736.947905303,
         "coke_dry_kg_thm": 302.169378573,
         "coke_wet_kg_thm": 303.48111732,
-        "fuel_rate_kg_thm": 563.48111732,
+        "fuel_rate_kg_thm": 561.851268658,
+        "fuel_charged_kg_thm": 563.48111732,
         "slag_kg_thm": 340.0,
         "hbt_c": 1188.4,
         "enrichment_tag_pct": 4.158921765,
@@ -3108,7 +3125,8 @@
         "fuel_rs_thm": 15630.353916413,
         "coke_dry_kg_thm": 298.851884922,
         "coke_wet_kg_thm": 300.149222193,
-        "fuel_rate_kg_thm": 560.149222193,
+        "fuel_rate_kg_thm": 558.533775007,
+        "fuel_charged_kg_thm": 560.149222193,
         "slag_kg_thm": 307.062960663,
         "hbt_c": 1188.4,
         "enrichment_tag_pct": 4.158921765,
@@ -3131,7 +3149,8 @@
         "hmt_c": 1470.0,
         "hm_si_pct": 0.3836,
         "pci_kg_thm": 190.0,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 69.681890085,
+        "nut_coke_wet_kg_thm": 70.0,
         "blast_moisture_g_nm3": 15.0,
         "hbt_c": 1188.4,
         "o2_per_air": 0.05209,
@@ -3426,8 +3445,8 @@
     }
   },
   "reference": {
-    "facts_version": "1.8",
-    "facts_date": "2026-10-25",
+    "facts_version": "1.9",
+    "facts_date": "2026-11-26",
     "slag_bands": [
       {
         "key": "b2",
@@ -3458,7 +3477,7 @@
       {
         "key": "fuel_rate",
         "fact_id": "BAND-01",
-        "label": "Fuel rate (coke wet + nut coke + PCI)",
+        "label": "Fuel rate (coke dry + nut coke dry + PCI)",
         "unit": "kg/tHM",
         "lo": 520.0,
         "hi": 600.0
@@ -3659,14 +3678,14 @@
       },
       {
         "id": "BAND-01",
-        "statement": "Fuel rate, coke (wet) + nut coke + PCI",
+        "statement": "Plant fuel rate: coke (dry) + nut coke (dry) + PCI as injected",
         "value": null,
         "unit": "kg/tHM",
         "uncertainty": "",
         "status": "Plant practice",
         "grade": "D",
         "next_test": "",
-        "version": "1.1"
+        "version": "1.9"
       },
       {
         "id": "BAND-02",
@@ -3861,9 +3880,9 @@
         "id": "MOD-01",
         "statement": "Pellet for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
-        "fixed_omega": -1.74,
-        "strata_omega": -5.96,
-        "sigma_strata": 1.19,
+        "fixed_omega": -1.75,
+        "strata_omega": -6.19,
+        "sigma_strata": 1.21,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3875,9 +3894,9 @@
         "id": "MOD-02",
         "statement": "Lloyds CLO for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
-        "fixed_omega": -1.9,
-        "strata_omega": -1.06,
-        "sigma_strata": 0.49,
+        "fixed_omega": -1.92,
+        "strata_omega": -1.1,
+        "sigma_strata": 0.5,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3889,9 +3908,9 @@
         "id": "MOD-03",
         "statement": "Geomin CLO for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
-        "fixed_omega": -0.18,
-        "strata_omega": 0.69,
-        "sigma_strata": 0.49,
+        "fixed_omega": -0.19,
+        "strata_omega": 0.72,
+        "sigma_strata": 0.5,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3903,9 +3922,9 @@
         "id": "MOD-04",
         "statement": "NMDC ROM for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
-        "fixed_omega": -2.17,
+        "fixed_omega": -2.18,
         "strata_omega": -0.84,
-        "sigma_strata": 0.81,
+        "sigma_strata": 0.82,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3917,8 +3936,8 @@
         "id": "MOD-05",
         "statement": "Donimalai for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
-        "fixed_omega": -0.48,
-        "strata_omega": 1.08,
+        "fixed_omega": -0.49,
+        "strata_omega": 1.14,
         "sigma_strata": 0.82,
         "status": "Model",
         "realised": null,
@@ -3931,8 +3950,8 @@
         "id": "MOD-06",
         "statement": "Gomti for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
-        "fixed_omega": -1.26,
-        "strata_omega": -0.09,
+        "fixed_omega": -1.27,
+        "strata_omega": -0.07,
         "sigma_strata": 0.68,
         "status": "Model",
         "realised": null,
@@ -3945,9 +3964,9 @@
         "id": "MOD-07",
         "statement": "Lloyds oversize for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
-        "fixed_omega": -1.85,
-        "strata_omega": -0.97,
-        "sigma_strata": 0.49,
+        "fixed_omega": -1.86,
+        "strata_omega": -1.01,
+        "sigma_strata": 0.5,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3960,8 +3979,8 @@
         "statement": "Pellet for Lloyds CLO, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
         "fixed_omega": 0.16,
-        "strata_omega": -4.7,
-        "sigma_strata": 1.24,
+        "strata_omega": -4.88,
+        "sigma_strata": 1.25,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3973,8 +3992,8 @@
         "id": "MOD-09",
         "statement": "Production +1 t/h at the same burden: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke per t/h",
-        "fixed_omega": -0.36,
-        "strata_omega": -0.39,
+        "fixed_omega": -0.2,
+        "strata_omega": -0.21,
         "sigma_strata": 0.01,
         "status": "Model",
         "realised": null,
@@ -3987,9 +4006,9 @@
         "id": "MOD-10",
         "statement": "Blast moisture +1 g/Nm3 at the same burden: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke per g/Nm3",
-        "fixed_omega": 0.8,
-        "strata_omega": 0.88,
-        "sigma_strata": 0.02,
+        "fixed_omega": 0.78,
+        "strata_omega": 0.86,
+        "sigma_strata": 0.03,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -4001,9 +4020,9 @@
         "id": "MOD-11",
         "statement": "Nut coke +10 kg/tHM at the same burden: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke per 10 kg/tHM nut coke",
-        "fixed_omega": -9.94,
-        "strata_omega": -13.17,
-        "sigma_strata": 0.34,
+        "fixed_omega": -9.42,
+        "strata_omega": -12.56,
+        "sigma_strata": 0.35,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -4206,9 +4225,11 @@
         "fuel": {
           "coke_dry": 302.169378573,
           "coke_wet": 303.48111732,
-          "nut": 70.0,
+          "nut": 69.681890085,
+          "nut_wet": 70.0,
           "pci": 190.0,
-          "total": 563.48111732
+          "total": 561.851268658,
+          "total_charged": 563.48111732
         },
         "slag": {
           "rate": 340.0,
@@ -4266,9 +4287,11 @@
         "fuel": {
           "coke_dry": 301.347290361,
           "coke_wet": 302.655460364,
-          "nut": 70.0,
+          "nut": 69.681890085,
+          "nut_wet": 70.0,
           "pci": 190.0,
-          "total": 562.655460364
+          "total": 561.029180446,
+          "total_charged": 562.655460364
         },
         "slag": {
           "rate": 328.271796146,
@@ -4306,8 +4329,10 @@
           "coke_dry": 0.822088212,
           "coke_wet": 0.825656956,
           "nut": 0.0,
+          "nut_wet": 0.0,
           "pci": 0.0,
-          "total": 0.825656956
+          "total": 0.822088212,
+          "total_charged": 0.825656956
         },
         "slag": {
           "rate": 11.728203854,
@@ -4323,7 +4348,7 @@
       "saving_lakh_rs_d": 4.122075672,
       "lead": [
         "saving",
-        "**Charge** SINTER (SP-02) 62.54 %, GEOMIN CLO 14.07 %, LLOYDS CLO 13.40 %, LLOYDS PELLET 10.00 % with quartz 2.45 kg/tHM: Rs 30,092/tHM, coke 303.48 kg/tHM as charged. **Rs 182/tHM less than today's blend** (Rs 4.1 lakh/day at this output; coke +0.83 kg/tHM)."
+        "**Charge** SINTER (SP-02) 62.54 %, GEOMIN CLO 14.07 %, LLOYDS CLO 13.40 %, LLOYDS PELLET 10.00 % with quartz 2.45 kg/tHM: Rs 30,092/tHM, coke 302.17 kg/tHM dry (303.48 as charged). **Rs 182/tHM less than today's blend** (Rs 4.1 lakh/day at this output; coke +0.82 kg/tHM dry)."
       ],
       "blend_table": [
         {
@@ -4901,9 +4926,11 @@
         "fuel": {
           "coke_dry": 302.169378573,
           "coke_wet": 303.48111732,
-          "nut": 70.0,
+          "nut": 69.681890085,
+          "nut_wet": 70.0,
           "pci": 190.0,
-          "total": 563.48111732
+          "total": 561.851268658,
+          "total_charged": 563.48111732
         },
         "slag": {
           "rate": 340.0,

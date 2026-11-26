@@ -3,8 +3,9 @@ called in-process, results validated against the schema, and the commentary job 
 
 The case report's inputs: the reference yard at its own (UAT) prices, the Jul-Oct 2026 calibration at 15 g/Nm³
 (``tests/fixtures/cal_2z_jul_oct_2026_case_report_15g.json``, as ``tests/test_burden_engine.py``), Fixed-ω, HMT
-1,470 °C, Si 0.3836 %, PCI 190 and nut coke 70 kg/tHM, the calibration's controls, the register's limits. The
-production cases (Step 1, maximum production) are slow: ``BURDEN_ENGINE_FAST=1`` skips them."""
+1,470 °C, Si 0.3836 %, PCI 190 and nut coke 70 kg/tHM as charged (the API takes the plant's dry rate, ``NUT_DRY``),
+the calibration's controls, the register's limits. The production cases (Step 1, maximum production) are slow:
+``BURDEN_ENGINE_FAST=1`` skips them."""
 
 from __future__ import annotations
 
@@ -42,12 +43,16 @@ from worker.runtime import JobContext
 CASE_CAL = os.path.join(os.path.dirname(__file__), "fixtures", "cal_2z_jul_oct_2026_case_report_15g.json")
 slow = pytest.mark.skipif(os.environ.get("BURDEN_ENGINE_FAST") == "1", reason="production cases are slow")
 
-#: The case report's controls and thermal targets (Settings at the calibration point, PCI 190, nut coke 70).
+with open(CASE_CAL, encoding="utf-8") as _fh:
+    _NUT_MOIST_PCT = float(json.load(_fh)["case"]["nut"]["moist_pct"])
+#: The case report's nut coke, 70 kg/tHM as charged, as the plant's dry rate the API takes (69.7 at 0.45 % moisture).
+NUT_DRY = 70.0 * (1 - _NUT_MOIST_PCT / 100)
+#: The case report's controls and thermal targets (Settings at the calibration point, PCI 190, nut coke 70 as charged).
 CASE_SETTINGS = {
     "hmt_c": 1470.0,
     "hm_si_pct": 0.3836,
     "pci_kg_thm": 190.0,
-    "nut_coke_kg_thm": 70.0,
+    "nut_coke_kg_thm": NUT_DRY,
     "blast_moisture_g_nm3": 15.0,
     "hbt_c": 1188.4,
     "o2_per_air": 0.05209,
@@ -151,7 +156,19 @@ def test_step2_reproduces_cases_1_and_2_of_the_case_report(api) -> None:
     assert plan["feasible"] and plan["production_t_d"] == pytest.approx(2270.0)
     assert plan["fuel"]["coke_dry_kg_thm"] == pytest.approx(302.2, abs=0.3)
     assert plan["slag"]["rate_kg_thm"] == pytest.approx(340.0, abs=0.1)
-    assert plan["fuel"]["fuel_rate_kg_thm"] == pytest.approx(563.5, abs=0.3)
+    # the plant's basis leads: coke dry + nut coke dry + PCI = fuel rate; 563.5 was this plan's as-charged sum
+    fuel = plan["fuel"]
+    assert fuel["fuel_rate_kg_thm"] == pytest.approx(561.9, abs=0.3)
+    assert fuel["fuel_charged_kg_thm"] == pytest.approx(563.5, abs=0.3)
+    assert fuel["nut_coke_kg_thm"] == pytest.approx(NUT_DRY) and fuel["nut_coke_wet_kg_thm"] == pytest.approx(70.0)
+    assert fuel["coke_dry_kg_thm"] + fuel["nut_coke_kg_thm"] + fuel["pci_kg_thm"] == pytest.approx(
+        fuel["fuel_rate_kg_thm"], abs=1e-9
+    )
+    assert fuel["coke_wet_kg_thm"] + fuel["nut_coke_wet_kg_thm"] + fuel["pci_kg_thm"] == pytest.approx(
+        fuel["fuel_charged_kg_thm"], abs=1e-9
+    )
+    assert plan["charging"]["nut_coke_t_d"] == pytest.approx(70.0 * 2.27)  # tonnes stay as charged
+    assert "kg/tHM dry (" in res["lead"]["text"] and res["lead"]["text"].endswith("as charged).")
     assert plan["cost"]["total_rs_thm"] == pytest.approx(30092, abs=5)
     assert plan["process"]["raft_c"] == pytest.approx(2212, abs=2)
     assert {b["limit"] for b in plan["binding"]} >= {"slag cap", "basicity min", "Al2O3 max"}
@@ -186,6 +203,8 @@ def test_step2_reproduces_cases_1_and_2_of_the_case_report(api) -> None:
     ash = {x["fuel"]: x for x in plan["slag"]["fuel_ash"]}
     assert list(ash) == ["Coke", "Nut coke", "PCI"] and ash["PCI"]["wet_kg_thm"] == pytest.approx(plan["fuel"]["pci_kg_thm"])
     assert ash["Coke"]["wet_kg_thm"] == pytest.approx(plan["fuel"]["coke_wet_kg_thm"], rel=1e-6)
+    assert ash["Nut coke"]["wet_kg_thm"] == pytest.approx(fuel["nut_coke_wet_kg_thm"], rel=1e-6)
+    assert ash["Nut coke"]["dry_kg_thm"] == pytest.approx(fuel["nut_coke_kg_thm"], rel=1e-6)
     assert ash["Coke"]["ash_kg_thm"] == pytest.approx(ash["Coke"]["dry_kg_thm"] * ash["Coke"]["ash_pct"] / 100, rel=1e-9)
     assert 50 < ash["Coke"]["sio2_pct"] < 60 and ash["Coke"]["slag_kg_thm"] > ash["Nut coke"]["slag_kg_thm"] > 0
     dust = plan["slag"]["dust"]
@@ -261,6 +280,32 @@ def test_settings_and_limits_of_a_request_replace_the_defaults(api) -> None:
     bad = call(api, "POST", "sup", "/api/optimiser/runs", json={"mode": "step2", "settings": {"hmt_c": 1700}})
     assert bad.status_code == 422
     assert call(api, "POST", "op", "/api/optimiser/runs", json={"mode": "step2"}).status_code == 403
+
+
+def test_the_nut_coke_of_a_request_is_the_plants_dry_rate() -> None:
+    """On the shipped calibration (laboratory total moisture of the nut coke): the default 70 kg/tHM and a request's
+    value are the plant's nut-coke rate, dry; the engine holds them as charged; the stored case shows both."""
+    cfg = dict(svc.read_page_config(0))
+    ref = dict(calibration_basis="reference", yard_basis="reference", cfg=cfg)
+    case = svc.default_case("step2", **ref)
+    moist = case.calibration["nut_coke_moisture_pct"]
+    assert 3.0 < moist < 9.0 and case.calibration["coke_moisture_pct"] > 1.0
+    assert case.args[3]["nut_plant"] == pytest.approx(70.0 / (1 - moist / 100)) and case.args[3]["nut_plant"] > 73.0
+    set_ = svc.default_case("step2", settings={"nut_coke_kg_thm": 65.0}, **ref)
+    assert set_.args[3]["nut_plant"] == pytest.approx(65.0 / (1 - moist / 100))
+    assert set_.summary()["overrides"]["settings"] == {"nut_coke_kg_thm": 65.0}  # as requested
+    shown = optimiser_results.case_view(svc.jsonable(set_.summary())).settings
+    assert shown.nut_coke_kg_thm == pytest.approx(65.0)
+    assert shown.nut_coke_wet_kg_thm == pytest.approx(set_.args[3]["nut_plant"])
+    # a run stored before the case carried the moisture: the dry rate of its plan
+    old = svc.jsonable(set_.summary())
+    del old["calibration"]["nut_coke_moisture_pct"]
+    assert optimiser_results.case_view(old).settings.nut_coke_kg_thm is None
+    assert optimiser_results.case_view(old, {"out": {"nut_dry": 65.0}}).settings.nut_coke_kg_thm == 65.0
+    assert svc.settings_overrides({"nut_coke_kg_thm": 70.0, "pci_kg_thm": 180.0, "hbt_c": None}, {}) == {
+        "nut_plant": 70.0, "pci_plant": 180.0}  # fmt: skip
+    with pytest.raises(ValueError, match="unknown setting"):
+        svc.settings_overrides({"nut": 70.0}, {})
 
 
 def test_result_and_commentary_routes_answer_404_and_422(api) -> None:
@@ -433,7 +478,11 @@ def test_the_recorded_result_equals_page_11() -> None:
         ("cost", "gross"): plan["cost"]["gross_rs_thm"],
         ("fuel", "coke_dry"): plan["fuel"]["coke_dry_kg_thm"],
         ("fuel", "coke_wet"): plan["fuel"]["coke_wet_kg_thm"],
+        ("fuel", "nut"): plan["fuel"]["nut_coke_kg_thm"],
+        ("fuel", "nut_wet"): plan["fuel"]["nut_coke_wet_kg_thm"],
+        ("fuel", "pci"): plan["fuel"]["pci_kg_thm"],
         ("fuel", "total"): plan["fuel"]["fuel_rate_kg_thm"],
+        ("fuel", "total_charged"): plan["fuel"]["fuel_charged_kg_thm"],
         ("slag", "rate"): plan["slag"]["rate_kg_thm"],
         ("slag", "t_day"): plan["slag"]["t_d"],
         ("slag", "b2"): plan["slag"]["cao_sio2"],
@@ -480,7 +529,8 @@ def test_the_recorded_result_equals_page_11() -> None:
 def test_the_case_and_yard_of_a_run_are_served_in_the_api_names(api) -> None:
     res = run_through_api(api, {"mode": "step2", "production_t_d": 2270, **CASE, "limits": {"slag_max_kg_thm": 345}})
     case = res["case"]
-    assert case["settings"] == CASE_SETTINGS  # the request's values, in the request's names
+    # the request's values, in the request's names; the nut coke also as the engine charges it
+    assert case["settings"] == pytest.approx(CASE_SETTINGS | {"nut_coke_wet_kg_thm": 70.0})
     assert case["settings_set"] == sorted(CASE_SETTINGS) and case["limits_set"] == ["slag_max_kg_thm"]
     assert case["limits"]["slag_max_kg_thm"] == 345.0 and case["limits"]["fuel_max_kg_thm"] == 600.0
     assert case["limits"]["process"] is False and case["certainty_filter"] is None  # Fixed-ω
@@ -535,6 +585,9 @@ def test_a_run_started_on_the_page_appears_on_the_live_twin_plan_card(api) -> No
     assert latest.status_code == 200 and latest.json()["id"] == out["run_id"]
     assert latest.json()["trigger"] == "user" and latest.json()["requested_by"] == "sup"
     assert call(api, "GET", "op", "/api/optimiser/runs").json()[0]["id"] == out["run_id"]
+    # the run list's headline is on the plant's basis: coke dry, fuel rate = coke dry + nut coke dry + PCI
+    assert latest.json()["coke_kg_thm"] == pytest.approx(302.2, abs=0.3)
+    assert latest.json()["fuel_rate_kg_thm"] == pytest.approx(561.9, abs=0.3)
     assert out["run_id"] and out["status"] == "ok"  # the job's result names the run (read by job id with Redis)
     result = call(api, "GET", "op", f"/api/optimiser/runs/{out['run_id']}/result").json()
     assert result["case"]["settings_set"] == sorted(CASE_SETTINGS) and result["production_target_t_d"] == 2270.0

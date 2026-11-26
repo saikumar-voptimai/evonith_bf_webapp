@@ -19,7 +19,7 @@ def frontier_figure(frontier: pd.DataFrame, best: Mapping[str, Any] | None = Non
     fig = go.Figure()
     if frontier.empty:
         return fig
-    hover = ("%{x:,.0f} t/d · Rs %{y:,.0f}/tHM<br>coke %{customdata[0]:.1f} kg/tHM dry · fuel %{customdata[1]:.0f}"
+    hover = ("%{x:,.0f} t/d · Rs %{y:,.0f}/tHM<br>coke %{customdata[0]:.1f} kg/tHM dry · fuel rate %{customdata[1]:.0f}"
              "<br>extra tonne Rs %{customdata[2]:,.0f}<br>binds: %{customdata[3]}<extra></extra>")
     fig.add_trace(go.Scatter(
         x=frontier.prod_t_day, y=frontier.cost_rs_thm, mode="lines+markers", name="Cheapest plan at each output",

@@ -10,8 +10,9 @@ is composed twice. SV-3.3 (#300) adds what the SPA's Burden & Fuel Optimiser pag
 limits and the material prices, the lead line, the case the run was solved for (settings and limits in the API's
 names, what the request set, today's operating point) and the yard it read.
 
-Units: costs Rs/tHM; burden, flux, coke and fuel kg/tHM (coke dry unless named wet); production and tonnages t/d;
-temperatures °C; pressures bar g (pressure drop bar); gas flows Nm³/h.
+Units: costs Rs/tHM; burden, flux, coke and fuel kg/tHM (coke and nut coke dry unless named wet, PCI as injected: the
+basis of the plant's rate tags; the fuel rate is their sum, the as-charged sum beside it); production and tonnages
+t/d; temperatures °C; pressures bar g (pressure drop bar); gas flows Nm³/h.
 """
 
 from __future__ import annotations
@@ -162,12 +163,21 @@ class CostSplit(BaseModel):
 
 
 class FuelSplit(BaseModel):
+    """A plan's fuel on the plant's basis (coke and nut coke dry, PCI as injected, as its rate tags), the as-charged
+    figures beside: coke dry + nut coke dry + PCI = fuel rate; coke wet + nut coke wet + PCI = fuel as charged."""
+
     coke_dry_kg_thm: float = Field(..., description="Coke rate, dry, kg/tHM")
     coke_wet_kg_thm: float = Field(..., description="Coke rate as charged, kg/tHM")
     coke_sigma_kg_thm: float | None = Field(None, description="1 sigma of the dry coke rate (STRATA-ω), kg/tHM")
-    nut_coke_kg_thm: float = Field(..., description="Nut coke as charged (fixed input), kg/tHM")
+    nut_coke_kg_thm: float = Field(..., description="Nut coke, dry (fixed input: the plant's nut-coke rate), kg/tHM")
+    nut_coke_wet_kg_thm: float = Field(..., description="Nut coke as charged, kg/tHM")
     pci_kg_thm: float = Field(..., description="PCI as injected (fixed input), kg/tHM")
-    fuel_rate_kg_thm: float = Field(..., description="Coke wet + nut coke + PCI (BAND-01 520-600), kg/tHM")
+    fuel_rate_kg_thm: float = Field(
+        ...,
+        description="Coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag "
+        "(BAND-01 520-600), kg/tHM",
+    )
+    fuel_charged_kg_thm: float = Field(..., description="Coke + nut coke as charged + PCI as injected, kg/tHM")
 
 
 class SlagView(BaseModel):
@@ -195,7 +205,7 @@ class SlagView(BaseModel):
 
 class ChargingView(BaseModel):
     coke_t_d: float = Field(..., description="Coke as charged, t/d")
-    nut_coke_t_d: float = Field(..., description="Nut coke, t/d")
+    nut_coke_t_d: float = Field(..., description="Nut coke as charged, t/d")
     pci_t_d: float = Field(..., description="PCI, t/d")
     ferrous_t_d: float = Field(..., description="Ferrous burden wet, t/d")
     flux_kg_thm: float = Field(..., description="Flux wet, kg/tHM")
@@ -330,7 +340,12 @@ class FrontierPoint(BaseModel):
     fuel_rs_thm: float | None = Field(None, description="Fuel, Rs/tHM")
     coke_dry_kg_thm: float | None = Field(None, description="Coke rate, dry, kg/tHM")
     coke_wet_kg_thm: float | None = Field(None, description="Coke rate as charged, kg/tHM")
-    fuel_rate_kg_thm: float | None = Field(None, description="Fuel rate, kg/tHM")
+    fuel_rate_kg_thm: float | None = Field(
+        None, description="Fuel rate: coke dry + nut coke dry + PCI as injected (the plant's basis), kg/tHM"
+    )
+    fuel_charged_kg_thm: float | None = Field(
+        None, description="Coke + nut coke as charged + PCI as injected (null: a run stored before the split), kg/tHM"
+    )
     slag_kg_thm: float | None = Field(None, description="Slag rate, kg/tHM")
     hbt_c: float | None = Field(None, description="Hot-blast temperature, °C")
     enrichment_tag_pct: float | None = Field(None, description="Plant enrichment tag, %")
@@ -365,7 +380,12 @@ class RunSettings(BaseModel):
     hmt_c: float | None = Field(None, description="Hot-metal temperature target (BAND-02), °C")
     hm_si_pct: float | None = Field(None, description="Hot-metal Si target (BAND-03), %")
     pci_kg_thm: float | None = Field(None, description="PCI as injected (fixed input), kg/tHM")
-    nut_coke_kg_thm: float | None = Field(None, description="Nut coke as charged (fixed input), kg/tHM")
+    nut_coke_kg_thm: float | None = Field(
+        None, description="Nut coke, dry (fixed input: the plant's nut-coke rate, the request's basis), kg/tHM"
+    )
+    nut_coke_wet_kg_thm: float | None = Field(
+        None, description="Nut coke as charged, at the nut-coke moisture of the calibration, kg/tHM"
+    )
     blast_moisture_g_nm3: float | None = Field(None, description="Blast moisture (DATA-11), g/Nm³")
     hbt_c: float | None = Field(None, description="Hot-blast temperature, °C")
     o2_per_air: float | None = Field(None, description="Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air")
@@ -579,8 +599,20 @@ def _today(regime: Any) -> TodayPoint | None:
     )
 
 
-def case_view(inputs: Mapping[str, Any]) -> RunCase | None:
-    """The stored case (``optimiser_run.inputs``) under the API's names; None for a run stored without one."""
+def _nut_dry(inputs: Mapping[str, Any], settings: Mapping[str, Any], plan: Mapping[str, Any] | None) -> float | None:
+    """The case's nut coke as the plant's rate (dry): the engine's as-charged setting less the nut-coke moisture of
+    the calibration; a run stored without that moisture takes its plan's dry rate."""
+    wet = _num(settings.get("nut_plant"))
+    moist = _num(dict(inputs.get("calibration") or {}).get("nut_coke_moisture_pct"))
+    if wet is not None and moist is not None:
+        return wet * (1 - moist / 100.0)
+    return _num(dict((plan or {}).get("out") or {}).get("nut_dry"))
+
+
+def case_view(inputs: Mapping[str, Any], plan: Mapping[str, Any] | None = None) -> RunCase | None:
+    """The stored case (``optimiser_run.inputs``) under the API's names; None for a run stored without one. Nut coke
+    is shown on the request's basis (dry), the engine's as-charged value beside it (``plan``: the run's plan, for a
+    run stored without the calibration's nut-coke moisture)."""
     from services.optimiser import SETTINGS_FIELDS
 
     settings, limits = inputs.get("settings"), inputs.get("limits")
@@ -588,8 +620,11 @@ def case_view(inputs: Mapping[str, Any]) -> RunCase | None:
         return None
     over = dict(inputs.get("overrides") or {})
     blend = settings.get("omega_mode") == "blend"
+    shown = _api_names(SETTINGS_FIELDS, settings) | dict(
+        nut_coke_kg_thm=_nut_dry(inputs, settings, plan), nut_coke_wet_kg_thm=_num(settings.get("nut_plant"))
+    )
     return RunCase(
-        settings=RunSettings(**_api_names(SETTINGS_FIELDS, settings)),
+        settings=RunSettings(**shown),
         limits=limits_view(limits) or PlanLimits(),
         settings_set=sorted(dict(over.get("settings") or {})),
         limits_set=sorted(dict(over.get("limits") or {})),
@@ -855,8 +890,10 @@ def plan_view(
             coke_wet_kg_thm=f["coke_wet"],
             coke_sigma_kg_thm=_num(om.get("sigma_K")) if blend_mode else None,
             nut_coke_kg_thm=f["nut"],
+            nut_coke_wet_kg_thm=f["nut_wet"],
             pci_kg_thm=f["pci"],
             fuel_rate_kg_thm=f["total"],
+            fuel_charged_kg_thm=f["total_charged"],
         ),
         slag=SlagView(
             rate_kg_thm=s["rate"],
@@ -944,6 +981,7 @@ def _frontier(rows: Sequence[Mapping[str, Any]] | None) -> list[FrontierPoint]:
             coke_dry_kg_thm=_num(x.get("coke_dry")),
             coke_wet_kg_thm=_num(x.get("coke_wet")),
             fuel_rate_kg_thm=_num(x.get("fuel_rate")),
+            fuel_charged_kg_thm=_num(x.get("fuel_charged")),
             slag_kg_thm=_num(x.get("slag")),
             hbt_c=_num(x.get("HBT")),
             enrichment_tag_pct=_num(x.get("enrich_tag")),
@@ -1052,7 +1090,7 @@ def result_view(row: Any) -> OptimiserResult:
         view["saving_lakh_rs_d"] = view["saving_rs_thm"] * view["plan"].production_t_d / 1e5
     view["critical_assumptions"], view["critical_assumptions_error"] = _critical(res.get("critical_assumptions"))
     view["lead"] = lead_view(engine_mode, plan, res.get("today") if engine_mode == "fixed" else None, names)
-    view["case"] = case_view(inputs)
+    view["case"] = case_view(inputs, plan)
     view["yard"] = yard_view(yard)
     if view.get("plan") is not None:
         view["solves"] = view["plan"].shaft_efficiency.network

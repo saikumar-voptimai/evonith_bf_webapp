@@ -62,9 +62,15 @@ class OptimiserRunSummary(BaseModel):
     saving_rs_thm: float | None = Field(
         None, description="Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)"
     )
-    coke_kg_thm: float | None = Field(None, description="Coke rate of the plan as charged (wet), kg/tHM")
+    coke_kg_thm: float | None = Field(
+        None, description="Coke rate of the plan, dry (a run stored before 25 Nov 2026: as charged), kg/tHM"
+    )
     coke_sd_kg_thm: float | None = Field(None, description="1 sigma of the coke rate, kg/tHM dry (STRATA-ω)")
-    fuel_rate_kg_thm: float | None = Field(None, description="Coke (wet) + nut coke + PCI of the plan, kg/tHM")
+    fuel_rate_kg_thm: float | None = Field(
+        None,
+        description="Fuel rate of the plan: coke dry + nut coke dry + PCI as injected, the basis of the plant's "
+        "fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM",
+    )
     certainty: str | None = Field(None, description="High, Medium, Low or Investigate (STRATA-ω)")
     decision: PlanDecisionView | None = Field(None, description="The decision that applies (the latest)")
 

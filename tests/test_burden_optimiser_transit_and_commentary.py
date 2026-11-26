@@ -99,6 +99,12 @@ def test_plan_tiles_match_the_engine_result(plans):
     assert P["cost"]["total"] == pytest.approx(P["cost"]["ore"] + P["cost"]["flux"] + P["cost"]["fuel"])
     assert P["fuel"]["coke_dry"] == pytest.approx(r["out"]["K"]) and P["fuel"]["total"] == pytest.approx(r["out"]["fuel_rate"])
     o = r["out"]
+    # the plant's basis on the shipped calibration (laboratory total moisture): coke dry + nut coke dry + PCI = fuel
+    # rate; the as-charged figures beside
+    f, nut_moist = P["fuel"], eng.cal["case"]["nut"]["moist_pct"]
+    assert f["nut_wet"] == 70.0 and f["nut"] == pytest.approx(70.0 * (1 - nut_moist / 100)) and nut_moist > 3.0
+    assert f["coke_dry"] + f["nut"] + f["pci"] == pytest.approx(f["total"], abs=1e-9)
+    assert f["total_charged"] == pytest.approx(o["fuel_charged"]) and f["total_charged"] - f["total"] > 8.0
     assert P["slag"]["b2"] == pytest.approx(o["B2"], abs=1e-6)
     assert P["slag"]["t_basicity"] == pytest.approx((o["CaO"] + o["MgO"]) / o["SiO2"])
     assert P["slag"]["ib4"] == pytest.approx((o["CaO"] + o["MgO"]) / (o["SiO2"] + o["Al2O3"]))
@@ -169,6 +175,11 @@ def test_commentary_context_carries_notes_facts_and_the_run(plans):
     d = today["cost"]["total"] - r["cost"]["total"]
     assert f"Plan costs Rs {abs(d):,.0f}/tHM less than today's charged blend" in t
     assert f"TOTAL {r['cost']['total']:,.0f}" in t and "CaO/SiO₂ floor" in t and "| BAND-01 |" in t
+    o = r["out"]
+    assert (f"Fuel kg/tHM, the plant's basis (coke and nut coke dry, PCI as injected): coke {o['K']:,.1f} + nut coke "
+            f"{o['nut_dry']:,.1f} + PCI 190.0 = fuel rate {o['fuel_rate']:,.1f} (band 520-600); as charged: coke "
+            f"{o['K_wet']:,.1f}, nut coke 70.0, fuel {o['fuel_charged']:,.1f}") in t
+    assert "nut coke 70.0 kg/tHM as charged" in t
     assert "No saving (< Rs 0.5/tHM) from:" in t
 
 

@@ -8,6 +8,7 @@ import openapi from '../api/openapi.json';
 import { inlineParts } from '../reports/reports.ts';
 import fixture from './fixtures/result.json';
 import {
+	asCharged,
 	assumptionEffect,
 	blendTable,
 	caseValue,
@@ -106,18 +107,38 @@ describe('overview strip and panels equal page 11', () => {
 		expect(caption).toContain('coke 9,709 Rs/tHM');
 	});
 
-	it('fuel: coke as charged (dry in the note), fixed inputs, total against BAND-01', () => {
+	it('fuel: the plant’s dry basis adds up to the fuel rate, as charged in the notes, against BAND-01', () => {
 		const cells = fuelCells(plan, today, ref);
 		const f = exp2.tiles.fuel;
-		close(cells[0]!.value, f.coke_wet);
+		close(cells[0]!.value, f.coke_dry);
 		close(cells[1]!.value, f.nut);
 		close(cells[2]!.value, f.pci);
 		close(cells[3]!.value, f.total);
-		close(plan.fuel.coke_dry_kg_thm, f.coke_dry);
-		close(cells[0]!.delta!.value, exp2.deltas.fuel.coke_wet);
-		expect(cells.map((c) => c.digits)).toEqual([2, 2, 2, 2]); // the three fuels add up to the total as shown
-		expect(cells[0]!.note).toContain(`${f.coke_dry.toFixed(2)}\u00a0kg/tHM dry`);
+		close(plan.fuel.coke_wet_kg_thm, f.coke_wet);
+		close(plan.fuel.nut_coke_wet_kg_thm, f.nut_wet);
+		close(plan.fuel.fuel_charged_kg_thm, f.total_charged);
+		close(cells[0]!.delta!.value, exp2.deltas.fuel.coke_dry);
+		expect(cells.map((c) => c.label)).toEqual(['Coke rate, dry', 'Nut coke, dry', 'PCI', 'Fuel rate']);
+		expect(cells.map((c) => c.digits)).toEqual([2, 2, 2, 2]);
+		// dry coke + dry nut coke + PCI = the fuel rate, and the as-charged three = the as-charged sum
+		close(cells[0]!.value! + cells[1]!.value! + cells[2]!.value!, cells[3]!.value);
+		close(f.coke_wet + f.nut_wet + f.pci, plan.fuel.fuel_charged_kg_thm);
+		expect(cells[0]!.note).toBe(`${f.coke_wet.toFixed(2)}\u00a0kg/tHM as charged (0.4\u00a0% moisture)`);
+		expect(cells[1]!.note).toBe('Fixed input; 70.00\u00a0kg/tHM as charged (0.5\u00a0% moisture)');
+		expect(cells[3]!.note).toBe(
+			`Coke dry + nut coke dry + PCI; ${f.total_charged.toFixed(2)}\u00a0kg/tHM as charged`
+		);
 		expect(cells[3]!.band).toMatchObject({ lo: 520, hi: 600, inside: true, label: 'BAND-01 520–⁠600' });
+	});
+
+	it('a fuel as charged carries the moisture between its two rates', () => {
+		expect(asCharged(300.82, 308.18)).toBe('308.18\u00a0kg/tHM as charged (2.4\u00a0% moisture)');
+		expect(asCharged(70, 74.21)).toBe('74.21\u00a0kg/tHM as charged (5.7\u00a0% moisture)');
+		expect(asCharged(null, 74.21)).toBe('74.21\u00a0kg/tHM as charged');
+		expect(THERMAL_FIELDS.find((x) => x.key === 'nut_coke_kg_thm')).toMatchObject({
+			label: 'Nut coke, dry',
+			emptyHint: 'Empty: 70 kg/tHM dry, the plant’s nut-coke rate'
+		});
 	});
 
 	it('slag: chemistry, limits and the plant bands of the three ratios', () => {
@@ -318,7 +339,10 @@ describe('Step 1 frontier and value of limits equal page 11', () => {
 		expect(v.series.map((s) => s.id)).toEqual(['frontier', 'best', 'top']);
 		expect(v.series[0]!.points).toHaveLength(3);
 		close(overviewTiles(step1, step1.plan!)[0]!.value, exp1.tiles.overview.total);
-		expect(overviewTiles(step1, step1.plan!)[3]!.label).toBe('Coke, as charged'); // no today's production on the shipped calibration
+		const coke = overviewTiles(step1, step1.plan!)[3]!; // no today's production on the shipped calibration
+		expect(coke.label).toBe('Coke rate, dry');
+		close(coke.value, step1.plan!.fuel.coke_dry_kg_thm);
+		expect(coke.note).toBe(`${step1.plan!.fuel.coke_wet_kg_thm.toFixed(2)}\u00a0kg/tHM as charged`);
 	});
 
 	it('value of limits: useful changes and the rest', () => {

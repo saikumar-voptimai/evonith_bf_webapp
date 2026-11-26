@@ -85,7 +85,7 @@ def test_every_fact_route_requires_the_admin_role() -> None:
 def test_browse_propose_review_diff_and_export(client, twin) -> None:
     r = call(client, "adm", "GET", URL)
     view = FactRegisterView.model_validate(r.json())
-    assert r.status_code == 200 and view.label == "1.8" and len(view.facts) == 116 and view.in_force_version == 0
+    assert r.status_code == 200 and view.label == "1.9" and len(view.facts) == 117 and view.in_force_version == 0
     assert view.groups == ["COKE", "GAS", "FLOW", "DATA", "BAND", "ASM", "MOD", "VAL"]
     assert [t.id for t in view.trials][:3] == ["T1", "T2", "T3"] and view.trials[0].benefit.rs_thm == [-197, -185]
     assert view.trial_rules["detection"] and any(o.code == "Q5" for o in view.other_tests)
@@ -112,7 +112,7 @@ def test_browse_propose_review_diff_and_export(client, twin) -> None:
     r = call(client, "adm", "POST", f"{URL}/versions/2/review", json={"approve": False, "note": "Not tested"})
     assert r.status_code == 200 and r.json()["status"] == "rejected"
     facts.review(twin, Actor("alice", "admin"), 1, approve=True)
-    assert load_register().label == "1.8 + overlay 1"
+    assert load_register().label == "1.9 + overlay 1"
 
     r = call(client, "adm", "GET", f"{URL}/versions")
     assert [(v["version"], v["status"], v["in_force"]) for v in r.json()] == [
@@ -122,9 +122,9 @@ def test_browse_propose_review_diff_and_export(client, twin) -> None:
     r = call(client, "adm", "GET", URL)
     view = FactRegisterView.model_validate(r.json())
     coke = next(f for f in view.facts if f.id == "COKE-01")
-    assert view.in_force_version == 1 and view.label == "1.8 + overlay 1"
+    assert view.in_force_version == 1 and view.label == "1.9 + overlay 1"
     assert coke.changed == ["value", "status"] and coke.file == {"value": -8.7, "status": "Model"}
-    assert call(client, "adm", "GET", URL, params={"version": 0}).json()["label"] == "1.8"
+    assert call(client, "adm", "GET", URL, params={"version": 0}).json()["label"] == "1.9"
 
     r = call(client, "adm", "GET", f"{URL}/diff")
     diff = FactsDiff.model_validate(r.json())
@@ -132,11 +132,11 @@ def test_browse_propose_review_diff_and_export(client, twin) -> None:
     assert [(c.id, c.field) for c in diff.changes] == [("COKE-01", "value"), ("COKE-01", "status"), ("BAND-02", "band")]
 
     r = call(client, "adm", "GET", f"{URL}/export")
-    assert r.status_code == 200 and 'filename="facts_register_v1.9.json"' in r.headers["content-disposition"]
+    assert r.status_code == 200 and 'filename="facts_register_v1.10.json"' in r.headers["content-disposition"]
     doc = json.loads(r.text)
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     assert list(Draft202012Validator(schema).iter_errors(doc)) == []
-    assert FactRegister(doc).version == "1.9" and r.text.endswith("}\n")
+    assert FactRegister(doc).version == "1.10" and r.text.endswith("}\n")
 
 
 def test_refused_writes_answer_problems(client) -> None:

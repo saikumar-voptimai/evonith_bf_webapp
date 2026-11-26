@@ -103,7 +103,7 @@ def test_the_basis_lists_days_the_calibration_point_and_materials(api) -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["days"] == [] and body["basis"] is None and "No day calibration" in body["message"]
-    assert body["facts_version"] == "1.8" and body["max_cases"] == 4
+    assert body["facts_version"] == "1.9" and body["max_cases"] == 4
     assert {"sinter_sp_02", "lloyds_pellet", "gomti_clo"} <= {m["id"] for m in body["materials"]}
     ref = call(api, "GET", "adm", f"{URL}/basis", params={"calibration": "reference"}).json()
     assert ref["basis"]["calibration"] == "reference" and ref["basis"]["omega"] == pytest.approx(0.80, abs=0.001)
@@ -155,7 +155,7 @@ def test_a_forge_run_reproduces_the_deck_and_states_the_register_version(api) ->
     cases = {c["name"]: c for c in call(api, "GET", "adm", f"{URL}/cases").json()}
     for name, two_zone, fixed_eta in (("PCI +10", -8.7, -9.9), ("HBT +50", -6.7, -4.1)):
         run = cases[name]["forge_run"]
-        assert run["facts_version"] == "1.8" and run["job_id"] == job["id"]
+        assert run["facts_version"] == "1.9" and run["job_id"] == job["id"]
         assert run["basis"]["calibration"] == "reference" and run["basis"]["blast_moisture_g_nm3"] == 15.0
         assert run["result"]["two_zone"]["d_coke_kg_thm"] == pytest.approx(two_zone, abs=0.06)
         assert run["result"]["fixed_eta"]["d_coke_kg_thm"] == pytest.approx(fixed_eta, abs=0.06)
@@ -171,13 +171,13 @@ def test_a_strata_run_reproduces_the_case_report(api) -> None:
     assert r.status_code == 202, r.text
     out = work(api, r.json()["job"]["id"])
     assert (
-        out["facts_version"] == "1.8" and out["basis"]["omega_mode"] == "fixed" and out["basis"]["yard"] == "reference"
+        out["facts_version"] == "1.9" and out["basis"]["omega_mode"] == "fixed" and out["basis"]["yard"] == "reference"
     )
     runs = [c["strata_run"] for c in call(api, "GET", "adm", f"{URL}/cases").json()]
     by_name = {r["result"]["name"]: r["result"] for r in runs}
     for name in ("Cheapest", "Case 2 blend"):
         res = by_name[name]
-        assert res["status"] == "ok" and res["facts_version"] == "1.8"
+        assert res["status"] == "ok" and res["facts_version"] == "1.9"
         assert res["production_t_d"] == pytest.approx(2270.0)
         assert res["coke_kg_thm"] == pytest.approx(305.7, abs=0.3) and res["cost_rs_thm"] == pytest.approx(30139, abs=5)
     assert by_name["Case 2 blend"]["forced"] and not by_name["Cheapest"]["forced"]

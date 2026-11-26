@@ -202,7 +202,7 @@ class StrataCaseResult(BaseModel):
     coke_kg_thm: float | None = Field(None, description="Coke rate, kg/tHM dry")
     coke_wet_kg_thm: float | None = Field(None, description="Coke rate as charged, kg/tHM")
     coke_sd_kg_thm: float | None = Field(None, description="1 sigma of the coke rate (STRATA-ω), kg/tHM dry")
-    fuel_rate_kg_thm: float | None = Field(None, description="Coke as charged + nut coke + PCI, kg/tHM")
+    fuel_rate_kg_thm: float | None = Field(None, description="Coke and nut coke as charged + PCI as injected, kg/tHM")
     eta_co_pct: float | None = Field(None, description="Top-gas CO utilisation, %")
     top_gas_c: float | None = Field(None, description="Top-gas temperature, °C")
     shaft_efficiency: float | None = Field(None, description="Shaft efficiency, dimensionless")
@@ -493,7 +493,10 @@ def _band_warnings(reg: Any, inputs: Mapping[str, float], fuel_rate: float | Non
         out.append(f"HM Si {inputs['hm_si_pct']:.2f} % is outside BAND-03 ({lo:.2f}–{hi:.2f} %).")
     lo, hi = reg.band("BAND-01")
     if fuel_rate is not None and not lo <= fuel_rate <= hi:
-        out.append(f"Fuel rate {fuel_rate:,.1f} kg/tHM (two-zone) is outside BAND-01 ({lo:,.0f}–{hi:,.0f} kg/tHM).")
+        out.append(
+            f"Fuel rate {fuel_rate:,.1f} kg/tHM (two-zone; coke and nut coke dry, PCI as injected) is outside BAND-01 "
+            f"({lo:,.0f}–{hi:,.0f} kg/tHM)."
+        )
     total = inputs["coke_fc_pct"] + inputs["coke_ash_pct"] + inputs["coke_vm_pct"]
     if abs(total - 100.0) > 0.5:
         out.append(f"Coke FC + ash + VM = {total:.1f} % on dry basis: the proximate analysis does not add up to 100 %.")
@@ -561,7 +564,11 @@ def forge_compute(cal: Mapping[str, Any], cases: Sequence[Mapping[str, Any]], re
         elif out["two_zone"] is None or out["fixed_eta"] is None:
             which = "two-zone balance" if out["two_zone"] is None else "oxygen-balance model"
             out["warnings"].append(f"The {which} did not converge for these inputs.")
-        out["warnings"] = _band_warnings(reg, inputs, (out["two_zone"] or {}).get("fuel_rate_kg_thm")) + out["warnings"]
+        # BAND-01 is the plant's fuel rate: coke and nut coke dry, PCI as injected (the case's fuel_rate is as charged)
+        plant = None
+        if out["two_zone"] is not None:
+            plant = out["two_zone"]["coke_kg_thm"] + float(case["nut_kg"]) + inputs["pci_kg_thm"]
+        out["warnings"] = _band_warnings(reg, inputs, plant) + out["warnings"]
         results.append(out)
     return _finite(dict(facts_version=reg.label, base=base, cases=results, notes=[TWO_ZONE_NOTE, FIXED_ETA_NOTE]))
 
@@ -600,7 +607,7 @@ def strata_case_result(spec: Mapping[str, Any], r: Mapping[str, Any], names: Map
         coke_kg_thm=_num(o.get("K")),
         coke_wet_kg_thm=_num(o.get("K_wet")),
         coke_sd_kg_thm=_num(om.get("sigma_K")) if blend_mode else None,
-        fuel_rate_kg_thm=_num(o.get("fuel_rate")),
+        fuel_rate_kg_thm=_num(o.get("fuel_charged", o.get("fuel_rate"))),  # the as-charged sum, as the FORGE cases
         eta_co_pct=_num(o.get("eta")),
         top_gas_c=_num(o.get("T_top")),
         shaft_efficiency=_num(o.get("omega")),
@@ -652,7 +659,7 @@ def _strata_refused(spec: Mapping[str, Any], status: str, error: str) -> dict[st
 def _strata_cases(inputs: Mapping[str, Any], cal: Mapping[str, Any], settings: Mapping[str, Any],
                   limits: Mapping[str, Any], prod_t_d: float, cases: Sequence[Mapping[str, Any]],
                   names: Mapping[str, str]) -> list[dict[str, Any]]:  # fmt: skip
-    from services.optimiser import SETTINGS_FIELDS, engine_overrides
+    from services.optimiser import settings_overrides
     from utils.burden_engine import BandError, Infeasible
     from utils.burden_engine.engine import Engine, Limits, Settings
     from utils.burden_engine.scenarios import run_today
@@ -662,7 +669,8 @@ def _strata_cases(inputs: Mapping[str, Any], cal: Mapping[str, Any], settings: M
     out = []
     for spec in cases:
         try:
-            s = Settings(**{**dict(settings), **engine_overrides(spec.get("settings"), SETTINGS_FIELDS, "setting")})
+            # a case's nut coke is the plant's rate (dry), as the optimiser's requests
+            s = Settings(**{**dict(settings), **settings_overrides(spec.get("settings"), cal)})
             lim = Limits(**dict(limits))
             blend = spec.get("blend")
             if blend:

@@ -59,8 +59,8 @@ st.title("Burden & Fuel Optimiser — BF2")
 st.caption(
     "Chooses the ferrous blend and flux that minimise ore + flux + fuel cost per tonne of hot metal, with the coke "
     "rate from the two-zone energy model at your HMT and Si target, and the output the day's limits allow. PCI and "
-    "nut coke are fixed inputs. Coke rates are as charged (wet; dry alongside), shares wet % of the ferrous charge, "
-    "costs Rs/tHM."
+    "nut coke are fixed inputs. Coke, nut coke and the fuel rate are dry, the basis of the plant's rate tags (as "
+    "charged alongside), shares wet % of the ferrous charge, costs Rs/tHM."
 )
 
 
@@ -110,7 +110,7 @@ humidity_default = dict(value=_hum_g, source=_hum_src, day=_hum_day.date(),
 with st.expander("Thermal target and fixed fuels", expanded=False):
     thermal_defaults = {**cfg.get("thermal", {}),
                         **fuel_defaults(regime, cfg.get("thermal", {}), info.cal, live_pci=loaders.live_pci())}
-    thermal = render_thermal(thermal_defaults, reg, humidity_default, "bfo_th")
+    thermal = render_thermal(thermal_defaults, reg, humidity_default, "bfo_th", cal=info.cal)
 
 # the slag side is the Blend Mix Optimiser's (held Si / S / C, dust per stream, minor oxides, FeO rule); the dust's kg
 # per charge and analysis are editable here, applied to this run, and saved as operator inputs on request

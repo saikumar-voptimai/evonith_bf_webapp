@@ -153,12 +153,12 @@ def test_each_lever_reaches_its_model_only(deck) -> None:
 def test_the_register_version_and_its_bands_are_those_in_force(cal, monkeypatch) -> None:
     monkeypatch.setattr(register, "_source", None)  # the file alone
     out = whatif.forge_compute(cal, [{"name": "hot", "levers": {"hmt_c": 1530.0}}])
-    assert out["facts_version"] == load_register().label == "1.8"
+    assert out["facts_version"] == load_register().label == "1.9"
     assert out["cases"][0]["warnings"] == ["HMT 1,530 °C is outside BAND-02 (1,440–1,520 °C)."]
-    approved = ApprovedOverlay(3, "1.8", {"BAND-02": {"band": [1440, 1540]}}, "h3")
+    approved = ApprovedOverlay(3, "1.9", {"BAND-02": {"band": [1440, 1540]}}, "h3")
     monkeypatch.setattr(register, "_source", lambda: approved)  # an approved overlay in force (SV-4.2)
     out = whatif.forge_compute(cal, [{"name": "hot", "levers": {"hmt_c": 1530.0}}])
-    assert out["facts_version"] == "1.8 + overlay 3" and out["cases"][0]["warnings"] == []
+    assert out["facts_version"] == "1.9 + overlay 3" and out["cases"][0]["warnings"] == []
 
 
 def test_eta_and_coke_chemistry_levers(cal) -> None:
@@ -354,9 +354,9 @@ def test_the_forge_job_stores_each_result_with_its_case(twin, monkeypatch, cal) 
         job_id="j7", kind=CATALOG["whatif.forge"], attempt=1, store=Jobs(), bus=MemoryEventBus(), pool=None
     )
     out = asyncio.run(HANDLERS["whatif.forge"](job, params))
-    assert out["stored"] == [a["id"]] and out["facts_version"] == "1.8" and out["kind"] == "forge"
+    assert out["stored"] == [a["id"]] and out["facts_version"] == "1.9" and out["kind"] == "forge"
     (case,) = whatif.list_cases(twin, "alice")
     run = whatif.ForgeCaseRun.model_validate(case["forge_run"])
-    assert run.job_id == "j7" and run.facts_version == "1.8" and run.basis.calibration == "reference"
+    assert run.job_id == "j7" and run.facts_version == "1.9" and run.basis.calibration == "reference"
     assert run.result.two_zone.d_coke_kg_thm == pytest.approx(-8.7, abs=0.05)
     assert run.base.two_zone.coke_kg_thm == pytest.approx(305.5, abs=0.05)

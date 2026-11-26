@@ -1,7 +1,7 @@
 """Fact register editor (SV-4.2, #305): versions of the fact register as overlays in ``twin.facts_version``, their
 review and the register the engine loads.
 
-The repository file ``src/config/facts_register.json`` (v1.8, 116 facts) stays the base. An administrator changes a
+The repository file ``src/config/facts_register.json`` (v1.9, 117 facts) stays the base. An administrator changes a
 fact's value, band or status; the change is saved as a pending version whose ``overlay`` holds every fact that differs
 from the file (cumulative, ``{"ASM-08": {"value": 185}}``), made from the version in force (``parent_version``, 0 for
 the file). Each version is validated before it is saved and again before it is approved: the overlaid register must

@@ -3902,7 +3902,7 @@ export interface components {
             hm_per_charge_t?: number | null;
             /**
              * Nut Coke T D
-             * @description Nut coke, t/d
+             * @description Nut coke as charged, t/d
              */
             nut_coke_t_d: number;
             /**
@@ -6616,8 +6616,13 @@ export interface components {
              */
             enrichment_tag_pct?: number | null;
             /**
+             * Fuel Charged Kg Thm
+             * @description Coke + nut coke as charged + PCI as injected (null: a run stored before the split), kg/tHM
+             */
+            fuel_charged_kg_thm?: number | null;
+            /**
              * Fuel Rate Kg Thm
-             * @description Fuel rate, kg/tHM
+             * @description Fuel rate: coke dry + nut coke dry + PCI as injected (the plant's basis), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -6725,7 +6730,7 @@ export interface components {
             finished_at: string;
             /**
              * Fuel Rate Kg Thm
-             * @description Coke (wet) + nut coke + PCI of the plan, kg/tHM
+             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI as injected (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -6991,7 +6996,11 @@ export interface components {
              */
             vm_pct?: number | null;
         };
-        /** FuelSplit */
+        /**
+         * FuelSplit
+         * @description A plan's fuel on the plant's basis (coke and nut coke dry, PCI as injected, as its rate tags), the as-charged
+         *     figures beside: coke dry + nut coke dry + PCI = fuel rate; coke wet + nut coke wet + PCI = fuel as charged.
+         */
         FuelSplit: {
             /**
              * Coke Dry Kg Thm
@@ -7009,15 +7018,25 @@ export interface components {
              */
             coke_wet_kg_thm: number;
             /**
+             * Fuel Charged Kg Thm
+             * @description Coke + nut coke as charged + PCI as injected, kg/tHM
+             */
+            fuel_charged_kg_thm: number;
+            /**
              * Fuel Rate Kg Thm
-             * @description Coke wet + nut coke + PCI (BAND-01 520-600), kg/tHM
+             * @description Coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (BAND-01 520-600), kg/tHM
              */
             fuel_rate_kg_thm: number;
             /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged (fixed input), kg/tHM
+             * @description Nut coke, dry (fixed input: the plant's nut-coke rate), kg/tHM
              */
             nut_coke_kg_thm: number;
+            /**
+             * Nut Coke Wet Kg Thm
+             * @description Nut coke as charged, kg/tHM
+             */
+            nut_coke_wet_kg_thm: number;
             /**
              * Pci Kg Thm
              * @description PCI as injected (fixed input), kg/tHM
@@ -10384,7 +10403,7 @@ export interface components {
             certainty?: string | null;
             /**
              * Coke Kg Thm
-             * @description Coke rate of the plan as charged (wet), kg/tHM
+             * @description Coke rate of the plan, dry (a run stored before 25 Nov 2026: as charged), kg/tHM
              */
             coke_kg_thm?: number | null;
             /**
@@ -10412,7 +10431,7 @@ export interface components {
             finished_at: string;
             /**
              * Fuel Rate Kg Thm
-             * @description Coke (wet) + nut coke + PCI of the plan, kg/tHM
+             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -10559,7 +10578,7 @@ export interface components {
             certainty?: string | null;
             /**
              * Coke Kg Thm
-             * @description Coke rate of the plan as charged (wet), kg/tHM
+             * @description Coke rate of the plan, dry (a run stored before 25 Nov 2026: as charged), kg/tHM
              */
             coke_kg_thm?: number | null;
             /**
@@ -10582,7 +10601,7 @@ export interface components {
             finished_at: string;
             /**
              * Fuel Rate Kg Thm
-             * @description Coke (wet) + nut coke + PCI of the plan, kg/tHM
+             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -10639,8 +10658,8 @@ export interface components {
         /**
          * OptimiserSettings
          * @description Furnace controls and thermal targets of a run that replace page 11's defaults (the regime's medians, the page
-         *     config's targets, the regime's PCI and nut coke, today's Open-Meteo blast moisture). Unset fields keep the
-         *     default.
+         *     config's targets, the regime's PCI, the configured nut-coke rate, today's Open-Meteo blast moisture). Unset fields
+         *     keep the default.
          */
         OptimiserSettings: {
             /**
@@ -10670,7 +10689,7 @@ export interface components {
             hot_blast_pressure_bar_g?: number | null;
             /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged (fixed input), kg/tHM
+             * @description Nut coke, dry (fixed input: the plant's nut-coke rate; the engine charges it at the nut-coke moisture of the calibration), kg/tHM
              */
             nut_coke_kg_thm?: number | null;
             /**
@@ -12176,9 +12195,14 @@ export interface components {
             hot_blast_pressure_bar_g?: number | null;
             /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged (fixed input), kg/tHM
+             * @description Nut coke, dry (fixed input: the plant's nut-coke rate, the request's basis), kg/tHM
              */
             nut_coke_kg_thm?: number | null;
+            /**
+             * Nut Coke Wet Kg Thm
+             * @description Nut coke as charged, at the nut-coke moisture of the calibration, kg/tHM
+             */
+            nut_coke_wet_kg_thm?: number | null;
             /**
              * O2 Per Air
              * @description Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air
@@ -14471,7 +14495,7 @@ export interface components {
             forced: boolean;
             /**
              * Fuel Rate Kg Thm
-             * @description Coke as charged + nut coke + PCI, kg/tHM
+             * @description Coke and nut coke as charged + PCI as injected, kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**

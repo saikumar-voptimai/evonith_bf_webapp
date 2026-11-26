@@ -1,6 +1,6 @@
 """Fact register editor of the admin space (SV-4.2, #305). Administrators only.
 
-The register (``src/config/facts_register.json`` v1.8, 116 facts) by group and status; a change of a fact's value,
+The register (``src/config/facts_register.json`` v1.9, 117 facts) by group and status; a change of a fact's value,
 band or status is proposed as a version of ``twin.facts_version`` (an overlay on the file) and reviewed: a change of
 status needs a second administrator. The approved version with the highest number made against the file's version is
 in force; the engine loads it (``utils.burden_engine.facts.load_register``), else the file. Versions are compared

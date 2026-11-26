@@ -47,11 +47,11 @@ def test_register_matches_schema():
     data = load_register_data()
     with open(SCHEMA_PATH, encoding="utf-8") as fh:
         jsonschema.validate(data, json.load(fh))
-    assert data["version"] == "1.8"
+    assert data["version"] == "1.9"
     groups = {}
     for f in data["facts"]:
         groups[f["group"]] = groups.get(f["group"], 0) + 1
-    assert groups == {"COKE": 17, "GAS": 25, "FLOW": 16, "DATA": 16, "BAND": 3, "ASM": 16, "MOD": 11, "VAL": 12}
+    assert groups == {"COKE": 17, "GAS": 25, "FLOW": 16, "DATA": 17, "BAND": 3, "ASM": 16, "MOD": 11, "VAL": 12}
 
 
 def test_retired_facts_are_refused():
@@ -101,7 +101,9 @@ def test_case2_fuel_added(eng):
     assert r["feasible"] and r["lp_iterations"] <= 5
     assert o["K"] == pytest.approx(305.7, abs=0.3)
     assert o["slag"] == pytest.approx(340.0, abs=0.1)
-    assert o["fuel_rate"] == pytest.approx(567.0, abs=0.3)
+    # plant basis (coke 305.7 dry + nut coke 69.7 dry + PCI 190); the case report's 567.0 is the as-charged sum
+    assert o["fuel_rate"] == pytest.approx(565.4, abs=0.3)
+    assert o["fuel_charged"] == pytest.approx(567.0, abs=0.3) and o["nut_wet"] == 70.0
     assert r["cost"]["total"] == pytest.approx(30139, abs=5)
     assert r["raft"] == pytest.approx(2214, abs=2)
     assert set(r["binding"]) >= {"slag cap", "basicity min"}
@@ -116,11 +118,12 @@ def test_case2b_extended_yard_flags_extrapolation(ext):
 
 
 def test_calibration_reproduced():
-    """At the calibration burden the engine returns the calibration coke and blast (305.5 kg/tHM, 1,191 Nm3/tHM)."""
+    """At the calibration burden the engine returns the calibration coke and blast (300.0 kg/tHM dry on the
+    laboratory's total moisture, 1,132 Nm3/tHM)."""
     e = Engine(materials=UAT)
     c = e.cal
-    assert c["coke_model_cal"] == pytest.approx(305.5, abs=0.1)
-    assert c["hb_per_t_model_cal"] == pytest.approx(1191.4, abs=0.5)
+    assert c["coke_model_cal"] == pytest.approx(300.0, abs=0.1)
+    assert c["hb_per_t_model_cal"] == pytest.approx(1132.2, abs=0.5)
 
 
 # ---------------------------------------------------------------------------------------------- bands
@@ -138,10 +141,28 @@ def test_band_01_ideal_shaft_not_reported(eng):
     assert r["viol"]["fuel rate min"] > 0
 
 
+def test_band_01_is_on_the_plant_basis(eng):
+    """BAND-01 is the band of the plant's fuel-rate tag: coke dry + nut coke dry + PCI as injected, in the LP row and
+    in the validity check; the as-charged sum is reported beside it."""
+    base = eng.min_cost(P=P_PAGE, fuel=True)
+    o, s = base["out"], base["settings"]
+    assert o["fuel_rate"] == pytest.approx(o["K"] + o["nut_dry"] + s["pci_plant"], abs=1e-9)
+    assert o["fuel_charged"] == pytest.approx(o["K_wet"] + s["nut_plant"] + s["pci_plant"], abs=1e-9)
+    assert o["nut_dry"] == pytest.approx(s["nut_plant"] * (1 - eng.cal["case"]["nut"]["moist_pct"] / 100))
+    assert o["fuel_charged"] - o["fuel_rate"] == pytest.approx(1.64, abs=0.05)   # the moisture of coke and nut coke
+    mid = 0.5 * (o["fuel_rate"] + o["fuel_charged"])                            # between the two bases
+    r = eng.min_cost(P=P_PAGE, L=Limits(fuel_max=mid), fuel=True)                # a ceiling the plant basis meets
+    assert r["feasible"] and r["viol"]["fuel rate max"] == 0.0 and "fuel rate max" not in r["binding"]
+    assert r["out"]["K"] == pytest.approx(o["K"], abs=0.01)
+    r = eng.min_cost(P=P_PAGE, L=Limits(fuel_min=mid), fuel=True)                # a floor the plant basis misses
+    assert not r["feasible"]
+    assert r["viol"]["fuel rate min"] == pytest.approx(mid - r["out"]["fuel_rate"], abs=1e-6)
+
+
 def test_band_01_large_lower_zone_loss_not_reported():
     e = Engine(materials=UAT)
     e.cal = copy.deepcopy(e.cal)
-    e.cal["Q_LZ_GJh"] += 60.0
+    e.cal["Q_LZ_GJh"] += 80.0             # about 612 kg/tHM on the plant basis (+60 stops at the 600 ceiling)
     r = e.min_cost(P=P_PAGE, fuel=True)
     assert not r["feasible"]
     assert r["viol"]["fuel rate max"] > 0
@@ -196,4 +217,5 @@ def test_summary_is_flat(eng):
     r = eng.min_cost(P=P_PAGE, fuel=True)
     s = summary(r, eng)
     assert all(not isinstance(v, (dict, list)) for v in s.values())
-    assert s["fuel_rate"] == pytest.approx(567.0, abs=0.3)
+    assert s["fuel_rate"] == pytest.approx(565.4, abs=0.3) and s["fuel_charged"] == pytest.approx(567.0, abs=0.3)
+    assert s["coke_dry"] + s["nut_dry"] + 190.0 == pytest.approx(s["fuel_rate"], abs=1e-9)

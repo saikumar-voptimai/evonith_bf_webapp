@@ -95,13 +95,13 @@ export const THERMAL_FIELDS: FieldSpec[] = [
 	},
 	{
 		key: 'nut_coke_kg_thm',
-		label: 'Nut coke, as charged',
+		label: 'Nut coke, dry',
 		unit: 'kg/tHM',
 		digits: 0,
 		step: 1,
 		min: 0,
 		max: 150,
-		emptyHint: 'Empty: 70 kg/tHM'
+		emptyHint: 'Empty: 70 kg/tHM dry, the plant’s nut-coke rate'
 	},
 	{
 		key: 'blast_moisture_g_nm3',
@@ -532,11 +532,11 @@ export function overviewTiles(result: OptimiserResult, plan: PlanView): Tile[] {
 		});
 	} else {
 		tiles.push({
-			label: 'Coke, as charged',
-			value: plan.fuel.coke_wet_kg_thm,
+			label: 'Coke rate, dry',
+			value: plan.fuel.coke_dry_kg_thm,
 			unit: 'kg/tHM',
 			digits: 2,
-			note: `${formatQuantity(plan.fuel.coke_dry_kg_thm, 2, 'kg/tHM')} dry`
+			note: `${formatQuantity(plan.fuel.coke_wet_kg_thm, 2, 'kg/tHM')} as charged`
 		});
 	}
 	return tiles;
@@ -594,28 +594,37 @@ export function bandOf(
 	return { lo, hi, inside: !isNumber(value) || (lo <= value && value <= hi), label };
 }
 
-/** Fuel panel: coke as charged (wet; dry in the note), nut coke and PCI (fixed inputs), total fuel against BAND-01.
- * Two decimals throughout (user decision 11 Nov 2026), so the three fuels add up to the total as shown. */
+/** A fuel as charged, with the moisture between its dry and as-charged rates: "308.21 kg/tHM as charged (2.4 %
+ * moisture)". */
+export function asCharged(dry: number | null | undefined, wet: number | null | undefined): string {
+	const moisture = isNumber(dry) && isNumber(wet) && wet > 0 ? 100 * (1 - dry / wet) : null;
+	const text = `${formatQuantity(wet, 2, 'kg/tHM')} as charged`;
+	return isNumber(moisture) ? `${text} (${formatQuantity(moisture, 1, '%')} moisture)` : text;
+}
+
+/** Fuel panel on the plant's basis, as its rate tags: coke and nut coke dry, PCI as injected (fixed inputs), and their
+ * sum, the fuel rate, against BAND-01; the as-charged figures in the notes. Two decimals throughout (user decision
+ * 11 Nov 2026), so the three fuels add up to the fuel rate as shown. */
 export function fuelCells(plan: PlanView, today: PlanView | null | undefined, ref: Reference | null): Cell[] {
 	const f = plan.fuel;
 	const band = ref?.bands.find((b) => b.key === 'fuel_rate');
 	return [
 		{
-			key: 'coke_wet',
-			label: 'Coke, as charged',
-			value: f.coke_wet_kg_thm,
+			key: 'coke_dry',
+			label: 'Coke rate, dry',
+			value: f.coke_dry_kg_thm,
 			unit: 'kg/tHM',
 			digits: 2,
-			delta: vsToday(delta(f.coke_wet_kg_thm, today?.fuel.coke_wet_kg_thm), 0.005),
-			note: `${formatQuantity(f.coke_dry_kg_thm, 2, 'kg/tHM')} dry${isNumber(f.coke_sigma_kg_thm) ? `; σ ${formatQuantity(f.coke_sigma_kg_thm, 2, 'kg/tHM')}` : ''}; two-zone energy balance`
+			delta: vsToday(delta(f.coke_dry_kg_thm, today?.fuel.coke_dry_kg_thm), 0.005),
+			note: `${asCharged(f.coke_dry_kg_thm, f.coke_wet_kg_thm)}${isNumber(f.coke_sigma_kg_thm) ? `; dry rate ±${formatQuantity(f.coke_sigma_kg_thm, 2, 'kg/tHM')}` : ''}`
 		},
 		{
 			key: 'nut',
-			label: 'Nut coke',
+			label: 'Nut coke, dry',
 			value: f.nut_coke_kg_thm,
 			unit: 'kg/tHM',
 			digits: 2,
-			note: 'Fixed input, as charged'
+			note: `Fixed input; ${asCharged(f.nut_coke_kg_thm, f.nut_coke_wet_kg_thm)}`
 		},
 		{
 			key: 'pci',
@@ -627,12 +636,12 @@ export function fuelCells(plan: PlanView, today: PlanView | null | undefined, re
 		},
 		{
 			key: 'fuel_rate',
-			label: 'Total fuel',
+			label: 'Fuel rate',
 			value: f.fuel_rate_kg_thm,
 			unit: 'kg/tHM',
 			digits: 2,
 			delta: vsToday(delta(f.fuel_rate_kg_thm, today?.fuel.fuel_rate_kg_thm), COST_TOL),
-			note: 'Coke wet + nut coke + PCI',
+			note: `Coke dry + nut coke dry + PCI; ${formatQuantity(f.fuel_charged_kg_thm, 2, 'kg/tHM')} as charged`,
 			strong: true,
 			...(band
 				? {
@@ -745,9 +754,16 @@ export function chargingCells(plan: PlanView): { cells: Cell[]; caption: string 
 			value: g.coke_t_d,
 			unit: 't/d',
 			digits: 1,
-			note: 'Coke rate wet × production'
+			note: 'Coke rate as charged × production'
 		},
-		{ key: 'nut', label: 'Nut coke', value: g.nut_coke_t_d, unit: 't/d', digits: 1 },
+		{
+			key: 'nut',
+			label: 'Nut coke',
+			value: g.nut_coke_t_d,
+			unit: 't/d',
+			digits: 1,
+			note: 'Nut coke as charged × production'
+		},
 		{ key: 'pci', label: 'PCI', value: g.pci_t_d, unit: 't/d', digits: 1 },
 		{
 			key: 'charges',

@@ -161,8 +161,9 @@ def describe_inputs(s: Mapping[str, Any], L: Mapping[str, Any], *, yard_source: 
         f"losses {_f(cal.get('Q_LZ_GJh'), '.0f')} / {_f(cal.get('Q_UZ_GJh'), '.0f')} GJ/h (lower / upper)"
         + (f"; {cal['message']}" if cal.get("message") else ""),
         f"Thermal target: HMT {_f(s.get('HMT'), ',.0f')} °C, Si {_f(s.get('hm_Si'), '.2f')} % (the coke balance); PCI "
-        f"{_f(s.get('pci_plant'), '.0f')} and nut coke {_f(s.get('nut_plant'), '.0f')} kg/tHM (fixed inputs); blast "
-        f"moisture {_f(s.get('humidity_g'), '.0f')} g/Nm3",
+        f"{_f(s.get('pci_plant'), '.0f')} kg/tHM as injected and nut coke {_f(s.get('nut_plant'))} kg/tHM as charged "
+        f"(fixed inputs; the plan's fuel line gives the nut coke dry); blast moisture {_f(s.get('humidity_g'), '.0f')} "
+        "g/Nm3",
         describe_slag_basis(slag_basis),
         f"Controls: HBT {_f(s.get('HBT'), ',.0f')} °C, hot-blast pressure {_f(s.get('Pb'), '.2f')} bar g, top pressure "
         f"{_f(s.get('Pt'), '.2f')} bar g",
@@ -255,8 +256,10 @@ def describe_plan(r: Mapping[str, Any], label: str, names: Mapping[str, str], fl
         f"Burden Fe {_f(P['overview']['fe_wet_pct'])} % wet; ferrous {_f(P['overview']['ferrous_kg'], ',.0f')} kg/tHM",
         f"Cost Rs/tHM: ore {_f(c['ore'], ',.0f')}, flux {_f(c['flux'], ',.0f')}, fuel {_f(c['fuel'], ',.0f')} (coke "
         f"{_f(c['coke'], ',.0f')}, nut coke {_f(c['nut'], ',.0f')}, PCI {_f(c['pci'], ',.0f')}), TOTAL {_f(c['total'], ',.0f')}",
-        f"Fuel kg/tHM: coke {_f(f['coke_dry'])} dry ({_f(f['coke_wet'])} wet), nut coke {_f(f['nut'], '.0f')}, PCI "
-        f"{_f(f['pci'], '.0f')}, total fuel {_f(f['total'], '.0f')} (band 520-600)",
+        # the plant's basis first (its rate tags: coke and nut coke dry, PCI as injected), then as charged
+        f"Fuel kg/tHM, the plant's basis (coke and nut coke dry, PCI as injected): coke {_f(f['coke_dry'])} + nut coke "
+        f"{_f(f['nut'])} + PCI {_f(f['pci'])} = fuel rate {_f(f['total'])} (band 520-600); as charged: coke "
+        f"{_f(f['coke_wet'])}, nut coke {_f(f['nut_wet'])}, fuel {_f(f['total_charged'])}",
         f"Slag: {_f(s['rate'], '.0f')} kg/tHM, {_f(s['t_day'], ',.0f')} t/d; Al2O3 {_f(s['Al2O3_pct'], '.2f')} %, MgO "
         f"{_f(s['MgO_pct'], '.2f')} %; CaO/SiO2 {_f(s['b2'], '.3f')} (plant band {PLANT_SLAG_BANDS['b2'][0]}-"
         f"{PLANT_SLAG_BANDS['b2'][1]}), T-basicity {_f(s['t_basicity'], '.3f')} (plant {PLANT_SLAG_BANDS['t_basicity'][0]}-"
@@ -357,7 +360,7 @@ def describe_frontier(res: Mapping[str, Any] | None, names: Mapping[str, str]) -
                      + (limit_labels(top.get("binding", []), names) or "-"))
     if F is not None and not F.empty:
         step = max(1, len(F) // 8)
-        lines += [f"{x.prod_t_day:,.0f} t/d: Rs {x.cost_rs_thm:,.0f}/tHM, coke {x.coke_dry:.1f}, fuel {x.fuel_rate:.0f}, "
+        lines += [f"{x.prod_t_day:,.0f} t/d: Rs {x.cost_rs_thm:,.0f}/tHM, coke {x.coke_dry:.1f} dry, fuel rate {x.fuel_rate:.0f}, "
                   f"extra tonne Rs {_f(x.marginal_rs_per_t, ',.0f')}"
                   for x in list(F.itertuples())[::step]]
     return _section("FRONTIER (Step 1)", lines)

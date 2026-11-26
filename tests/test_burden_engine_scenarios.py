@@ -8,9 +8,10 @@ import pandas as pd
 import pytest
 
 from utils.burden_engine import Engine, Limits, Settings, load_register
-from utils.burden_engine.scenarios import (binding_table, blend_table, cost_table, frontier_table, limits_from,
-                                           process_table, run_cheapest_level, run_fixed, settings_from_regime,
-                                           slag_table, value_of_limits, viu_table)
+from utils.burden_engine.scenarios import (binding_table, blend_table, cost_table, frontier_table, fuel_defaults,
+                                           fuel_split, limits_from, nut_as_charged, nut_moisture_pct, plan_sentence,
+                                           plan_tiles, process_table, run_cheapest_level, run_fixed,
+                                           settings_from_regime, slag_table, value_of_limits, viu_table)
 
 THERMAL = dict(HMT=1470.0, hm_Si=0.3836, pci_kg_thm=190.0, nut_kg_thm=70.0)
 
@@ -36,12 +37,31 @@ def test_settings_from_regime_prefers_regime(eng):
     assert s.HBT == 1201.0 and s.Pb == 2.8
     assert s.O2_per_air == pytest.approx(eng.cal["case"]["O2_per_air"])
     assert s.HMT == 1470.0
-    # PCI: the regime's median when given, else the calibration's (as injected), not 190; nut coke: the config
+    # PCI: the regime's median when given, else the calibration's (as injected), not 190; nut coke: the config's
+    # rate, which is dry, held as charged at the calibration's nut-coke moisture
     case = eng.cal["case"]
     assert s.pci_plant == pytest.approx(case["pci_kg"] / (1 - case["pci"]["moist_pct"] / 100))
     s2 = settings_from_regime(dict(pci_kgthm_dry=175.0, nut_kgthm_dry=65.0), THERMAL, eng.cal)
     assert s2.pci_plant == pytest.approx(175.0 / (1 - case["pci"]["moist_pct"] / 100))
-    assert s2.nut_plant == pytest.approx(THERMAL.get("nut_kg_thm", 70.0))
+    assert s2.nut_plant == pytest.approx(70.0 / (1 - case["nut"]["moist_pct"] / 100)) and s2.nut_plant > 70.0
+
+
+def test_nut_coke_input_is_the_plants_dry_rate(eng):
+    """The nut-coke input (config, page, API) is the plant's nut-coke rate, dry; ``nut_as_charged`` gives the engine's
+    as-charged ``nut_plant`` at the calibration's nut-coke moisture, and an explicit ``nut_plant`` stays as charged."""
+    shipped = Engine().cal                                           # total moisture from the laboratory
+    assert nut_moisture_pct(shipped) == pytest.approx(shipped["case"]["nut"]["moist_pct"]) and nut_moisture_pct({}) == 0.0
+    assert 3.0 < nut_moisture_pct(shipped) < 9.0
+    wet = nut_as_charged(70.0, shipped)
+    assert wet == pytest.approx(70.0 / (1 - nut_moisture_pct(shipped) / 100)) and 72.0 < wet < 77.0
+    assert nut_as_charged(70.0, {}) == 70.0
+    assert fuel_defaults(None, THERMAL, shipped)["nut_kg_thm"] == 70.0   # the default stays the dry rate
+    assert settings_from_regime(None, THERMAL, shipped).nut_plant == pytest.approx(wet)
+    assert settings_from_regime(None, THERMAL, shipped, nut_plant=70.0).nut_plant == 70.0
+    # the engine takes the as-charged value back to the dry rate: the plan's nut coke is the input
+    s = settings_from_regime(None, THERMAL, eng.cal, humidity_g=eng.cal["case"]["humidity_g"])
+    out = eng.evaluate(eng.start_point(s, 2270.0 / 24), s, 2270.0 / 24, full=True)
+    assert out["nut_dry"] == pytest.approx(70.0) and out["nut_wet"] == pytest.approx(s.nut_plant)
 
 
 def test_limits_from_register_and_saved():
@@ -57,12 +77,38 @@ def test_fixed_tables(eng, fixed):
     B = blend_table(eng, r, r0)
     assert B.share_wet_pct.dropna().sum() == pytest.approx(100.0, abs=0.01)
     assert cost_table(r).set_index("item").loc["Total", "rs_per_thm"] == pytest.approx(r["cost"]["total"])
+    basis = cost_table(r).set_index("item").basis
+    assert basis["Coke"] == f"{r['out']['K']:.1f} kg/tHM dry ({r['out']['K_wet']:.1f} as charged)"
+    assert basis["Nut coke"] == f"{r['out']['nut_dry']:.1f} kg/tHM dry (70.0 as charged)"
+    fuel_row = process_table(r).set_index("quantity").loc["Fuel rate (coke dry + nut coke dry + PCI)"]
+    assert fuel_row["value"] == f"{r['out']['fuel_rate']:.1f} kg/tHM" and "BAND-01" in fuel_row["limit"]
     assert len(slag_table(r)) == 5 and len(process_table(r)) >= 10
     bt = binding_table(r)
     assert set(bt.limit) >= {"slag cap", "basicity min"}
     assert (bt.set_index("limit").loc["slag cap", "rs_thm_per_unit"]) > 0
     v = viu_table(eng, r)
     assert v.iloc[0]["name"] == "GEOMIN CLO"      # cheapest all-in Fe unit on the UAT yard (case report)
+
+
+def test_fuel_figures_lead_with_the_plant_basis(eng, fixed):
+    """Dry coke + dry nut coke + PCI add up to the fuel rate as shown; as charged beside; charging stays as charged."""
+    _, res = fixed
+    r = res["with_fuel"]
+    o, f = r["out"], fuel_split(r)
+    assert plan_tiles(r)["fuel"] == f
+    assert (f["coke_dry"], f["coke_wet"], f["nut"], f["nut_wet"], f["pci"]) == (o["K"], o["K_wet"], o["nut_dry"], 70.0, 190.0)
+    assert f["coke_dry"] + f["nut"] + f["pci"] == f["total"] == pytest.approx(o["fuel_rate"], abs=1e-9)
+    assert f["coke_wet"] + f["nut_wet"] + f["pci"] == f["total_charged"] == pytest.approx(o["fuel_charged"], abs=1e-9)
+    assert f["total"] == pytest.approx(565.4, abs=0.3) and f["total_charged"] == pytest.approx(567.0, abs=0.3)
+    g = plan_tiles(r)["charging"]
+    assert g["coke_t"] == pytest.approx(o["K_wet"] * 2.27) and g["nut_t"] == pytest.approx(70.0 * 2.27)
+    # a result stored before the engine reported the plant basis (fuel_rate = the as-charged sum) reads the same
+    old = dict(r, out={k: v for k, v in o.items() if k not in ("fuel_charged", "nut_wet")} | {"fuel_rate": o["fuel_charged"]})
+    assert fuel_split(old) == f
+    kind, text = plan_sentence(r, {}, [])
+    assert kind == "plain" and text.endswith(f"coke {o['K']:.2f} kg/tHM dry ({o['K_wet']:.2f} as charged).")
+    T = frontier_table([r])
+    assert T.fuel_rate.iloc[0] == o["fuel_rate"] and T.fuel_charged.iloc[0] == o["fuel_charged"]
 
 
 def test_value_of_limits_matches_case_report(eng, fixed):

@@ -1,7 +1,7 @@
 {
  "name": "BF-02 process fact register",
- "version": "1.8",
- "date": "2026-10-25",
+ "version": "1.9",
+ "date": "2026-11-26",
  "source": "BF-02 process fact register v1.1 (Claude Docs, 16 Oct 2026); machine copy for the Burden & Fuel Optimiser",
  "statuses": [
   "Assumed",
@@ -26,6 +26,11 @@
   "D": "vendor note or judgement"
  },
  "revision_log": [
+  {
+   "version": "1.9",
+   "date": "2026-11-26",
+   "change": "Dry basis of coke and nut coke (DATA-17 added, user decision 25 Nov 2026): the charge record is wet and dry = wet less the laboratory's total moisture (fuel_chemistry.tm); the Coke Energy pipeline, the twin and the calibrations are on it, and the shipped Jul-Oct 2026 calibration is re-solved on it (coke 300.0, nut coke 69.3 kg/tHM dry, omega 0.781). BAND-01 restated: the band is the plant's fuel rate, coke (dry) + nut coke (dry) + PCI as injected (limits unchanged). MOD regenerated on the shipped calibration; VAL regenerated without change (the validation of the STRATA asset is on the earlier basis). Not restated on the dry basis: COKE-01..16, ASM-01, DATA-06, GAS-14, GAS-20, GAS-23 and the STRATA evidence."
+  },
   {
    "version": "1.8",
    "date": "2026-11-13",
@@ -1170,7 +1175,7 @@
   {
    "id": "BAND-01",
    "group": "BAND",
-   "statement": "Fuel rate, coke (wet) + nut coke + PCI",
+   "statement": "Plant fuel rate: coke (dry) + nut coke (dry) + PCI as injected",
    "value": null,
    "unit": "kg/tHM",
    "status": "Plant practice",
@@ -1178,13 +1183,13 @@
    "basis": "No result outside is reported; Monte Carlo draws outside are rejected",
    "literature": "",
    "next_test": "",
-   "version": "1.1",
-   "date": "2026-10-19",
+   "version": "1.9",
+   "date": "2026-11-25",
    "params": {
     "lo": 520.0,
     "hi": 600.0
    },
-   "note": "Engine: the upper end is an elastic limit row; the lower end is a validity check (the result is marked infeasible and not reported). A lower-end row would make the optimiser burn coke to stay inside the band."
+   "note": "Engine: the upper end is an elastic limit row; the lower end is a validity check (the result is marked infeasible and not reported). A lower-end row would make the optimiser burn coke to stay inside the band. Basis restated 25 Nov 2026: the band is the plant's fuel rate (its fuel-rate tag: coke and nut coke dry, DATA-17), not the coke as charged (wet); limits unchanged."
   },
   {
    "id": "BAND-02",
@@ -1715,25 +1720,40 @@
    "date": "2026-10-25"
   },
   {
+   "id": "DATA-17",
+   "group": "DATA",
+   "statement": "Coke and nut coke dry: charge record (wet) less the laboratory's total moisture; PCI as injected",
+   "value": null,
+   "unit": "% total moisture",
+   "status": "Plant data",
+   "grade": "B",
+   "basis": "The charge record weighs coke and nut coke wet; the plant's coke-rate, nut-coke-rate and fuel-rate tags are dry. Dry = wet less the laboratory's total moisture (offline_feed.fuel_chemistry.tm of each coke type, weighted by the tonnes of that type charged, latest sample before the hour ends): coke 2.0-2.6 % through 2026 (3.6 % in Dec 2025), nut coke 5.5-8.4 %. The hourly dataset's COKE_MOIST% and NUTCOKE_MOIST% hold the inherent moisture of the dried sample (0.45 %) since 7 Dec 2025 and are not the moisture of the coke charged. Evidence: on the dry basis the charge record equals the plant's coke-rate tag within 0.3 % in every month Apr-Nov 2026 (it read 2.1 % above on the dataset's moisture) and the fuel-rate tag within 0.5 % (2.9 % above as charged). PCI as injected, no correction.",
+   "literature": "",
+   "next_test": "Compare the charge record with the coke-rate and fuel-rate tags each month (a gap above 1 % means the moisture source or the weighing has changed)",
+   "version": "1.9",
+   "date": "2026-11-25",
+   "note": "utils/coke_energy/fuel_moisture.py, data/coke_energy/sources.fetch_fuel_moisture and services.coke_energy.hourly_frame (COKE_TM%, NUTCOKE_TM%). Used by the Coke Energy pipeline, the twin windows and every calibration (user decision 25 Nov 2026); the plant's fuel rate (BAND-01) and the charge-record check (+-9 % of the fuel-rate tag) are on this basis, and the stable-shift filter's blast-meter band moved with it (-9..+15 -> -5..+19 %), so the same shifts are stable. Effect, Jun-Nov 2026 medians: charged coke 306.8 -> 300.8 kg/tHM dry, nut coke 74.6 -> 70.4, burnt coke (TRACE) 305.9 -> 299.7, energy model (FORGE) 306.6 -> 300.6. Shipped Jul-Oct 2026 calibration re-solved on this basis (81 stable shifts, 1 Jul - 7 Oct 2026): coke 300.0, nut coke 69.3 dry (73.4 as charged), omega 0.781, Q_LZ 24.0 and Q_UZ 12.9 GJ/h, r_H 0.896, blast moisture 17.82 g/Nm3; MOD-01..11 are on it. Still on the dataset's moisture, not restated: COKE-01..16 (case-report calibration, omega 0.80), ASM-01 (omega 0.80), DATA-06, VAL-01..12 (levels about 6 kg/tHM above this basis), GAS-14, GAS-20 and GAS-23 with the STRATA evidence (191 days)."
+  },
+  {
    "group": "MOD",
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-01",
    "statement": "Pellet for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
-   "value": -5.96,
-   "se": 1.19,
+   "value": -6.19,
+   "se": 1.21,
    "basis": "Engine at the reference point (base blend {'sinter_sp_02': 64.0, 'lloyds_pellet': 10.0, 'lloyds_clo': 13.0, 'geomin_clo': 10.0, 'nmdc_rom': 3.0}, flux held, 2,270 t/d); Fixed-omega = chemistry only (ASM-01); STRATA-omega = chemistry + shaft efficiency (STRATA 1.5 (2026-10-25)); se = 1 sigma of the STRATA difference",
    "params": {
-    "fixed_omega": -1.74,
-    "strata_omega": -5.96,
-    "difference": -4.22,
-    "sigma_strata": 1.19,
-    "d_omega": 0.0158
+    "fixed_omega": -1.75,
+    "strata_omega": -6.19,
+    "difference": -4.44,
+    "sigma_strata": 1.21,
+    "d_omega": 0.0169
    }
   },
   {
@@ -1741,21 +1761,21 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-02",
    "statement": "Lloyds CLO for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
-   "value": -1.06,
-   "se": 0.49,
+   "value": -1.1,
+   "se": 0.5,
    "basis": "Engine at the reference point (base blend {'sinter_sp_02': 64.0, 'lloyds_pellet': 10.0, 'lloyds_clo': 13.0, 'geomin_clo': 10.0, 'nmdc_rom': 3.0}, flux held, 2,270 t/d); Fixed-omega = chemistry only (ASM-01); STRATA-omega = chemistry + shaft efficiency (STRATA 1.5 (2026-10-25)); se = 1 sigma of the STRATA difference",
    "params": {
-    "fixed_omega": -1.9,
-    "strata_omega": -1.06,
-    "difference": 0.85,
-    "sigma_strata": 0.49,
-    "d_omega": -0.0032
+    "fixed_omega": -1.92,
+    "strata_omega": -1.1,
+    "difference": 0.82,
+    "sigma_strata": 0.5,
+    "d_omega": -0.0031
    }
   },
   {
@@ -1763,21 +1783,21 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-03",
    "statement": "Geomin CLO for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
-   "value": 0.69,
-   "se": 0.49,
+   "value": 0.72,
+   "se": 0.5,
    "basis": "Engine at the reference point (base blend {'sinter_sp_02': 64.0, 'lloyds_pellet': 10.0, 'lloyds_clo': 13.0, 'geomin_clo': 10.0, 'nmdc_rom': 3.0}, flux held, 2,270 t/d); Fixed-omega = chemistry only (ASM-01); STRATA-omega = chemistry + shaft efficiency (STRATA 1.5 (2026-10-25)); se = 1 sigma of the STRATA difference",
    "params": {
-    "fixed_omega": -0.18,
-    "strata_omega": 0.69,
-    "difference": 0.87,
-    "sigma_strata": 0.49,
-    "d_omega": -0.0032
+    "fixed_omega": -0.19,
+    "strata_omega": 0.72,
+    "difference": 0.9,
+    "sigma_strata": 0.5,
+    "d_omega": -0.0034
    }
   },
   {
@@ -1785,21 +1805,21 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-04",
    "statement": "NMDC ROM for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
    "value": -0.84,
-   "se": 0.81,
+   "se": 0.82,
    "basis": "Engine at the reference point (base blend {'sinter_sp_02': 64.0, 'lloyds_pellet': 10.0, 'lloyds_clo': 13.0, 'geomin_clo': 10.0, 'nmdc_rom': 3.0}, flux held, 2,270 t/d); Fixed-omega = chemistry only (ASM-01); STRATA-omega = chemistry + shaft efficiency (STRATA 1.5 (2026-10-25)); se = 1 sigma of the STRATA difference",
    "params": {
-    "fixed_omega": -2.17,
+    "fixed_omega": -2.18,
     "strata_omega": -0.84,
-    "difference": 1.33,
-    "sigma_strata": 0.81,
-    "d_omega": -0.005
+    "difference": 1.35,
+    "sigma_strata": 0.82,
+    "d_omega": -0.0051
    }
   },
   {
@@ -1807,21 +1827,21 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-05",
    "statement": "Donimalai for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
-   "value": 1.08,
+   "value": 1.14,
    "se": 0.82,
    "basis": "Engine at the reference point (base blend {'sinter_sp_02': 64.0, 'lloyds_pellet': 10.0, 'lloyds_clo': 13.0, 'geomin_clo': 10.0, 'nmdc_rom': 3.0}, flux held, 2,270 t/d); Fixed-omega = chemistry only (ASM-01); STRATA-omega = chemistry + shaft efficiency (STRATA 1.5 (2026-10-25)); se = 1 sigma of the STRATA difference",
    "params": {
-    "fixed_omega": -0.48,
-    "strata_omega": 1.08,
-    "difference": 1.57,
+    "fixed_omega": -0.49,
+    "strata_omega": 1.14,
+    "difference": 1.63,
     "sigma_strata": 0.82,
-    "d_omega": -0.0058
+    "d_omega": -0.0061
    }
   },
   {
@@ -1829,21 +1849,21 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-06",
    "statement": "Gomti for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
-   "value": -0.09,
+   "value": -0.07,
    "se": 0.68,
    "basis": "Engine at the reference point (base blend {'sinter_sp_02': 64.0, 'lloyds_pellet': 10.0, 'lloyds_clo': 13.0, 'geomin_clo': 10.0, 'nmdc_rom': 3.0}, flux held, 2,270 t/d); Fixed-omega = chemistry only (ASM-01); STRATA-omega = chemistry + shaft efficiency (STRATA 1.5 (2026-10-25)); se = 1 sigma of the STRATA difference",
    "params": {
-    "fixed_omega": -1.26,
-    "strata_omega": -0.09,
-    "difference": 1.17,
+    "fixed_omega": -1.27,
+    "strata_omega": -0.07,
+    "difference": 1.2,
     "sigma_strata": 0.68,
-    "d_omega": -0.0044
+    "d_omega": -0.0045
    }
   },
   {
@@ -1851,21 +1871,21 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-07",
    "statement": "Lloyds oversize for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
-   "value": -0.97,
-   "se": 0.49,
+   "value": -1.01,
+   "se": 0.5,
    "basis": "Engine at the reference point (base blend {'sinter_sp_02': 64.0, 'lloyds_pellet': 10.0, 'lloyds_clo': 13.0, 'geomin_clo': 10.0, 'nmdc_rom': 3.0}, flux held, 2,270 t/d); Fixed-omega = chemistry only (ASM-01); STRATA-omega = chemistry + shaft efficiency (STRATA 1.5 (2026-10-25)); se = 1 sigma of the STRATA difference",
    "params": {
-    "fixed_omega": -1.85,
-    "strata_omega": -0.97,
-    "difference": 0.88,
-    "sigma_strata": 0.49,
-    "d_omega": -0.0033
+    "fixed_omega": -1.86,
+    "strata_omega": -1.01,
+    "difference": 0.85,
+    "sigma_strata": 0.5,
+    "d_omega": -0.0032
    }
   },
   {
@@ -1873,21 +1893,21 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-08",
    "statement": "Pellet for Lloyds CLO, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
-   "value": -4.7,
-   "se": 1.24,
+   "value": -4.88,
+   "se": 1.25,
    "basis": "Engine at the reference point (base blend {'sinter_sp_02': 64.0, 'lloyds_pellet': 10.0, 'lloyds_clo': 13.0, 'geomin_clo': 10.0, 'nmdc_rom': 3.0}, flux held, 2,270 t/d); Fixed-omega = chemistry only (ASM-01); STRATA-omega = chemistry + shaft efficiency (STRATA 1.5 (2026-10-25)); se = 1 sigma of the STRATA difference",
    "params": {
     "fixed_omega": 0.16,
-    "strata_omega": -4.7,
-    "difference": -4.86,
-    "sigma_strata": 1.24,
-    "d_omega": 0.0182
+    "strata_omega": -4.88,
+    "difference": -5.04,
+    "sigma_strata": 1.25,
+    "d_omega": 0.0192
    }
   },
   {
@@ -1895,19 +1915,19 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke per t/h",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-09",
    "statement": "Production +1 t/h at the same burden: coke response, Fixed-omega and STRATA-omega",
-   "value": -0.39,
+   "value": -0.21,
    "se": 0.01,
    "basis": "Heat loss GJ/h held (dilution of the loss per tonne in both models). STRATA 1.4+ has no production channel (GAS-16 retired, GAS-25): the TRZ-residence effect of the network is not applied, so the STRATA value differs from Fixed-omega only through the other-operation channel. Plant data: burnt coke -1.3 +/- 0.4 kg/tHM per t/h within months (GAS-22)",
    "params": {
-    "fixed_omega": -0.36,
-    "strata_omega": -0.39,
-    "difference": -0.03,
+    "fixed_omega": -0.2,
+    "strata_omega": -0.21,
+    "difference": -0.02,
     "sigma_strata": 0.01,
     "d_omega": 0.0001
    }
@@ -1917,20 +1937,20 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke per g/Nm3",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-10",
    "statement": "Blast moisture +1 g/Nm3 at the same burden: coke response, Fixed-omega and STRATA-omega",
-   "value": 0.88,
-   "se": 0.02,
+   "value": 0.86,
+   "se": 0.03,
    "basis": "Fixed-omega: endothermic water-gas reaction in the balance only; STRATA-omega adds the network's response to the moisture through the other-operation channel. STRATA 1.5 has no moisture data term (GAS-19 retired); the day's Open-Meteo moisture (DATA-11) acts through the balance. Plant data 2026: burnt coke +1.28 +/- 0.56 kg/tHM per g/Nm3 within months",
    "params": {
-    "fixed_omega": 0.8,
-    "strata_omega": 0.88,
+    "fixed_omega": 0.78,
+    "strata_omega": 0.86,
     "difference": 0.08,
-    "sigma_strata": 0.02,
+    "sigma_strata": 0.03,
     "d_omega": -0.0003
    }
   },
@@ -1939,21 +1959,21 @@
    "status": "Model",
    "grade": "B",
    "unit": "kg/tHM dry coke per 10 kg/tHM nut coke",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "next_test": "T5",
    "validity_window": "reference point only (linear response)",
    "id": "MOD-11",
    "statement": "Nut coke +10 kg/tHM at the same burden: coke response, Fixed-omega and STRATA-omega",
-   "value": -13.17,
-   "se": 0.34,
+   "value": -12.56,
+   "se": 0.35,
    "basis": "Fixed-omega: nut-coke carbon and its heat in the balance only; STRATA-omega adds the nut-coke term of shaft efficiency (GAS-23) and the network's coke-layer response",
    "params": {
-    "fixed_omega": -9.94,
-    "strata_omega": -13.17,
-    "difference": -3.23,
-    "sigma_strata": 0.34,
-    "d_omega": 0.0121
+    "fixed_omega": -9.42,
+    "strata_omega": -12.56,
+    "difference": -3.14,
+    "sigma_strata": 0.35,
+    "d_omega": 0.0119
    }
   },
   {
@@ -1968,8 +1988,8 @@
    "basis": "21 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 0.0, CLO 32.0, ROM 0.1, Gomti 0.0, oversize 0.1 % of ferrous (mean). Realised 296.8, Fixed-omega 296.6, STRATA 296.0; RMSE 3.96 -> 4.02; skill -0.03; STRATA bias +0.80 +/- 1.06",
    "literature": "",
    "next_test": "T5",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 21,
@@ -2002,8 +2022,8 @@
    "basis": "9 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 0.0, CLO 26.5, ROM 0.5, Gomti 6.9, oversize 0.0 % of ferrous (mean). Realised 304.3, Fixed-omega 301.4, STRATA 301.8; RMSE 7.72 -> 7.49; skill +0.06; STRATA bias +2.48 +/- 2.51",
    "literature": "",
    "next_test": "T5",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 9,
@@ -2036,8 +2056,8 @@
    "basis": "30 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 0.0, CLO 25.4, ROM 0.1, Gomti 0.0, oversize 9.9 % of ferrous (mean). Realised 307.8, Fixed-omega 306.5, STRATA 306.8; RMSE 6.39 -> 5.98; skill +0.12; STRATA bias +0.99 +/- 1.39",
    "literature": "",
    "next_test": "",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 30,
@@ -2070,8 +2090,8 @@
    "basis": "30 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 0.2, CLO 22.4, ROM 12.3, Gomti 0.0, oversize 0.0 % of ferrous (mean). Realised 304.6, Fixed-omega 303.5, STRATA 303.5; RMSE 9.30 -> 8.36; skill +0.19; STRATA bias +1.05 +/- 2.90",
    "literature": "",
    "next_test": "",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 30,
@@ -2104,8 +2124,8 @@
    "basis": "1 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 0.0, CLO 27.0, ROM 4.0, Gomti 0.0, oversize 5.1 % of ferrous (mean). Realised 293.6, Fixed-omega 292.0, STRATA 291.4; RMSE 1.59 -> 2.19; skill -0.90; STRATA bias +2.19 +/- n/a",
    "literature": "",
    "next_test": "T5",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 1,
@@ -2138,8 +2158,8 @@
    "basis": "43 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 12.2, CLO 23.6, ROM 0.2, Gomti 0.0, oversize 0.0 % of ferrous (mean). Realised 313.9, Fixed-omega 314.8, STRATA 314.9; RMSE 5.43 -> 5.34; skill +0.03; STRATA bias -1.08 +/- 1.54",
    "literature": "",
    "next_test": "",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 43,
@@ -2172,8 +2192,8 @@
    "basis": "6 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 14.9, CLO 10.4, ROM 0.2, Gomti 0.0, oversize 9.9 % of ferrous (mean). Realised 315.5, Fixed-omega 311.5, STRATA 311.5; RMSE 5.87 -> 5.68; skill +0.06; STRATA bias +3.95 +/- 1.90",
    "literature": "",
    "next_test": "T5",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 6,
@@ -2206,8 +2226,8 @@
    "basis": "27 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 10.1, CLO 17.7, ROM 7.9, Gomti 0.0, oversize 0.0 % of ferrous (mean). Realised 306.2, Fixed-omega 306.4, STRATA 307.1; RMSE 4.40 -> 4.37; skill +0.01; STRATA bias -0.90 +/- 1.37",
    "literature": "",
    "next_test": "",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 27,
@@ -2240,8 +2260,8 @@
    "basis": "8 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 15.0, CLO 10.0, ROM 4.4, Gomti 0.0, oversize 6.8 % of ferrous (mean). Realised 297.5, Fixed-omega 299.9, STRATA 297.0; RMSE 7.57 -> 6.47; skill +0.27; STRATA bias +0.54 +/- 2.44",
    "literature": "",
    "next_test": "T5",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 8,
@@ -2274,8 +2294,8 @@
    "basis": "175 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 5.8, CLO 22.9, ROM 3.6, Gomti 0.4, oversize 2.4 % of ferrous (mean). Realised 306.7, Fixed-omega 306.4, STRATA 306.4; RMSE 6.39 -> 5.99; skill +0.12; STRATA bias +0.34 +/- 0.74",
    "literature": "",
    "next_test": "",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 175,
@@ -2308,8 +2328,8 @@
    "basis": "26 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 3.7, CLO 17.7, ROM 15.8, Gomti 0.0, oversize 0.0 % of ferrous (mean). Realised 305.7, Fixed-omega 307.1, STRATA 307.5; RMSE 6.97 -> 5.89; skill +0.28; STRATA bias -1.72 +/- 1.70",
    "literature": "",
    "next_test": "",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 26,
@@ -2342,8 +2362,8 @@
    "basis": "35 days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; pellet 14.5, CLO 17.3, ROM 1.1, Gomti 0.0, oversize 3.3 % of ferrous (mean). Realised 308.9, Fixed-omega 310.0, STRATA 309.4; RMSE 6.95 -> 6.53; skill +0.12; STRATA bias -0.48 +/- 1.84",
    "literature": "",
    "next_test": "",
-   "version": "1.8",
-   "date": "2026-10-25",
+   "version": "1.9",
+   "date": "2026-11-26",
    "note": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
    "params": {
     "n": 35,

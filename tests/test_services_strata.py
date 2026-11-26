@@ -317,7 +317,7 @@ def test_the_model_summary_holds_the_validation_tiers_and_reference_responses() 
     assert [f["id"] for f in fams] == [f.id for f in reg.facts(group="VAL", include_retired=False)]
     assert fams[0]["family"] == "N1 No pellet, sinter + CLO" and fams[0]["verdict"] == reg["VAL-01"].status
     ref = {r["id"]: r for r in s["reference"]}
-    assert (ref["MOD-01"]["strata_omega"], ref["MOD-01"]["sigma_strata"]) == (-5.96, 1.19)
+    assert (ref["MOD-01"]["strata_omega"], ref["MOD-01"]["sigma_strata"]) == (-6.19, 1.21)
     t = s["tiers"]
     assert [lv["tier"] for lv in t["levels"]] == ["High", "Medium", "Low", "Investigate"]
     assert [lv["sigma_max_kg_thm"] for lv in t["levels"][:2]] == [2.0, 5.0]

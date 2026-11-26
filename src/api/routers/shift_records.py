@@ -78,7 +78,11 @@ class FrozenRun(BaseModel):
     saving_rs_thm: float | None = Field(None, description="Cost of the charged blend minus the plan's, Rs/tHM")
     coke_kg_thm: float | None = Field(None, description="Coke rate of the plan, kg/tHM dry")
     coke_sd_kg_thm: float | None = Field(None, description="1 sigma of the coke rate, kg/tHM dry (STRATA-ω)")
-    fuel_rate_kg_thm: float | None = Field(None, description="Coke (wet) + nut coke + PCI of the plan, kg/tHM")
+    fuel_rate_kg_thm: float | None = Field(
+        None,
+        description="Fuel rate of the plan: coke dry + nut coke dry + PCI as injected (a run stored before "
+        "25 Nov 2026: the as-charged sum), kg/tHM",
+    )
 
 
 class FrozenPlan(BaseModel):

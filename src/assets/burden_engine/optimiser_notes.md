@@ -19,8 +19,9 @@ any coefficient.
     same output, HMT / Si target and controls.
   * Maximum production: the ceiling, the blend and controls that reach it, and what binds.
 * **Fixed inputs.** PCI and nut coke rates are inputs, not choices. Unless the operator overrides them, PCI is the
-  live tag's 1-h mean (else the regime median) and nut coke 70 kg/tHM (decision of 7 Nov 2026). HMT and Si are
-  targets the coke is solved for. Raw-material chemistry is each material's latest valid lab sample, not a window
+  live tag's 1-h mean (else the regime median) and nut coke 70 kg/tHM (decision of 7 Nov 2026). The nut-coke input
+  is the plant's nut-coke rate, dry; it is charged at the nut-coke moisture of the calibration (70 dry is about 74
+  as charged). HMT and Si are targets the coke is solved for. Raw-material chemistry is each material's latest valid lab sample, not a window
   average (`yard.chemistry_mode: latest`).
 
 ## 2. How coke is computed
@@ -104,8 +105,13 @@ any coefficient.
   fetched live), which the top-gas H₂ confirms day by day (+0.041 pt H₂ per g/Nm³, the physically expected slope;
   DATA-16). The calibration is made at its window's Open-Meteo mean; a drier plan day than the window needs less coke
   (+0.80 kg/tHM per g/Nm³ under Fixed-ω, +0.88 under STRATA-ω).
-* **Plausibility bands** (fact register): fuel rate 520–600 kg/tHM (coke wet + nut coke + PCI; the upper end is a
-  limit row, below 520 a result is marked infeasible and not reported), HMT 1,440–1,520 °C, Si 0.20–0.80 %.
+* **Plausibility bands** (fact register): fuel rate 520–600 kg/tHM (coke dry + nut coke dry + PCI as injected, the
+  basis of the plant's fuel-rate tag; the upper end is a limit row, below 520 a result is marked infeasible and not
+  reported), HMT 1,440–1,520 °C, Si 0.20–0.80 %.
+
+* **Basis of the fuel figures.** Coke, nut coke and the fuel rate are reported dry, as the plant's rate tags: coke
+  dry + nut coke dry + PCI as injected = fuel rate. The as-charged figures (the charge record weighs coke and nut
+  coke wet) are shown beside them; costs and charging tonnes are on the as-charged tonnes.
 
 ## 3. Model check: is the model right on today's furnace?
 

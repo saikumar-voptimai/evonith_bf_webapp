@@ -152,7 +152,7 @@ def test_live_point_is_empty_before_the_job_and_then_the_saved_document(client) 
     body = get(client, "/api/strata/live-point").json()
     assert body["made_at"].startswith("2026-10-27T21:47") and body["calibration"]["basis"] == "day"
     r = body["responses"][0]
-    assert r["strata_omega"] == -6.1 and r["reference_strata_omega"] == -5.96 and r["reference_sigma_strata"] == 1.19
+    assert r["strata_omega"] == -6.1 and r["reference_strata_omega"] == -6.19 and r["reference_sigma_strata"] == 1.21
     assert body["rings"]["rings"][0]["limited_by"] == "ore"
 
 

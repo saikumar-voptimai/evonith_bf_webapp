@@ -37,6 +37,8 @@ from utils.burden_engine.facts import load_register
 from utils.burden_engine.scenarios import (
     fuel_defaults,
     limits_from,
+    nut_as_charged,
+    nut_moisture_pct,
     run_candidates,
     run_cheapest_level,
     run_fixed,
@@ -399,7 +401,8 @@ class Case:
 CALIBRATION_BASES = ("day", "live", "reference")
 YARD_BASES = ("live", "reference")
 
-#: Settings of a request (``services.jobs.OptimiserSettings``) -> ``Settings`` fields.
+#: Settings of a request (``services.jobs.OptimiserSettings``) -> ``Settings`` fields. ``nut_coke_kg_thm`` is the
+#: plant's nut-coke rate (dry): ``settings_overrides`` converts it to the engine's as-charged ``nut_plant``.
 SETTINGS_FIELDS = {
     "hmt_c": "HMT",
     "hm_si_pct": "hm_Si",
@@ -488,6 +491,15 @@ def engine_overrides(values: Mapping[str, Any] | None, fields: Mapping[str, str]
     return out
 
 
+def settings_overrides(values: Mapping[str, Any] | None, cal: Mapping[str, Any]) -> dict[str, float]:
+    """A request's settings (``SETTINGS_FIELDS``) as ``Settings`` field values: the nut coke, given as the plant's
+    nut-coke rate (dry), becomes the engine's as-charged ``nut_plant`` at the nut-coke moisture of the calibration."""
+    out = engine_overrides(values, SETTINGS_FIELDS, "setting")
+    if "nut_plant" in out:
+        out["nut_plant"] = nut_as_charged(out["nut_plant"], cal)
+    return out
+
+
 def case_calibration(
     cfg: Mapping[str, Any], nonce: int = 0, basis: str = "day", day: Any = None
 ) -> tuple[CalibrationInfo, dict[str, Any]]:
@@ -538,7 +550,8 @@ def default_case(
 ) -> Case:
     """The run page 11 would start for ``mode`` with its defaults: live yard (else the reference yard) and
     calibration (else the shipped one), today's controls, PCI (the live tag's 1-h mean, else the regime median) and
-    nut coke (config), today's Open-Meteo blast moisture, the register's limits with the saved slag limits and the
+    nut coke (config: the plant's dry rate, held by the engine as charged at the calibration's nut-coke moisture),
+    today's Open-Meteo blast moisture, the register's limits with the saved slag limits and the
     plant charging; Step 2 at the configured target (2,270 t/d; ``production_t_d`` overrides it, ``production_source``
     says where it came from; user decision 11 Nov 2026: no implicit production from the regime or the twin) with the
     controls held as page 11 starts them, against today's charged blend; Step 1 and maximum production searching
@@ -546,7 +559,8 @@ def default_case(
     given). ``calibration_basis`` live
     (page 11's), day (the calibration of 02:30) or reference (the shipped one, ``case_calibration``); ``yard_basis``
     live (else the reference yard) or reference. ``settings`` and ``limits`` (``SETTINGS_FIELDS``,
-    ``LIMITS_FIELDS``: the API's names) replace the defaults last, so a request's controls are held as given; ``dust``
+    ``LIMITS_FIELDS``: the API's names; nut coke dry, ``settings_overrides``) replace the defaults last, so a request's
+    controls are held as given; ``dust``
     (stream id -> ``OptimiserDustStream`` fields) replaces the named streams' kg per charge and analysis in the yard's
     slag basis for this run (page 11's dust editor applied to the run, not saved).
     ``plan_day`` (default today, IST) is the day whose Open-Meteo blast moisture the plan takes; ``calibration_info``
@@ -559,7 +573,7 @@ def default_case(
         raise ValueError(f"certainty must be one of {', '.join(CERTAINTY_FILTERS)}")
     if yard_basis not in YARD_BASES:
         raise ValueError(f"yard must be one of {', '.join(YARD_BASES)}")
-    s_over = engine_overrides(settings, SETTINGS_FIELDS, "setting")
+    engine_overrides(settings, SETTINGS_FIELDS, "setting")  # an unknown setting is refused before any read
     l_over = engine_overrides(limits, LIMITS_FIELDS, "limit")
     cfg = page_config(config_mtime("burden_optimiser.yml")) if cfg is None else cfg
     reg = load_register()
@@ -590,7 +604,7 @@ def default_case(
         HMT=float(th.get("HMT", 1470.0)),
         hm_Si=float(th.get("hm_Si", 0.38)),
         pci_plant=float(th.get("pci_kg_thm", 190.0)),
-        nut_plant=float(th.get("nut_kg_thm", 70.0)),
+        nut_plant=nut_as_charged(float(th.get("nut_kg_thm", 70.0)), info.cal),  # the config's rate is dry
         humidity_g=round(float(humidity_g), 1),
     )
     limits_ = limits_from(reg, yard_rows.get("slag"), dict(cfg.get("charging", {})), **l_over)
@@ -602,7 +616,7 @@ def default_case(
     if engine_mode == "fixed":  # the controls held for the plan start as page 11 shows them
         hy = Engine(cal=info.cal).hy
         s.update(HBT=float(round(s["HBT"])), O2_per_air=hy.o2_per_air_from_tag(float(hy.enrich_tag(s["O2_per_air"]))))
-    s.update(s_over)
+    s.update(settings_overrides(settings, info.cal))
     materials = [m for m in yard_rows["materials"] if m.get("carried", True)]
     fu = dict(yard_rows["fuel"])
     fuel = dict(
@@ -655,6 +669,8 @@ def default_case(
             omega=info.cal.get("omega"),
             Q_LZ_GJh=info.cal.get("Q_LZ_GJh"),
             Q_UZ_GJh=info.cal.get("Q_UZ_GJh"),
+            coke_moisture_pct=_num(((info.cal.get("case") or {}).get("coke") or {}).get("moist_pct")),
+            nut_coke_moisture_pct=nut_moisture_pct(info.cal),
             message=info.message,
             **chosen,
         ),
@@ -757,7 +773,8 @@ def run_values(
     """The headline columns and documents of ``twin.optimiser_run`` for a case and its result (or failure): status
     ok, infeasible (no plan meets every limit, or the LP or a plausibility band refused the case) or failed;
     production t/d; cost, Rs/tHM (ore + flux + fuel - slag credit); saving against today's charged blend, Rs/tHM
-    (Step 2); dry coke and its 1 sigma, kg/tHM; fuel rate, kg/tHM; certainty tier."""
+    (Step 2); dry coke and its 1 sigma, kg/tHM; fuel rate on the plant's basis (coke dry + nut coke dry + PCI as
+    injected), kg/tHM; certainty tier."""
     plan = plan_of(res) if res is not None else None
     if status is None:
         feasible = plan is not None and plan.get("feasible", True)
@@ -785,9 +802,9 @@ def run_values(
                 if today is not None and today.get("cost") and cost.get("total") is not None
                 else None
             ),
-            coke_kg_thm=_num(out.get("K_wet", out.get("K"))),   # as charged (wet), the client's basis
+            coke_kg_thm=_num(out.get("K")),  # dry, the basis of the plant's coke-rate tag
             coke_sd_kg_thm=_num(om.get("sigma_K")),
-            fuel_rate_kg_thm=_num(out.get("fuel_rate")),
+            fuel_rate_kg_thm=_num(out.get("fuel_rate")),  # plant basis: coke dry + nut coke dry + PCI
             certainty=om.get("certainty") if om.get("mode") == "blend" else None,
         )
     return values

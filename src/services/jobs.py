@@ -50,15 +50,21 @@ class SelfTestParams(BaseModel):
 
 class OptimiserSettings(BaseModel):
     """Furnace controls and thermal targets of a run that replace page 11's defaults (the regime's medians, the page
-    config's targets, the regime's PCI and nut coke, today's Open-Meteo blast moisture). Unset fields keep the
-    default."""
+    config's targets, the regime's PCI, the configured nut-coke rate, today's Open-Meteo blast moisture). Unset fields
+    keep the default."""
 
     model_config = {"extra": "forbid"}
 
     hmt_c: float | None = Field(None, ge=1400, le=1600, description="Hot-metal temperature target (BAND-02), °C")
     hm_si_pct: float | None = Field(None, ge=0.1, le=1.5, description="Hot-metal Si target (BAND-03), %")
     pci_kg_thm: float | None = Field(None, ge=0, le=260, description="PCI as injected (fixed input), kg/tHM")
-    nut_coke_kg_thm: float | None = Field(None, ge=0, le=150, description="Nut coke as charged (fixed input), kg/tHM")
+    nut_coke_kg_thm: float | None = Field(
+        None,
+        ge=0,
+        le=150,
+        description="Nut coke, dry (fixed input: the plant's nut-coke rate; the engine charges it at the nut-coke "
+        "moisture of the calibration), kg/tHM",
+    )
     blast_moisture_g_nm3: float | None = Field(None, ge=0, le=40, description="Blast moisture (DATA-11), g/Nm³")
     hbt_c: float | None = Field(None, ge=900, le=1300, description="Hot-blast temperature, °C")
     o2_per_air: float | None = Field(

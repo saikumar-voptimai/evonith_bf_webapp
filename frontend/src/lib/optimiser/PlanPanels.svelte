@@ -164,7 +164,9 @@ plan, when its first charge reaches the cohesive zone and the raceways (user dec
 			<p class="caption">{cost.caption}</p>
 		</section>
 		<section class="group" aria-labelledby="{uid}-fuel">
-			<h3 id="{uid}-fuel" class="vo-eyebrow">Fuel rates, kg/tHM · coke from the two-zone energy balance</h3>
+			<h3 id="{uid}-fuel" class="vo-eyebrow">
+				Fuel rates, kg/tHM · coke and nut coke dry, as the plant’s rate tags
+			</h3>
 			<CellTiles cells={fuel} min="9rem" />
 		</section>
 		<section class="group" aria-labelledby="{uid}-slag">

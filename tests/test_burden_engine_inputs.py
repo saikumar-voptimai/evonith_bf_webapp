@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 
 import pytest
 import yaml
@@ -15,6 +16,7 @@ from utils.burden_engine import Engine
 from utils.burden_engine.engine import REFERENCE_INPUTS_PATH
 
 REF = json.load(open(REFERENCE_INPUTS_PATH, encoding="utf-8"))
+CASE_CAL = os.path.join(os.path.dirname(__file__), "fixtures", "cal_2z_jul_oct_2026_case_report_15g.json")
 PREFS = yaml.safe_load(open(repo_path("src/config/bmo_operator_inputs.yml"), encoding="utf-8"))
 
 
@@ -90,7 +92,8 @@ def test_operator_file_carries_plant_prices():
 
 
 def test_adapter_reproduces_case2(inputs):
-    r = Engine(inputs).min_cost(prod_t_day=2270, fuel=True)
+    # the case report's calibration (15 g/Nm3), as tests/test_burden_engine.py: the shipped one is on another basis
+    r = Engine(inputs, cal=CASE_CAL).min_cost(prod_t_day=2270, fuel=True)
     assert r["out"]["K"] == pytest.approx(305.7, abs=0.3)
     assert r["cost"]["total"] == pytest.approx(30139, abs=5)
 
