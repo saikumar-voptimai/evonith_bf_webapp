@@ -91,10 +91,11 @@ def test_the_balance_reads_the_total_moisture_where_it_is_known() -> None:
 
 def test_the_shift_builders_dry_tonnes_use_the_total_moisture() -> None:
     fd, m10, hm, dpr = synthetic_frames(start="2026-05-01", days=4)
-    wet = fd.assign(**{"COKE_TM%": 2.5, "NUTCOKE_TM%": 6.0})
+    plain = fd.drop(columns=["COKE_TM%", "NUTCOKE_TM%"])  # the dataset as published: inherent moisture only
+    wet = plain.assign(**{"COKE_TM%": 2.5, "NUTCOKE_TM%": 6.0})
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        base = build_shift_inputs(fd, m10, hm, dpr, start="2026-05-01")
+        base = build_shift_inputs(plain, m10, hm, dpr, start="2026-05-01")
         S = build_shift_inputs(wet, m10, hm, dpr, start="2026-05-01")
     k = "2026-05-02_A"
     assert S.at[k, "COKE_DRY"] == pytest.approx(S.at[k, "COKE_CALC_MT"] * 0.975)

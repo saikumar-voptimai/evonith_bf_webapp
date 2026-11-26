@@ -16,12 +16,14 @@ from utils.coke_energy.run_shifts import case_from_shift, cooling_losses
 
 # Stability filter of the calibration pool: column of the shift balance -> inclusive band. Charged coke kg/tHM dry,
 # C and Fe closure %, blast meter against the reconciled blast %, cooling losses MJ/tHM, production t/h.
-# Blast-meter band reviewed on 25 Nov 2026, when the coke and nut coke went onto their total moisture: the carbon
-# charged is about 2 % lower and the reconciled blast with it, so the meter reads 5 % above it over Aug 2025 - Nov 2026
-# (median of the shifts passing the other tests; +1 % before) and 1 % under it since Oct 2026. Both lie well inside
-# -9 to +15 %, and moving the band changes the stable shifts by under 1 % (659 / 664 / 669 of 961 for -9..15, -7..17,
-# -6..18), so the web model's band stays.
-STABLE_BOUNDS = {"coke_kgthm_dry": (220, 400), "C_closure_pct": (-20, 5), "blast_meter_vs_reconciled_pct": (-9, 15),
+# Blast-meter band (26 Nov 2026): the web model's band was -9 to +15 % on a charge record that kept the coke's surface
+# moisture. With the coke and nut coke on their total moisture the carbon charged is about 2 % lower and the
+# reconciled blast with it, so the meter-against-reconciled figure of every shift rose by about 4 points (median of the
+# shifts passing the other tests +1 % -> +5 %, Aug 2025 - Nov 2026). The band moves with it, -5 to +19 %, so the same
+# shifts stay stable: left at -9..+15 the +15 edge cut into the distribution, 37 of 649 shifts left the pool and 16
+# entered, and the STRATA scales fitted on the pool moved by more than one standard error (nut coke -1.7 se; shaft-
+# efficiency skill 0.15 -> 0.07); at -5..+19 the pool is the old one within 9 shifts and the skill is 0.14.
+STABLE_BOUNDS = {"coke_kgthm_dry": (220, 400), "C_closure_pct": (-20, 5), "blast_meter_vs_reconciled_pct": (-5, 19),
                  "R_out_cooling_total": (40, 400), "Fe_closure_pct": (-6, 6), "prod_th": (75, 110)}
 
 

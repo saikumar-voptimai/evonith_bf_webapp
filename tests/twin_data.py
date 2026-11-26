@@ -96,6 +96,23 @@ def _columns(T: pd.DataFrame) -> dict[str, list[str]]:
     return {"hm": hm, "cw": cw, "proc": proc, "comp": comp}
 
 
+# The templates are the web model's records, with the dataset's inherent coke moisture (0.45 %). The loaders join the
+# laboratory's total moisture (``utils.coke_energy.fuel_moisture``); the synthetic world carries it as they would, so
+# its balances and its stable shifts are on the basis the app runs on (25 Nov 2026).
+TOTAL_MOISTURE = {"COKE_TM%": 2.5, "NUTCOKE_TM%": 7.0}
+
+
+def shift_rows() -> pd.DataFrame:
+    """The fixture's shift rows on the basis the app runs on: coke and nut coke dry on the total moisture (the
+    recorded rows carry the dataset's inherent moisture; ``golden_web.json`` checks those as recorded)."""
+    S = templates()
+    for tm, moist, wet, dry in (("COKE_TM%", "COKE_MOIST%", "COKE_CALC_MT", "COKE_DRY"),
+                                ("NUTCOKE_TM%", "NUTCOKE_MOIST%", "NUTCOKE_CALC_MT", "NUT_DRY")):  # fmt: skip
+        S[moist] = TOTAL_MOISTURE[tm]
+        S[dry] = S[wet] * (1 - TOTAL_MOISTURE[tm] / 100)
+    return S
+
+
 def synthetic_frames(
     start: str = "2026-05-01", days: int = 18, ore_split: dict[str, float] | None = None
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -129,6 +146,7 @@ def synthetic_frames(
                 r["CHARGES/HRS."] = r["PRODUCTIONTONNESPERHR"] / HM_T_PER_CHARGE
                 r.update({c: tpl[c] for c in cols["comp"]})
                 r.update({c[2:]: tpl[c] for c in cols["proc"]})
+                r.update(TOTAL_MOISTURE)
                 fd_rows.append(r)
             for k in range(48):
                 r = {"ts": t0 + pd.Timedelta(minutes=10 * k)}

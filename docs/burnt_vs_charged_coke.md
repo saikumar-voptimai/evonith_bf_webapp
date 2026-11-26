@@ -65,16 +65,16 @@ The fuel-rate tag is the coke rate + the nut-coke rate + the PCI rate, coke and 
 | | Before | After |
 |---|---:|---:|
 | Charged coke, Jun–Nov 2026 median, kg/tHM dry | 306.8 | 300.8 |
-| Burnt coke (TRACE) | 305.9 | 300.6 |
-| Energy balance (FORGE) | 306.6 | 300.9 |
+| Burnt coke (TRACE) | 305.9 | 299.7 |
+| Energy balance (FORGE) | 306.6 | 300.6 |
 | Nut coke, dry | 74.6 | 70.4 |
 | Fuel rate, dry | 564.2 | 553.9 |
-| Balanced / stable shifts | 824 / 667 | 828 / 655 |
-| FORGE − TRACE, SD over stable shifts | 5.8 | 6.0 |
-| FORGE − charged, SD | 10.6 | 10.0 |
-| TRACE − charged, SD | 10.6 | 10.3 |
-| CCC burnt against charged, all shifts: shift / day / week | 0.80 / 0.89 / 0.95 | 0.80 / 0.86 / 0.93 |
-| CCC, stable shifts: shift / day / 2 weeks | 0.87 / 0.91 / 0.97 | 0.87 / 0.92 / 0.98 |
+| Balanced / stable shifts | 824 / 667 | 828 / 663 |
+| FORGE − TRACE, SD over stable shifts | 5.8 | 5.9 |
+| FORGE − charged, SD | 10.6 | 10.2 |
+| TRACE − charged, SD | 10.6 | 10.4 |
+| CCC burnt against charged, all shifts: shift / day / week | 0.80 / 0.89 / 0.95 | 0.80 / 0.88 / 0.94 |
+| CCC, stable shifts: shift / day / week | 0.87 / 0.91 / 0.96 | 0.87 / 0.92 / 0.96 |
 | Raw mass closure (raw burnt / charged) | 100.4 % | 103.8 % |
 
 The models agree with each other as before, because both are calibrated to the charged coke of the stable shifts and
@@ -87,12 +87,19 @@ follow its level down. Two things are different in kind:
   remains by construction; the closure figure is now the honest size of the meter question.
 * **The calibrated heat losses are smaller.** Less coke in means less heat to account for: the lower-zone loss falls
   by 13–20 GJ/h and the upper-zone loss by 6–9 GJ/h, ω by about 0.01 (shipped Jul–Oct 2026 calibration: K 305.5 →
-  300.8, ω 0.801 → 0.781, Q_LZ 44.5 → 25.3, Q_UZ 21.5 → 13.3 GJ/h). The measured stave cooling is about 8 GJ/h, so the
+  300.0, ω 0.801 → 0.781, Q_LZ 44.5 → 24.0, Q_UZ 21.5 → 12.9 GJ/h). The measured stave cooling is about 8 GJ/h, so the
   new values are the more plausible ones.
 
 **Checks that sit on the coke basis.** The charge-record check now compares on the tag's basis (dry coke + dry nut
-coke + PCI as injected): the record runs 0.5 % above the tag (robust SD 2.4 %), band ±9 %. The stable-shift band of
-the blast meter (−9 to +15 %) was reviewed and kept: moving it changes the stable shifts by under 1 %.
+coke + PCI as injected): the record runs 0.5 % above the tag (robust SD 2.4 %), band ±9 %.
+
+The stable-shift filter's blast-meter band moved with the basis, from −9…+15 % to **−5…+19 %**. With about 2 % less
+carbon charged the reconciled blast is lower, so every shift's meter-against-reconciled figure rose by about 4 points
+(median +1 % → +5 %). Left where it was, the +15 % edge cut into the distribution: 37 of 649 shifts left the
+calibration pool and 16 entered, and the plant-data scales of the shaft-efficiency model, refitted on that pool, moved
+by more than one standard error (nut coke −1.7 se; day-ahead ω skill 0.15 → 0.07). With the band moved the pool is the
+old one within 9 shifts, every scale stays within one standard error (pellet −0.06, lump +0.01, other operation +0.77,
+nut coke −0.39 se) and the ω skill is 0.14, so the STRATA 1.5 scales and their evidence stand as fitted.
 
 **PCI** is injected dried and is left as it is (its inherent moisture, 1.5 %, is deducted as before).
 
