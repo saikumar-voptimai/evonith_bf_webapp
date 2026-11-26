@@ -210,7 +210,9 @@ def test_strata_forced_blends_reproduce_the_case_report(cal, strata_inputs) -> N
     assert {b["id"]: round(b["share_pct"], 6) for b in jul_oct["blend"]} == {
         "sinter_sp_02": 64.0, "lloyds_clo": 25.0, "lloyds_pellet": 11.0}  # fmt: skip
     assert jul_oct["status"] == "ok" and jul_oct["settings"]["pci_kg_thm"] == 190.0
-    assert pci["settings"]["pci_kg_thm"] == 200.0 and pci["coke_kg_thm"] < cheapest["coke_kg_thm"] - 7
+    # a case's PCI is the plant's coal rate, dry: the plan holds it as injected (the settings a result states)
+    assert pci["settings"]["pci_kg_thm"] == pytest.approx(200.0 / (1 - cal["case"]["pci"]["moist_pct"] / 100))
+    assert pci["settings"]["pci_kg_thm"] > 202.0 and pci["coke_kg_thm"] < cheapest["coke_kg_thm"] - 7
     assert unknown["status"] == "infeasible" and "foo" in unknown["error"]
     assert {r.get("facts_version") for r in (cheapest, forced, jul_oct, pci)} == {load_register().label}
     assert cheapest["certainty"] == "Held" and cheapest["coke_sd_kg_thm"] is None

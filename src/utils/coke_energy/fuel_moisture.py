@@ -7,9 +7,9 @@ laboratory reports two moistures per fuel sample (``offline_feed.fuel_chemistry`
     moisture  inherent moisture of the air-dried sample      about 0.45 %
 
 Up to 6 Dec 2025 the hourly dataset's ``COKE_MOIST%`` / ``NUTCOKE_MOIST%`` held the total moisture; since the offline
-feed moved to the new tables they hold the inherent moisture, so ``dry = wet x (1 - COKE_MOIST%)`` left the coke 1.5-3.5 %
-and the nut coke 5-8 % too heavy. The columns are features of the data-driven models and keep their values; the balance
-takes the total moisture from the laboratory instead:
+feed moved to the new tables they hold the inherent moisture, so ``dry = wet x (1 - COKE_MOIST%)`` left the coke
+1.5-3.5 % and the nut coke 5-8 % too heavy. The columns are features of the data-driven models and keep their
+values; the balance takes the total moisture from the laboratory instead:
 
     hourly_total_moisture   each hour's tonnes per coke type x the latest sample of that type taken before the hour
                             ends, weighted by the tonnes (a type without a sample takes the others' value)
@@ -17,7 +17,8 @@ takes the total moisture from the laboratory instead:
     on_total_moisture       the pipeline's statement: COKE_MOIST% / NUTCOKE_MOIST% become the total moisture where
                             it is known (``build_shift_inputs``), so every later step reads one moisture
 
-PCI is injected dried and its record is left as it is (inherent moisture only).
+The plant's coal rate (PCI) is already dry: nothing is deducted from it (``build_shift_inputs``). Of the charge, coke,
+nut coke, the ores and pellet are wet (total moisture deducted); sinter is dry.
 """
 
 from __future__ import annotations

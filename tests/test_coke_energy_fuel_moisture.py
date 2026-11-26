@@ -102,7 +102,12 @@ def test_the_shift_builders_dry_tonnes_use_the_total_moisture() -> None:
     assert S.at[k, "NUT_DRY"] == pytest.approx(S.at[k, "NUTCOKE_CALC_MT"] * 0.94)
     assert S.at[k, "COKE_MOIST%"] == pytest.approx(2.5) and S.at[k, "NUTCOKE_MOIST%"] == pytest.approx(6.0)
     assert S.at[k, "COKE_DRY"] < base.at[k, "COKE_DRY"]  # the dataset's own column is the smaller moisture
-    assert S.at[k, "PCI_DRY"] == pytest.approx(base.at[k, "PCI_DRY"])  # PCI is left as it is
+    assert S.at[k, "PCI_DRY"] == pytest.approx(S.at[k, "PCI_CALC_MT"])  # the coal rate is dry: nothing is deducted
+    assert S.at[k, "PCI_IM%"] > 1.0  # its inherent moisture stays in the case, as water injected with the coal
+    assert S.at[k, "SIN_DRY"] == pytest.approx(S.at[k, "SINTER_CALC_MT"])  # sinter is dry; ores and pellet are wet
+    assert S.at[k, "ORE_DRY"] < S.at[k, "ORE_CALC_MT"]
+    pellet = S[S["TOTAL_PELLET_CALC_MT"] > 0]  # the shifts that charge pellet
+    assert len(pellet) and (pellet["PEL_DRY"] < pellet["TOTAL_PELLET_CALC_MT"]).all()
     pd.testing.assert_series_equal(S["ORE_DRY"], base["ORE_DRY"])
 
 

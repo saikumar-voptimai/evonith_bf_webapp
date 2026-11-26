@@ -43,7 +43,7 @@
    }
   },
   "nut_kg": 69.31405398974522,
-  "pci_kg": 181.7738573787709,
+  "pci_kg": 184.54504494460332,
   "hm": {
    "Fe": 95.03312999999999,
    "C": 4.1821810699588475,
@@ -68,7 +68,7 @@
    "gcp_Fe_pct": 20.956340681951794
   },
   "prod_th": 92.54908249747949,
-  "eta_H2": 0.3775991363704074
+  "eta_H2": 0.3842135627353121
  },
  "p": {
   "O2_purity": 0.995,
@@ -97,15 +97,15 @@
   "qtz_CaO": 0.005,
   "qtz_Al2O3": 0.015
  },
- "omega": 0.7807594891708786,
- "Q_LZ_GJh": 24.02302001425904,
- "Q_UZ_GJh": 12.933218046758325,
- "r_H": 0.8960728440661968,
+ "omega": 0.7867193085077474,
+ "Q_LZ_GJh": 28.94897328708962,
+ "Q_UZ_GJh": 14.697472359978313,
+ "r_H": 0.9117641306500207,
  "T_R": 950.0,
- "y_d": 0.4864536688879065,
+ "y_d": 0.4782625743127029,
  "K": 300.02310578116123,
- "V": 1075.985828832436,
- "B2": 1.0898251506035046,
+ "V": 1089.4974057193617,
+ "B2": 1.0887530843377928,
  "shares_dry": {
   "sin": 64.12699404767386,
   "ore": 25.225997443417313,
@@ -149,7 +149,7 @@
    "moist": 1.0665500751083632
   }
  },
- "hb_per_t_model_cal": 1132.2198115805152,
+ "hb_per_t_model_cal": 1146.4375406872923,
  "coke_model_cal": 300.02310578116123,
  "period": [
   "2026-07-01",
@@ -159,7 +159,7 @@
  "burden_cal": [
   {
    "name": "sinter",
-   "dry_kg": 1082.4120179451775,
+   "dry_kg": 1082.4012017464117,
    "moist_pct": 0.0,
    "comp": {
     "Fe": 54.45875823805642,
@@ -175,7 +175,7 @@
   },
   {
    "name": "ore",
-   "dry_kg": 425.7945223053797,
+   "dry_kg": 425.7902674762479,
    "moist_pct": 3.769420899709387,
    "comp": {
     "Fe": 59.42631117188216,
@@ -191,7 +191,7 @@
   },
   {
    "name": "pellet",
-   "dry_kg": 179.71292957595753,
+   "dry_kg": 179.71113376185457,
    "moist_pct": 1.0665500751083632,
    "comp": {
     "Fe": 63.79211453883675,
@@ -226,5 +226,5 @@
   "source": "raw_material_strength_analysis, sinter_3, latest test (Jul-Oct window median RI 66.0, RDI 31.0)"
  },
  "moisture_basis": "Open-Meteo daily RH (DATA-11), mean over the window's stable shifts 17.82 g/Nm3 (calibrated at it, 26 Nov 2026)",
- "fuel_basis": "Coke and nut coke dry on the laboratory's total moisture (fuel_chemistry.tm weighted by the tonnes of each coke type charged; DATA-17), PCI as injected less its inherent moisture. The 81 stable shifts of 1 Jul - 7 Oct 2026 in the PCI 185 +-10 and nut coke 70 +-6 kg/tHM (as charged) regime, recalibrated 26 Nov 2026; before, the dataset's inherent moisture (0.45 %) left the coke 5 kg/tHM and the nut coke 4 kg/tHM too heavy (K 305.5, omega 0.801, Q_LZ 44.5, Q_UZ 21.5 GJ/h)."
+ "fuel_basis": "Coke and nut coke dry on the laboratory's total moisture (fuel_chemistry.tm weighted by the tonnes of each coke type charged; DATA-17); PCI = the plant's coal rate, which is dry (nothing deducted). The 81 stable shifts of 1 Jul - 7 Oct 2026 in the PCI 185 +-10 and nut coke 70 +-6 kg/tHM regime (charge record), recalibrated 26 Nov 2026; before, the dataset's inherent moisture (0.45 %) left the coke 5 kg/tHM and the nut coke 4 kg/tHM too heavy and 1.5 % was deducted from the coal rate (K 305.5, PCI 184.0, omega 0.801, Q_LZ 44.5, Q_UZ 21.5 GJ/h)."
 }

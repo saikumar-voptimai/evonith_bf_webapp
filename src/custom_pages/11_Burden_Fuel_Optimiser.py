@@ -59,7 +59,7 @@ st.title("Burden & Fuel Optimiser — BF2")
 st.caption(
     "Chooses the ferrous blend and flux that minimise ore + flux + fuel cost per tonne of hot metal, with the coke "
     "rate from the two-zone energy model at your HMT and Si target, and the output the day's limits allow. PCI and "
-    "nut coke are fixed inputs. Coke, nut coke and the fuel rate are dry, the basis of the plant's rate tags (as "
+    "nut coke are fixed inputs. Coke, nut coke, PCI and the fuel rate are dry, the basis of the plant's rate tags (as "
     "charged alongside), shares wet % of the ferrous charge, costs Rs/tHM."
 )
 

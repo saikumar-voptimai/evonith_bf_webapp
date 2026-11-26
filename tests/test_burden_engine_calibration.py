@@ -8,9 +8,9 @@ import pandas as pd
 import pytest
 
 from data.burden_engine.calibration import live_calibration
+from tests.twin_data import shift_rows
 from utils.burden_engine import Engine
 from utils.burden_engine.calibration import CalibrationError, calibrate_from_shifts, operating_regime, select_shifts
-from tests.twin_data import shift_rows
 from utils.coke_energy.pipeline import PipelineSettings, run_shift_balances
 
 FIX = "tests/fixtures/coke_energy/shift_inputs.csv"

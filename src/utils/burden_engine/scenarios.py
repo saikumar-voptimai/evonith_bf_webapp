@@ -25,7 +25,7 @@ from utils.burden_engine.facts import FactRegister
 from utils.coke_energy.slag_basis import SLAG_KEYS
 
 MODES = ("cheapest", "fixed", "max")
-#: Largest PCI a plan takes, kg/tHM as injected (the page's and the API's input bound).
+#: Largest PCI a plan takes, kg/tHM: bounds the plant's coal rate, dry (the page's and the API's input).
 PCI_MAX_KG_THM = 260.0
 
 
@@ -42,24 +42,36 @@ def nut_as_charged(nut_dry_kg_thm: float, cal: Mapping[str, Any]) -> float:
     return float(nut_dry_kg_thm) / (1 - nut_moisture_pct(cal) / 100.0)
 
 
+def pci_moisture_pct(cal: Mapping[str, Any]) -> float:
+    """Moisture of the injected coal in the calibration case, %."""
+    case = cal.get("case", {}) if isinstance(cal, Mapping) else {}
+    return float((case.get("pci") or {}).get("moist_pct", 0.0))
+
+
+def pci_as_injected(pci_dry_kg_thm: float, cal: Mapping[str, Any]) -> float:
+    """PCI as injected, kg/tHM (the engine's ``Settings.pci_plant``), from the plant's coal rate, which is dry:
+    dry / (1 - moisture) with the coal moisture of the calibration case."""
+    return float(pci_dry_kg_thm) / (1 - pci_moisture_pct(cal) / 100.0)
+
+
 def fuel_defaults(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], cal: Mapping[str, Any],
                   live_pci: float | None = None) -> dict[str, Any]:
-    """PCI and nut coke defaults, kg/tHM (user decision 7 Nov 2026). PCI as injected: the live tag's 1-h mean
-    (``live_pci``, the Blend Mix Optimiser's reading; ignored above ``PCI_MAX_KG_THM``: the tag spikes when
-    production stops and stuck at about 430 on 16-21 Oct 2026), else the regime window's median, else the
-    calibration's, else the page config. Nut coke: the page config, the plant's nut-coke rate, dry (70 kg/tHM;
-    ``nut_as_charged`` gives the engine's as-charged value). Returns pci_kg_thm, nut_kg_thm and the source of each."""
+    """PCI and nut coke defaults, kg/tHM, both the plant's rates, dry (user decision 7 Nov 2026). PCI: the live
+    tag's 1-h mean (``live_pci``, the Blend Mix Optimiser's reading; ignored above ``PCI_MAX_KG_THM``: the tag spikes
+    when production stops and stuck at about 430 on 16-21 Oct 2026), else the regime window's median, else the
+    calibration's, else the page config (``pci_as_injected`` gives the engine's as-injected value). Nut coke: the page
+    config (70 kg/tHM; ``nut_as_charged`` gives the engine's as-charged value). Returns pci_kg_thm, nut_kg_thm and
+    the source of each."""
     case = cal.get("case", {}) if isinstance(cal, Mapping) else {}
     reg = dict(regime or {})
     out: dict[str, Any] = {}
-    moist = float((case.get("pci") or {}).get("moist_pct", 0.0)) / 100.0
     v = reg.get("pci_kgthm_dry")
     if live_pci is not None and np.isfinite(live_pci) and 0 < live_pci <= PCI_MAX_KG_THM:
         out["pci_kg_thm"], out["pci_kg_thm_source"] = float(live_pci), "live tag, 1-h mean"
     elif v is not None and np.isfinite(v) and v > 0:
-        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(v) / (1 - moist), "regime median"
+        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(v), "regime median"
     elif case.get("pci_kg"):
-        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(case["pci_kg"]) / (1 - moist), "calibration"
+        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(case["pci_kg"]), "calibration"
     else:
         out["pci_kg_thm"], out["pci_kg_thm_source"] = float(thermal.get("pci_kg_thm", Settings.pci_plant)), "config"
     out["nut_kg_thm"], out["nut_kg_thm_source"] = float(thermal.get("nut_kg_thm", Settings.nut_plant)), "config"
@@ -69,8 +81,9 @@ def fuel_defaults(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], 
 def settings_from_regime(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], cal: Mapping[str, Any],
                          **overrides: Any) -> Settings:
     """Today's controls: the regime's medians where known, else the calibration's; thermal targets from the page config
-    (client basis, ASM-08); PCI and nut coke from ``fuel_defaults`` (regime median PCI; nut coke the config's dry rate,
-    converted to as charged). An ``nut_plant`` override is as charged, as the engine's field."""
+    (client basis, ASM-08); PCI and nut coke from ``fuel_defaults`` (regime median PCI, nut coke from the config: the
+    plant's dry rates, converted to as injected / as charged). A ``pci_plant`` or ``nut_plant`` override is as
+    injected / as charged, as the engine's fields."""
     case = cal.get("case", {})
     reg = dict(regime or {})
     pick = lambda key, fallback: float(reg[key]) if reg.get(key) is not None and np.isfinite(reg[key]) else float(fallback)
@@ -79,7 +92,7 @@ def settings_from_regime(regime: Mapping[str, Any] | None, thermal: Mapping[str,
         O2_per_air=pick("O2_per_air", case.get("O2_per_air", Settings.O2_per_air)),
         humidity_g=None,                 # today's Open-Meteo blast moisture, fetched live (DATA-11)
         HMT=float(thermal.get("HMT", Settings.HMT)), hm_Si=float(thermal.get("hm_Si", Settings.hm_Si)),
-        pci_plant=float(fuel_defaults(regime, thermal, cal)["pci_kg_thm"]),
+        pci_plant=pci_as_injected(fuel_defaults(regime, thermal, cal)["pci_kg_thm"], cal),
         nut_plant=nut_as_charged(fuel_defaults(regime, thermal, cal)["nut_kg_thm"], cal),
         Pb=pick("Pb", Settings.Pb), Pt=pick("Pt", Settings.Pt),
     )
@@ -283,15 +296,15 @@ def flux_compare_table(r: Mapping[str, Any], others: Sequence[tuple[str, Mapping
 
 def fuel_split(r: Mapping[str, Any]) -> dict[str, float]:
     """A plan's fuel, kg/tHM, on the plant's basis with the as-charged figures beside: ``coke_dry`` + ``nut`` (dry) +
-    ``pci`` (as injected) = ``total``, the plant's fuel rate (its fuel-rate tag, BAND-01); ``coke_wet`` + ``nut_wet`` +
-    ``pci`` = ``total_charged``. Built from the parts, so a result stored before the engine reported the plant basis
-    reads the same."""
+    ``pci`` (dry, the plant's coal rate) = ``total``, the plant's fuel rate (its fuel-rate tag, BAND-01); ``coke_wet``
+    + ``nut_wet`` + ``pci_wet`` (as injected) = ``total_charged``. Built from the parts, so a result stored before the
+    engine reported the plant basis reads the same."""
     o, s = r["out"], r["settings"]
     coke_dry, coke_wet = float(o["K"]), float(o.get("K_wet", o["K"]))
-    nut_wet, pci = float(s["nut_plant"]), float(s["pci_plant"])
-    nut = float(o.get("nut_dry", nut_wet))
-    return dict(coke_dry=coke_dry, coke_wet=coke_wet, nut=nut, nut_wet=nut_wet, pci=pci, total=coke_dry + nut + pci,
-                total_charged=coke_wet + nut_wet + pci)
+    nut_wet, pci_wet = float(s["nut_plant"]), float(s["pci_plant"])
+    nut, pci = float(o.get("nut_dry", nut_wet)), float(o.get("pci_dry", pci_wet))
+    return dict(coke_dry=coke_dry, coke_wet=coke_wet, nut=nut, nut_wet=nut_wet, pci=pci, pci_wet=pci_wet,
+                total=coke_dry + nut + pci, total_charged=coke_wet + nut_wet + pci_wet)
 
 
 def plan_tiles(r: Mapping[str, Any], flux_ids: Sequence[str] = ()) -> dict[str, dict[str, float]]:
@@ -349,13 +362,13 @@ def plan_sentence(r: Mapping[str, Any], names: Mapping[str, str], flux_ids: list
 
 
 def cost_table(r: Mapping[str, Any]) -> pd.DataFrame:
-    """Cost per item, Rs/tHM, with its rate: dry first (the plant's basis), as charged (what is paid for) in
-    brackets."""
+    """Cost per item, Rs/tHM, with its rate: dry first (the plant's basis), as charged / as injected (what is paid
+    for) in brackets."""
     c, o, f = r["cost"], r["out"], fuel_split(r)
     rows = [("Ore", c["ore"], ""), ("Flux", c["flux"], ""),
             ("Coke", c["coke"], f"{f['coke_dry']:.1f} kg/tHM dry ({f['coke_wet']:.1f} as charged)"),
             ("Nut coke", c["nut"], f"{f['nut']:.1f} kg/tHM dry ({f['nut_wet']:.1f} as charged)"),
-            ("PCI", c["pci"], f"{f['pci']:.0f} kg/tHM as injected")]
+            ("PCI", c["pci"], f"{f['pci']:.1f} kg/tHM dry ({f['pci_wet']:.1f} as injected)")]
     if c.get("slag_credit", 0.0):
         rows.append(("Slag credit", -c["slag_credit"], f"{o['slag']:.0f} kg/tHM at Rs {c.get('slag_price', 0.0):,.0f}/t"))
     rows.append(("Total", c["total"], f"{c['total'] * r['P_tday'] / 1e5:,.1f} lakh Rs/day"))

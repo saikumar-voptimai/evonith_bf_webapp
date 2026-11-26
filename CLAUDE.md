@@ -858,8 +858,8 @@ charged); page 11 has an *Override PCI* toggle, the SPA field overrides when fil
 - **Layout and commentary:** results follow page 9 (overview strip, Cost / Fuel / Slag / Charging panels with the plant
   bands from `utils/slag_bands.py`, blend table beside a donut; blend shares / kg with two decimals on page 11 and the
   SPA, so the parts add up as shown (user decision 11 Nov 2026). **Fuel figures on the plant's basis since 26 Nov 2026**
-  (the plant's rate tags are dry; this replaces "as charged first" of 11 Nov): coke dry + nut coke dry + PCI as
-  injected = fuel rate (`out.fuel_rate`, BAND-01's basis in the LP row and `violation`; `scenarios.fuel_split`), with
+  (the plant's rate tags are dry; this replaces "as charged first" of 11 Nov): coke dry + nut coke dry + PCI (the coal
+  rate, dry) = fuel rate (`out.fuel_rate`, BAND-01's basis in the LP row and `violation`; `scenarios.fuel_split`), with
   the as-charged figures beside (`K_wet`, `nut_wet`, `fuel_charged`; API `coke_wet_kg_thm`, `nut_coke_wet_kg_thm`,
   `fuel_charged_kg_thm`); the run list's `coke_kg_thm` is dry (a run stored before keeps the as-charged value it was
   stored with); cost and charging tonnes stay on as-charged tonnes). *Generate commentary* sends the optimiser notes
@@ -973,7 +973,7 @@ charged); page 11 has an *Override PCI* toggle, the SPA field overrides when fil
   `moisture.source` must match (tested).
 - **Fact register:** `src/config/facts_register.json` v1.9, 117 facts (schema in `config/schemas/`; v1.9 of 25 Nov 2026: DATA-17, the dry
   basis of coke and nut coke = charge record less the laboratory's total moisture, BAND-01 on the plant's fuel-rate basis
-  (coke dry + nut coke dry + PCI as injected), MOD on the re-solved shipped calibration). Every coefficient outside the
+  (coke dry + nut coke dry + PCI, the coal rate, dry), MOD on the re-solved shipped calibration). Every coefficient outside the
   balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
   Change values there, not in code; retired facts are refused by `FactRegister.active()`. The register also holds the
   **trial list** (`trials`, `trial_rules`; user decision 13 Nov 2026, from slides 36 and 46 of the client deck of 27 Oct
@@ -1051,7 +1051,7 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   bases all / stable; 8 s for both on 1,325 shifts, so `twin.trace` builds it after the TRACE view (`trace.refresh`) into
   `burnt_vs_charged.json` beside it; `GET /api/admin/burnt-vs-charged?basis=` (`api/routers/burnt_vs_charged.py`, admin).
   Charge-record check (20 Nov 2026; dry basis 25 Nov 2026): the pipeline leaves out a shift whose charge record on
-  the tag's basis (dry coke + dry nut coke + PCI as injected, `pipeline.RECORD_FUELS`) lies outside ±9 % of the
+  the tag's basis (dry coke + dry nut coke + the coal rate, dry, `pipeline.RECORD_FUELS`) lies outside ±9 % of the
   plant's fuel-rate tag (`ACT. FUEL RATE`; `pipeline.exclusion_reasons`,
   `coke_energy.yml → charge_record_check`, `PipelineSettings.fuel_rate_band_pct`, None = the web model): coke counted
   at half in Nov 2025, PCI read high on 6-16 Dec 2025 and 16-21 Oct 2026. The twin window fails with the reason; the
@@ -1072,15 +1072,19 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `on_total_moisture` in `build_shift_inputs`), `data.coke_energy.sources.fetch_fuel_moisture`, the `moisture` step of
   `services.coke_energy.Loaders` and `hourly_frame` (page 10 and `services.twin.load_frames` build from the same frame;
   a window fails as on a missing tap when the laboratory cannot be read; a loader set without the step reads the
-  dataset's columns). PCI is left as it is (inherent moisture deducted). On the dry basis the record equals the
-  coke-rate tag within 0.3 % per month (was +2.1 %); charged, TRACE and FORGE are 5-6 kg/tHM lower, the raw oxygen
-  balance closes at 103.8 % (the blast meter reads 5 % high; TRACE offset about −13 kg/tHM in 2026, near 0 since Oct
-  2026), calibrated Q_LZ / Q_UZ 13-20 / 6-9 GJ/h lower (docs/burnt_vs_charged_coke.md, update of 25 Nov 2026). The
-  stable filter's blast-meter band moved with the basis, `whatif.STABLE_BOUNDS` -9..+15 -> -5..+19 % (every shift's
-  meter-against-reconciled figure rose about 4 points; the same shifts stay stable, and the STRATA 1.5 scales refitted
-  on the new-basis evidence stay within 1 se, so the asset and its seed are unchanged). Shipped calibration
-  `cal_2z_jul_oct_2026.json` recalibrated (81 shifts: K 300.0, nut coke 69.3 dry, omega 0.781, Q_LZ 24.0, Q_UZ 12.9
-  GJ/h, 17.8 g/Nm3; the 15 g case-report fixture is unchanged). Test data: `tests/twin_data.TOTAL_MOISTURE` puts the
+  dataset's columns). **The plant's coal rate (PCI) is already dry** (user, 26 Nov 2026): `PCI_DRY = PCI_CALC_MT`, no
+  deduction (the web model deducted `PCI_IM%`); the inherent moisture stays in the balance as water injected with the
+  coal (`rist.py`). Wet in the charge: coke, nut coke, ores, pellet; dry: sinter, PCI. On the dry basis the record equals the
+  coke-rate tag within 0.3 % per month (was +2.1 %); charged, TRACE and FORGE are 6 kg/tHM lower, model error against
+  charged coke unchanged (FORGE SD 10.6 -> 10.3, FORGE - TRACE 5.8 -> 5.8 over the stable shifts), the raw oxygen
+  balance closes at 102.9 % (the blast meter reads 4 % high; TRACE offset about −11 kg/tHM in 2026, near 0 since Oct
+  2026), calibrated Q_LZ / Q_UZ lower (docs/burnt_vs_charged_coke.md, update of 25-26 Nov 2026). The
+  stable filter's blast-meter band moved with the basis, `whatif.STABLE_BOUNDS` -9..+15 -> -6..+18 % (a shift's
+  meter-against-reconciled figure rose 2.9 points; the same shifts stay stable, and the STRATA 1.5 scales refitted
+  on the new-basis evidence stay within 1 se, so the asset and its seed are unchanged; a threshold on a
+  basis-dependent quantity moves with the basis). Shipped calibration `cal_2z_jul_oct_2026.json` recalibrated (81
+  shifts: K 300.0, nut coke 69.3, PCI 184.6 dry, omega 0.787, Q_LZ 28.9, Q_UZ 14.7 GJ/h, 17.8 g/Nm3; the 15 g
+  case-report fixture is unchanged). Test data: `tests/twin_data.TOTAL_MOISTURE` puts the
   synthetic world on the basis, `shift_rows()` the recorded fixture rows (`golden_web.json` checks them as recorded). Twin
   snapshots carry `versions.coke_basis` (`services.twin.COKE_BASIS`); `due_windows` takes stored windows of the
   backfill period on another basis (after a release run `twin.evaluate` with `backfill_hours: 168` once). Page 9's

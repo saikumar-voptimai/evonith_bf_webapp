@@ -384,7 +384,7 @@ export function fuelLine(
 	const s = result?.case?.settings;
 	const prices = doc?.fuel_ash_editor?.rows ?? {};
 	const rates = s
-		? `PCI ${formatQuantity(s.pci_kg_thm, 0, 'kg/tHM')}, nut coke ${formatQuantity(s.nut_coke_kg_thm, 0, 'kg/tHM')} dry (held at today’s rates)`
+		? `PCI ${formatQuantity(s.pci_kg_thm, 0, 'kg/tHM')} and nut coke ${formatQuantity(s.nut_coke_kg_thm, 0, 'kg/tHM')}, dry (held at today’s rates)`
 		: 'PCI and nut coke held at today’s rates';
 	const yard = result?.yard?.fuel;
 	const fallback: Record<string, number | null | undefined> = {

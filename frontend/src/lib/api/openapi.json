@@ -4205,7 +4205,7 @@
             "type": "number"
           },
           "pci_t_d": {
-            "description": "PCI, t/d",
+            "description": "PCI as injected, t/d",
             "title": "Pci T D",
             "type": "number"
           }
@@ -9406,7 +9406,7 @@
                 "type": "null"
               }
             ],
-            "description": "Fuel rate: coke dry + nut coke dry + PCI as injected (the plant's basis), kg/tHM",
+            "description": "Fuel rate: coke dry + nut coke dry + PCI (the plant's basis), kg/tHM",
             "title": "Fuel Rate Kg Thm"
           },
           "fuel_rs_thm": {
@@ -9652,7 +9652,7 @@
                 "type": "null"
               }
             ],
-            "description": "Fuel rate of the plan: coke dry + nut coke dry + PCI as injected (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM",
+            "description": "Fuel rate of the plan: coke dry + nut coke dry + PCI (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM",
             "title": "Fuel Rate Kg Thm"
           },
           "id": {
@@ -10152,7 +10152,7 @@
         "type": "object"
       },
       "FuelSplit": {
-        "description": "A plan's fuel on the plant's basis (coke and nut coke dry, PCI as injected, as its rate tags), the as-charged\nfigures beside: coke dry + nut coke dry + PCI = fuel rate; coke wet + nut coke wet + PCI = fuel as charged.",
+        "description": "A plan's fuel on the plant's basis (coke, nut coke and PCI dry, as its rate tags), the as-charged figures\nbeside: coke dry + nut coke dry + PCI = fuel rate; coke wet + nut coke wet + PCI as injected = fuel as charged.",
         "properties": {
           "coke_dry_kg_thm": {
             "description": "Coke rate, dry, kg/tHM",
@@ -10182,7 +10182,7 @@
             "type": "number"
           },
           "fuel_rate_kg_thm": {
-            "description": "Coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (BAND-01 520-600), kg/tHM",
+            "description": "Coke dry + nut coke dry + PCI, the basis of the plant's fuel-rate tag (BAND-01 520-600), kg/tHM",
             "title": "Fuel Rate Kg Thm",
             "type": "number"
           },
@@ -10197,8 +10197,13 @@
             "type": "number"
           },
           "pci_kg_thm": {
-            "description": "PCI as injected (fixed input), kg/tHM",
+            "description": "PCI, dry (fixed input: the plant's coal rate), kg/tHM",
             "title": "Pci Kg Thm",
+            "type": "number"
+          },
+          "pci_wet_kg_thm": {
+            "description": "PCI as injected, kg/tHM",
+            "title": "Pci Wet Kg Thm",
             "type": "number"
           }
         },
@@ -10208,6 +10213,7 @@
           "nut_coke_kg_thm",
           "nut_coke_wet_kg_thm",
           "pci_kg_thm",
+          "pci_wet_kg_thm",
           "fuel_rate_kg_thm",
           "fuel_charged_kg_thm"
         ],
@@ -17475,7 +17481,7 @@
                 "type": "null"
               }
             ],
-            "description": "Fuel rate of the plan: coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM",
+            "description": "Fuel rate of the plan: coke dry + nut coke dry + PCI, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM",
             "title": "Fuel Rate Kg Thm"
           },
           "id": {
@@ -17799,7 +17805,7 @@
                 "type": "null"
               }
             ],
-            "description": "Fuel rate of the plan: coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM",
+            "description": "Fuel rate of the plan: coke dry + nut coke dry + PCI, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM",
             "title": "Fuel Rate Kg Thm"
           },
           "id": {
@@ -18016,7 +18022,7 @@
                 "type": "null"
               }
             ],
-            "description": "PCI as injected (fixed input), kg/tHM",
+            "description": "PCI, dry (fixed input: the plant's coal rate, which the bound applies to; the engine injects it at the coal moisture of the calibration), kg/tHM",
             "title": "Pci Kg Thm"
           },
           "top_pressure_bar_g": {
@@ -20893,8 +20899,20 @@
                 "type": "null"
               }
             ],
-            "description": "PCI as injected (fixed input), kg/tHM",
+            "description": "PCI, dry (fixed input: the plant's coal rate, the request's basis), kg/tHM",
             "title": "Pci Kg Thm"
+          },
+          "pci_wet_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI as injected, at the coal moisture of the calibration, kg/tHM",
+            "title": "Pci Wet Kg Thm"
           },
           "top_pressure_bar_g": {
             "anyOf": [

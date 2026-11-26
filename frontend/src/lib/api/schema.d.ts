@@ -3907,7 +3907,7 @@ export interface components {
             nut_coke_t_d: number;
             /**
              * Pci T D
-             * @description PCI, t/d
+             * @description PCI as injected, t/d
              */
             pci_t_d: number;
         };
@@ -6622,7 +6622,7 @@ export interface components {
             fuel_charged_kg_thm?: number | null;
             /**
              * Fuel Rate Kg Thm
-             * @description Fuel rate: coke dry + nut coke dry + PCI as injected (the plant's basis), kg/tHM
+             * @description Fuel rate: coke dry + nut coke dry + PCI (the plant's basis), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -6730,7 +6730,7 @@ export interface components {
             finished_at: string;
             /**
              * Fuel Rate Kg Thm
-             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI as injected (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
+             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -6998,8 +6998,8 @@ export interface components {
         };
         /**
          * FuelSplit
-         * @description A plan's fuel on the plant's basis (coke and nut coke dry, PCI as injected, as its rate tags), the as-charged
-         *     figures beside: coke dry + nut coke dry + PCI = fuel rate; coke wet + nut coke wet + PCI = fuel as charged.
+         * @description A plan's fuel on the plant's basis (coke, nut coke and PCI dry, as its rate tags), the as-charged figures
+         *     beside: coke dry + nut coke dry + PCI = fuel rate; coke wet + nut coke wet + PCI as injected = fuel as charged.
          */
         FuelSplit: {
             /**
@@ -7024,7 +7024,7 @@ export interface components {
             fuel_charged_kg_thm: number;
             /**
              * Fuel Rate Kg Thm
-             * @description Coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (BAND-01 520-600), kg/tHM
+             * @description Coke dry + nut coke dry + PCI, the basis of the plant's fuel-rate tag (BAND-01 520-600), kg/tHM
              */
             fuel_rate_kg_thm: number;
             /**
@@ -7039,9 +7039,14 @@ export interface components {
             nut_coke_wet_kg_thm: number;
             /**
              * Pci Kg Thm
-             * @description PCI as injected (fixed input), kg/tHM
+             * @description PCI, dry (fixed input: the plant's coal rate), kg/tHM
              */
             pci_kg_thm: number;
+            /**
+             * Pci Wet Kg Thm
+             * @description PCI as injected, kg/tHM
+             */
+            pci_wet_kg_thm: number;
         };
         /** GroupLimits */
         GroupLimits: {
@@ -10431,7 +10436,7 @@ export interface components {
             finished_at: string;
             /**
              * Fuel Rate Kg Thm
-             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
+             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -10601,7 +10606,7 @@ export interface components {
             finished_at: string;
             /**
              * Fuel Rate Kg Thm
-             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
+             * @description Fuel rate of the plan: coke dry + nut coke dry + PCI, the basis of the plant's fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -10699,7 +10704,7 @@ export interface components {
             o2_per_air?: number | null;
             /**
              * Pci Kg Thm
-             * @description PCI as injected (fixed input), kg/tHM
+             * @description PCI, dry (fixed input: the plant's coal rate, which the bound applies to; the engine injects it at the coal moisture of the calibration), kg/tHM
              */
             pci_kg_thm?: number | null;
             /**
@@ -12210,9 +12215,14 @@ export interface components {
             o2_per_air?: number | null;
             /**
              * Pci Kg Thm
-             * @description PCI as injected (fixed input), kg/tHM
+             * @description PCI, dry (fixed input: the plant's coal rate, the request's basis), kg/tHM
              */
             pci_kg_thm?: number | null;
+            /**
+             * Pci Wet Kg Thm
+             * @description PCI as injected, at the coal moisture of the calibration, kg/tHM
+             */
+            pci_wet_kg_thm?: number | null;
             /**
              * Top Pressure Bar G
              * @description Top pressure, bar g

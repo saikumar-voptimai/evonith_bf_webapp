@@ -182,11 +182,12 @@ export const FORGE_LEVERS: Lever<ForgeLeverKey>[] = [
 export type StrataSettingKey =
 	'hmt_c' | 'hm_si_pct' | 'pci_kg_thm' | 'nut_coke_kg_thm' | 'blast_moisture_g_nm3' | 'hbt_c' | 'o2_per_air';
 
-/** STRATA controls a case may set (bounds as the API's `OptimiserSettings`; nut coke is the plant's dry rate). */
+/** STRATA controls a case may set (bounds as the API's `OptimiserSettings`; PCI and nut coke are the plant's dry
+ * rates). */
 export const STRATA_SETTINGS: Lever<StrataSettingKey>[] = [
 	{
 		key: 'pci_kg_thm',
-		label: 'PCI as injected',
+		label: 'PCI, dry',
 		unit: 'kg/tHM',
 		digits: 1,
 		step: 1,

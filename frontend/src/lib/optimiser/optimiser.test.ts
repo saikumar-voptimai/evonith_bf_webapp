@@ -116,15 +116,17 @@ describe('overview strip and panels equal page 11', () => {
 		close(cells[3]!.value, f.total);
 		close(plan.fuel.coke_wet_kg_thm, f.coke_wet);
 		close(plan.fuel.nut_coke_wet_kg_thm, f.nut_wet);
+		close(plan.fuel.pci_wet_kg_thm, f.pci_wet);
 		close(plan.fuel.fuel_charged_kg_thm, f.total_charged);
 		close(cells[0]!.delta!.value, exp2.deltas.fuel.coke_dry);
-		expect(cells.map((c) => c.label)).toEqual(['Coke rate, dry', 'Nut coke, dry', 'PCI', 'Fuel rate']);
+		expect(cells.map((c) => c.label)).toEqual(['Coke rate, dry', 'Nut coke, dry', 'PCI, dry', 'Fuel rate']);
 		expect(cells.map((c) => c.digits)).toEqual([2, 2, 2, 2]);
-		// dry coke + dry nut coke + PCI = the fuel rate, and the as-charged three = the as-charged sum
+		// dry coke + dry nut coke + dry PCI = the fuel rate, and the as-charged three = the as-charged sum
 		close(cells[0]!.value! + cells[1]!.value! + cells[2]!.value!, cells[3]!.value);
-		close(f.coke_wet + f.nut_wet + f.pci, plan.fuel.fuel_charged_kg_thm);
+		close(f.coke_wet + f.nut_wet + f.pci_wet, plan.fuel.fuel_charged_kg_thm);
 		expect(cells[0]!.note).toBe(`${f.coke_wet.toFixed(2)}\u00a0kg/tHM as charged (0.4\u00a0% moisture)`);
 		expect(cells[1]!.note).toBe('Fixed input; 70.00\u00a0kg/tHM as charged (0.5\u00a0% moisture)');
+		expect(cells[2]!.note).toBe('Fixed input; 190.00\u00a0kg/tHM as injected (1.5\u00a0% moisture)');
 		expect(cells[3]!.note).toBe(
 			`Coke dry + nut coke dry + PCI; ${f.total_charged.toFixed(2)}\u00a0kg/tHM as charged`
 		);
@@ -135,6 +137,10 @@ describe('overview strip and panels equal page 11', () => {
 		expect(asCharged(300.82, 308.18)).toBe('308.18\u00a0kg/tHM as charged (2.4\u00a0% moisture)');
 		expect(asCharged(70, 74.21)).toBe('74.21\u00a0kg/tHM as charged (5.7\u00a0% moisture)');
 		expect(asCharged(null, 74.21)).toBe('74.21\u00a0kg/tHM as charged');
+		expect(asCharged(184.55, 187.36, 'as injected')).toBe(
+			'187.36\u00a0kg/tHM as injected (1.5\u00a0% moisture)'
+		);
+		expect(THERMAL_FIELDS.find((x) => x.key === 'pci_kg_thm')).toMatchObject({ label: 'PCI, dry', max: 260 });
 		expect(THERMAL_FIELDS.find((x) => x.key === 'nut_coke_kg_thm')).toMatchObject({
 			label: 'Nut coke, dry',
 			emptyHint: 'Empty: 70 kg/tHM dry, the plant’s nut-coke rate'
@@ -308,7 +314,7 @@ describe('slag breakup equals page 11', () => {
 			close(f.slag_kg_thm, exp[i]!['slag_kg'] as number);
 		});
 		close(ash[0]!.wet_kg_thm, plan.fuel.coke_wet_kg_thm);
-		close(ash[2]!.wet_kg_thm, plan.fuel.pci_kg_thm);
+		close(ash[2]!.wet_kg_thm, plan.fuel.pci_wet_kg_thm); // the ash table weighs the coal as injected
 		const dust = plan.slag.dust ?? [];
 		const expDust = exp2.dust as Rec[];
 		expect(dust.map((d) => [d.id, d.kg_per_charge])).toEqual(

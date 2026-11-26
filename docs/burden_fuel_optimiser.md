@@ -99,7 +99,7 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 * **Fact register** (`src/config/facts_register.json`, v1.9): every coefficient outside the balance, the plausibility
   bands and the default limits. Retired facts (COKE-17 webapp hand coefficients, DATA-10 regressed RAFT) are
   refused in code.
-* **Bands.** Fuel rate (coke dry + nut coke dry + PCI as injected, the basis of the plant's fuel-rate tag) above
+* **Bands.** Fuel rate (coke dry + nut coke dry + PCI, all dry: the basis of the plant's fuel-rate tag) above
   600 kg/tHM is a limit row; below 520 the result is marked infeasible and not reported (a row there would make the
   optimiser burn coke). HMT outside 1,440–1,520 °C and Si outside 0.20–0.80 % are refused.
 * **RAFT** is the plant workbook (`utils.energy_balance.raft`) at the input blast moisture (not measured at BF-02;
@@ -222,11 +222,13 @@ baseline)** — omega held at the calibration, ASM-01; the default on the page, 
   and, for nut coke, (3) a data term +0.0010 ± 0.0003 ω per kg (GAS-23: nut coke mixed in the ore layer raises the
   shaft efficiency; out-of-sample coke skill 0.120 with it, 0.105 without). A PCI data term lowers the
   skill (0.098) and is not used. The page defaults PCI to the live tag's 1-h mean (else the regime window's median) and nut coke to 70 kg/tHM
-  (user decision 7 Nov 2026); an override replaces either. The nut-coke input (config, page, API) is the plant's
-  nut-coke rate, dry; `scenarios.nut_as_charged` converts it once to the engine's as-charged `Settings.nut_plant` at
-  the nut-coke moisture of the calibration (70 dry is about 74 as charged). Fuel figures are reported on the plant's
-  basis (coke dry + nut coke dry + PCI as injected = fuel rate, BAND-01), the as-charged figures beside them
-  (`scenarios.fuel_split`); costs and charging tonnes stay on the as-charged tonnes.
+  (user decision 7 Nov 2026); an override replaces either. The PCI and nut-coke inputs (config, page, API, the live
+  tag, the regime median, the calibration) are the plant's rates, dry; `scenarios.pci_as_injected` and
+  `scenarios.nut_as_charged` convert them once to the engine's `Settings.pci_plant` (as injected) and
+  `Settings.nut_plant` (as charged) at the moistures of the calibration (70 dry nut coke is about 74 as charged; the
+  coal carries about 1.5 %). Fuel figures are reported on the plant's basis (coke dry + nut coke dry + PCI = fuel
+  rate, BAND-01), the as-charged / as-injected figures beside them (`scenarios.fuel_split`); costs and charging
+  tonnes stay on the as-charged tonnes.
 * **Uncertainty and certainty** (`omega_model.OmegaModel`): σ(omega) from the posterior of the blend scales, the
   other-operation scale and the nut-coke coefficient, converted with the loop-inclusive dK/dω.
   Tiers (GAS-18): **High** σ ≤ 2 kg/tHM and inside the 1st–99th percentile of what BF-02 ran; **Medium** σ ≤ 5 and

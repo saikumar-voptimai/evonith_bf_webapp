@@ -20,8 +20,8 @@ from services import calibration_console as console
 from services import coke_energy as ce
 from services import day_calibration
 from services.jobs import JobRecord
-from utils.burden_engine import strata_network
 from tests.twin_data import shift_rows
+from utils.burden_engine import strata_network
 from utils.coke_energy.pipeline import PipelineSettings, run_shift_balances
 from utils.coke_energy.whatif import stable_mask, stable_tests
 
@@ -93,7 +93,7 @@ def test_the_stability_filter_is_the_conjunction_of_its_band_tests() -> None:
         {
             "coke_kgthm_dry": rng.uniform(200, 420, n),
             "C_closure_pct": rng.uniform(-25, 8, n),
-            "blast_meter_vs_reconciled_pct": rng.uniform(-8, 22, n),
+            "blast_meter_vs_reconciled_pct": rng.uniform(-9, 21, n),
             "R_out_cooling_total": rng.uniform(30, 420, n),
             "Fe_closure_pct": rng.uniform(-8, 8, n),
             "prod_th": rng.uniform(70, 115, n),
@@ -101,11 +101,11 @@ def test_the_stability_filter_is_the_conjunction_of_its_band_tests() -> None:
         index=[f"k{i}" for i in range(n)],
     )
     R.iloc[::11, 3] = np.nan
-    R.iloc[5] = [220, 5, -5, 400, 6, 75]  # every bound is inclusive
+    R.iloc[5] = [220, 5, -6, 400, 6, 75]  # every bound is inclusive
     literal = (
         R.coke_kgthm_dry.between(220, 400)
         & R.C_closure_pct.between(-20, 5)
-        & R.blast_meter_vs_reconciled_pct.between(-5, 19)  # moved with the coke's dry basis, 26 Nov 2026
+        & R.blast_meter_vs_reconciled_pct.between(-6, 18)  # moved with the fuels' dry basis, 26 Nov 2026
         & R.R_out_cooling_total.between(40, 400)
         & R.Fe_closure_pct.between(-6, 6)
         & R.prod_th.between(75, 110)

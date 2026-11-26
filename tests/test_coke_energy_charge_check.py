@@ -34,13 +34,14 @@ CORRUPT = "2026-05-12_B"  # PCI read 2.2 x, as on 16-21 Oct 2026
 
 def inputs(**rows: dict) -> pd.DataFrame:
     # wet coke 230 t at 2.2 % and wet nut coke 56 t at 6 % total moisture
-    cols = {"COKE_CALC_MT": 230.0, "NUTCOKE_CALC_MT": 56.0, "COKE_DRY": 224.94, "NUT_DRY": 52.64, "PCI_CALC_MT": 135.0,
+    # the coal rate (PCI) is dry as recorded
+    cols = {"COKE_CALC_MT": 230.0, "NUTCOKE_CALC_MT": 56.0, "COKE_DRY": 224.94, "NUT_DRY": 52.64, "PCI_DRY": 135.0,
             "PRODUCTIONTONNESPERHR": 745.0, FUEL_RATE_TAG: 548.0, "ORE_TM%": 8.0}  # fmt: skip
     return pd.DataFrame({k: {**cols, **v} for k, v in rows.items()}).T
 
 
 def test_the_deviation_is_record_over_tag() -> None:
-    S = inputs(a={}, b={"PCI_CALC_MT": 300.0}, c={FUEL_RATE_TAG: np.nan}, d={"PRODUCTIONTONNESPERHR": 0.0})
+    S = inputs(a={}, b={"PCI_DRY": 300.0}, c={FUEL_RATE_TAG: np.nan}, d={"PRODUCTIONTONNESPERHR": 0.0})
     fuel = charge_record_fuel(S)
     assert fuel["a"] == pytest.approx((224.94 + 52.64 + 135) * 1000 / 745)  # dry coke and nut coke, PCI as injected
     dev = charge_record_deviation(S)
@@ -54,10 +55,10 @@ def test_the_deviation_is_record_over_tag() -> None:
 def test_exclusion_reasons_name_the_error() -> None:
     S = inputs(
         ok={},
-        pci_high={"PCI_CALC_MT": 300.0},  # +44 %
+        pci_high={"PCI_DRY": 300.0},  # +44 %
         coke_half={"COKE_CALC_MT": 115.0, "COKE_DRY": 112.47},  # -20 %
-        no_tag={"PCI_CALC_MT": 300.0, FUEL_RATE_TAG: np.nan},
-        wet={"ORE_TM%": 129.7, "PCI_CALC_MT": 300.0},
+        no_tag={"PCI_DRY": 300.0, FUEL_RATE_TAG: np.nan},
+        wet={"ORE_TM%": 129.7, "PCI_DRY": 300.0},
     )
     out = exclusion_reasons(S, PipelineSettings(bad_shifts=("listed",), fuel_rate_band_pct=BAND))
     assert set(out) == {"listed", "pci_high", "coke_half", "wet"}
@@ -91,7 +92,7 @@ def world():
     fd, m10, hm, dpr = synthetic_frames(start="2026-05-01", days=18)
     w = Window.of_shift(CORRUPT)
     bad = fd.copy()
-    bad.loc[(bad.time >= w.start) & (bad.time < w.end), "PCI_CALC_MT"] *= 2.2
+    bad.loc[(bad.time >= w.start) & (bad.time < w.end), "PCI_CALC_MT"] *= 2.2  # the hourly record
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         checked = run_pipeline(bad, m10, hm, dpr, PipelineSettings(**BASE, fuel_rate_band_pct=BAND))

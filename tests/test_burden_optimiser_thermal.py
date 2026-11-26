@@ -20,7 +20,7 @@ def _app():
 
     thermal = {"HMT": 1480.0, "hm_Si": 0.42, "pci_kg_thm": 190.0, "nut_kg_thm": 70.0}
     moisture = {"value": 18.45, "day": "2026-10-15", "source": "Open-Meteo", "window": 18.45}
-    cal = {"case": {"nut": {"moist_pct": 5.0}}}
+    cal = {"case": {"nut": {"moist_pct": 5.0}, "pci": {"moist_pct": 1.5}}}
     st.json(render_thermal(thermal, load_register(), moisture, "t_th", cal=cal))
 
 
@@ -31,12 +31,14 @@ def test_thermal_inputs_render():
     assert [n.label for n in at.number_input] == [
         "Hot metal temperature, °C",
         "Hot metal Si, %",
-        "PCI, kg/tHM",
+        "PCI (dry), kg/tHM",
         "Nut coke (dry), kg/tHM",
         "Blast moisture, g/Nm³",
     ]
     assert [n.value for n in at.number_input] == [1480.0, 0.42, 190.0, 70.0, 18.4]
-    # the nut coke is entered dry (the plant's rate) and handed to the engine as charged, at the calibration's moisture
+    # PCI and nut coke are entered dry (the plant's rates) and handed to the engine as injected / as charged, at the
+    # calibration's moistures
     settings = json.loads(at.json[0].value)
-    assert settings["nut_plant"] == pytest.approx(70.0 / 0.95) and settings["pci_plant"] == 190.0
+    assert settings["nut_plant"] == pytest.approx(70.0 / 0.95) and settings["pci_plant"] == pytest.approx(190.0 / 0.985)
     assert any("73.7 kg/tHM as charged (5.0 % moisture)" in c.value for c in at.caption)
+    assert any("192.9 kg/tHM as injected (1.5 % moisture)" in c.value for c in at.caption)

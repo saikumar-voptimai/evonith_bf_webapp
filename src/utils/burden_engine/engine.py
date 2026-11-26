@@ -18,7 +18,7 @@ Engine 2.0 (fact register v1.1)
   * plausibility bands (BAND-01..03): fuel rate above 600 kg/tHM is an elastic limit row in every mode and below
     520 a validity check, so such a result comes back infeasible and is not reported; HMT and HM Si inputs outside
     1,440-1,520 degC and 0.20-0.80 % are refused. The fuel rate is on the plant's basis, as its fuel-rate tag: coke
-    dry + nut coke dry + PCI as injected (``fuel_rate``); the as-charged sum is ``fuel_charged``;
+    dry + nut coke dry + PCI dry (``fuel_rate``); the as-charged sum is ``fuel_charged``;
   * the webapp hand coefficients (COKE-17) are gone.
 
 Shaft efficiency (``Settings.omega_mode``)
@@ -85,7 +85,7 @@ class Settings:
     humidity_g: float | None = None      # blast moisture, g/Nm3; None = Open-Meteo for today (DATA-04/11, live)
     HMT: float = 1470.0
     hm_Si: float = 0.3836
-    pci_plant: float = 190.0             # kg/tHM as injected
+    pci_plant: float = 190.0             # kg/tHM as injected (the plant's coal rate, dry, plus its moisture)
     nut_plant: float = 70.0              # kg/tHM as charged
     Pb: float = 2.79                     # hot-blast pressure, bar g
     Pt: float = 1.42                     # top pressure, bar g
@@ -117,7 +117,7 @@ class Limits:
     charge_t: float = 26.46              # non-coke t per charge (ferrous + flux + nut coke)
     charges_per_h: float = 6.5
     T_top_min: float = 120.0             # degC, upper-zone heat check (ASM-05/13)
-    fuel_min: float = 520.0              # kg/tHM, plant basis: coke dry + nut coke dry + PCI as injected (BAND-01)
+    fuel_min: float = 520.0              # kg/tHM, plant basis: coke dry + nut coke dry + PCI dry (BAND-01)
     fuel_max: float = 600.0
     process: bool = False
     Pb_max: float = 2.85                 # bar g
@@ -394,6 +394,11 @@ class Engine:
         """Nut coke dry, kg/tHM: ``Settings.nut_plant`` (as charged) less the calibration case's nut-coke moisture."""
         return s.nut_plant * (1 - self.case0["nut"]["moist_pct"] / 100)
 
+    def pci_dry(self, s: Settings) -> float:
+        """PCI dry, kg/tHM (the plant's coal rate): ``Settings.pci_plant`` (as injected) less the calibration case's
+        coal moisture."""
+        return s.pci_plant * (1 - self.case0["pci"]["moist_pct"] / 100)
+
     def make_case(self, z, s: Settings, P):
         c = copy.deepcopy(self.case0)
         c["burden"] = []
@@ -401,7 +406,7 @@ class Engine:
             dry = max(w, 0.0) * (1 - v.moist / 100)
             c["burden"].append(dict(name=v.id, kind=v.kind, dry_kg=dry, comp=v.chem, moist_pct=v.moist,
                                     LOI_type=v.loi_type))
-        c["pci_kg"] = s.pci_plant * (1 - c["pci"]["moist_pct"] / 100)
+        c["pci_kg"] = self.pci_dry(s)
         c["nut_kg"] = self.nut_dry(s)
         c["hm"] = dict(c["hm"]); c["hm"]["Si"] = s.hm_Si
         c["HMT"], c["HBT"], c["O2_per_air"], c["humidity_g"] = s.HMT, s.HBT, s.O2_per_air, s.humidity_g
@@ -443,10 +448,10 @@ class Engine:
         if full:
             out.update(air=r["V"], y_d=r["y_d"], r_d=r["r_d"], topgas=ro["V_tg"], B2=sl["B2"], Al2O3_pct=sl["Al2O3_pct"],
                        MgO_pct=sl["MgO_pct"], O_err=r["O_err"], E_err=r["E_err"], omega=r["omega"], R_cap=r["R_cap"],
-                       # fuel_rate on the plant's basis (its fuel-rate tag, BAND-01): coke and nut coke dry, PCI as
-                       # injected; fuel_charged the same three as charged
-                       fuel_dry=K + c["nut_kg"] + c["pci_kg"], fuel_rate=K + c["nut_kg"] + s.pci_plant,
-                       fuel_charged=Kw + s.nut_plant + s.pci_plant, nut_wet=s.nut_plant,
+                       # fuel_rate on the plant's basis (its fuel-rate tag, BAND-01): coke, nut coke and PCI dry
+                       # (= fuel_dry); fuel_charged the same three as charged / as injected
+                       fuel_dry=K + c["nut_kg"] + c["pci_kg"], fuel_rate=K + c["nut_kg"] + c["pci_kg"],
+                       fuel_charged=Kw + s.nut_plant + s.pci_plant, nut_wet=s.nut_plant, pci_wet=s.pci_plant,
                        nut_dry=c["nut_kg"], pci_dry=c["pci_kg"], CO2_carb=ro["CO2_carb_kg"],
                        TiO2=sl["TiO2"], MnO=sl["MnO"], FeO=sl["FeO"], slag_minor=sl["minor"],
                        dust_kg=dust_kg(c["dust"]), Fe_dust=dust_fe(c["dust"]), slag_detail=sl.get("detail"))
@@ -590,7 +595,7 @@ class Engine:
         le("MgO min", L.MgO_min / 100 * aS - aMg, L.MgO_min / 100 * cS - cMg, 0.0, 1.0)
         le("MgO/Al2O3 min", L.MgO_Al2O3_min * aAl - aMg, L.MgO_Al2O3_min * cAl - cMg, 0.0, 1.0)
         le("top gas temp min", -aT, -cT, -L.T_top_min, 1.0)
-        fixed_fuel = self.nut_dry(s) + s.pci_plant             # plant basis: nut coke dry, PCI as injected
+        fixed_fuel = self.nut_dry(s) + self.pci_dry(s)         # plant basis: nut coke and PCI dry
         le("fuel rate max", aK, cK + fixed_fuel, L.fuel_max, 1.0)
         # The band's lower end is a validity check only (see violation): a row would make the optimiser burn coke.
         cap = L.charge_t * L.charges_per_h
@@ -647,7 +652,7 @@ class Engine:
         v["MgO min"] = max(0.0, L.MgO_min / 100 * o["slag"] - o["MgO"])
         v["MgO/Al2O3 min"] = max(0.0, L.MgO_Al2O3_min * o["Al2O3"] - o["MgO"])
         v["top gas temp min"] = max(0.0, L.T_top_min - o["T_top"])
-        fuel = o["K"] + self.nut_dry(s) + s.pci_plant         # plant basis, as the LP row
+        fuel = o["K"] + self.nut_dry(s) + self.pci_dry(s)     # plant basis, as the LP row
         v["fuel rate max"] = max(0.0, fuel - L.fuel_max)
         if checks:
             v["fuel rate min"] = max(0.0, L.fuel_min - fuel)
@@ -1314,6 +1319,7 @@ def summary(r, eng: Engine) -> dict[str, Any]:
         d["kg_" + v.id] = r["wet_kg"][v.id]
     d.update(ferrous_wet=r["ferrous_wet"], fe_pct=r["fe_wet_pct"], coke_dry=o["K"], coke_wet=o["K_wet"],
              fuel_rate=o["fuel_rate"], fuel_charged=o["fuel_charged"], nut_dry=o["nut_dry"], nut_wet=o["nut_wet"],
+             pci_dry=o["pci_dry"], pci_wet=o["pci_wet"],
              slag=o["slag"], B2=o["B2"], Al2O3_pct=o["Al2O3_pct"], MgO_pct=o["MgO_pct"],
              MgO_Al2O3=o["MgO"] / o["Al2O3"], eta_CO=o["eta"], T_top=o["T_top"], HBT=s["HBT"], enrich=r["enrich_tag"],
              raft=r["raft"], blast=r["blast_nm3h"], O2=r["O2_nm3h"], Pb=s["Pb"], Pt=s["Pt"], Pb_needed=r["Pb_needed"],

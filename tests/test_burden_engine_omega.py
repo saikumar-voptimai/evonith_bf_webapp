@@ -218,10 +218,11 @@ def test_critical_assumptions(eng):
 # ---------------------------------------------------------------------------------------------- engine
 def test_fixed_mode_unchanged(eng):
     # at the calibration point (window's Open-Meteo moisture) on the shipped calibration, whose coke and nut coke are
-    # dry on the laboratory's total moisture (305.7 kg/tHM and Rs 30,139 on the earlier basis)
+    # dry on the laboratory's total moisture and whose PCI is the plant's dry coal rate (305.7 kg/tHM and Rs 30,139
+    # on the earlier basis)
     r = eng.min_cost(prod_t_day=2270, s=eng.cal_settings(), L=Limits())
-    assert r["out"]["K"] == pytest.approx(297.7, abs=0.15)
-    assert r["cost"]["total"] == pytest.approx(30033, abs=5)
+    assert r["out"]["K"] == pytest.approx(300.1, abs=0.15)
+    assert r["cost"]["total"] == pytest.approx(30115, abs=5)
     assert r["out"]["sig_K"] == 0.0 and r["omega"]["mode"] == "fixed" and r["omega"]["certainty"] == "Held"
     assert r["cost"]["sigma"] == 0.0 and r["cost"]["risk_adjusted"] == pytest.approx(r["cost"]["total"])
 
@@ -414,12 +415,13 @@ def test_nut_coke_term(eng):
 
 
 def test_fuel_defaults_from_regime(eng):
-    """PCI defaults to the live tag, else the regime window's median (as injected), else the calibration; nut coke to
-    the config (70 kg/tHM, the plant's dry rate, which the settings hold as charged)."""
+    """PCI defaults to the live tag, else the regime window's median, else the calibration, all the plant's coal rate,
+    dry, which the settings hold as injected; nut coke to the config (70 kg/tHM, the plant's dry rate, which the
+    settings hold as charged)."""
     from utils.burden_engine.scenarios import fuel_defaults, settings_from_regime
     cal = eng.cal
     d = fuel_defaults({"pci_kgthm_dry": 170.0, "nut_kgthm_dry": 60.0}, {}, cal)
-    assert d["pci_kg_thm"] == pytest.approx(170.0 / (1 - cal["case"]["pci"]["moist_pct"] / 100))
+    assert d["pci_kg_thm"] == 170.0
     assert d["pci_kg_thm_source"] == "regime median"
     assert d["nut_kg_thm"] == 70.0 and d["nut_kg_thm_source"] == "config"
     live = fuel_defaults({"pci_kgthm_dry": 170.0}, {}, cal, live_pci=182.0)
@@ -428,9 +430,9 @@ def test_fuel_defaults_from_regime(eng):
     assert fuel_defaults({"pci_kgthm_dry": 170.0}, {}, cal, live_pci=430.0)["pci_kg_thm_source"] == "regime median"
     d0 = fuel_defaults(None, {}, cal)
     assert d0["pci_kg_thm_source"] == "calibration"
-    assert d0["pci_kg_thm"] == pytest.approx(cal["case"]["pci_kg"] / (1 - cal["case"]["pci"]["moist_pct"] / 100))
+    assert d0["pci_kg_thm"] == cal["case"]["pci_kg"]
     s = settings_from_regime({"pci_kgthm_dry": 170.0, "nut_kgthm_dry": 60.0}, {}, cal)
-    assert s.pci_plant == pytest.approx(d["pci_kg_thm"])
+    assert s.pci_plant == pytest.approx(170.0 / (1 - cal["case"]["pci"]["moist_pct"] / 100)) and s.pci_plant > 170.0
     assert s.nut_plant == pytest.approx(d["nut_kg_thm"] / (1 - cal["case"]["nut"]["moist_pct"] / 100))
 
 

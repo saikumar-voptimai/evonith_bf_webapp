@@ -494,7 +494,7 @@ def _band_warnings(reg: Any, inputs: Mapping[str, float], fuel_rate: float | Non
     lo, hi = reg.band("BAND-01")
     if fuel_rate is not None and not lo <= fuel_rate <= hi:
         out.append(
-            f"Fuel rate {fuel_rate:,.1f} kg/tHM (two-zone; coke and nut coke dry, PCI as injected) is outside BAND-01 "
+            f"Fuel rate {fuel_rate:,.1f} kg/tHM (two-zone; coke, nut coke and PCI dry) is outside BAND-01 "
             f"({lo:,.0f}–{hi:,.0f} kg/tHM)."
         )
     total = inputs["coke_fc_pct"] + inputs["coke_ash_pct"] + inputs["coke_vm_pct"]
@@ -564,10 +564,10 @@ def forge_compute(cal: Mapping[str, Any], cases: Sequence[Mapping[str, Any]], re
         elif out["two_zone"] is None or out["fixed_eta"] is None:
             which = "two-zone balance" if out["two_zone"] is None else "oxygen-balance model"
             out["warnings"].append(f"The {which} did not converge for these inputs.")
-        # BAND-01 is the plant's fuel rate: coke and nut coke dry, PCI as injected (the case's fuel_rate is as charged)
+        # BAND-01 is the plant's fuel rate: coke, nut coke and PCI dry (the case's fuel_rate is as charged)
         plant = None
         if out["two_zone"] is not None:
-            plant = out["two_zone"]["coke_kg_thm"] + float(case["nut_kg"]) + inputs["pci_kg_thm"]
+            plant = out["two_zone"]["coke_kg_thm"] + float(case["nut_kg"]) + float(case["pci_kg"])
         out["warnings"] = _band_warnings(reg, inputs, plant) + out["warnings"]
         results.append(out)
     return _finite(dict(facts_version=reg.label, base=base, cases=results, notes=[TWO_ZONE_NOTE, FIXED_ETA_NOTE]))

@@ -101,8 +101,8 @@ def test_case2_fuel_added(eng):
     assert r["feasible"] and r["lp_iterations"] <= 5
     assert o["K"] == pytest.approx(305.7, abs=0.3)
     assert o["slag"] == pytest.approx(340.0, abs=0.1)
-    # plant basis (coke 305.7 dry + nut coke 69.7 dry + PCI 190); the case report's 567.0 is the as-charged sum
-    assert o["fuel_rate"] == pytest.approx(565.4, abs=0.3)
+    # plant basis (coke 305.7 dry + nut coke 69.7 dry + PCI 187.2 dry); the case report's 567.0 is the as-charged sum
+    assert o["fuel_rate"] == pytest.approx(562.5, abs=0.3) and o["fuel_dry"] == o["fuel_rate"]
     assert o["fuel_charged"] == pytest.approx(567.0, abs=0.3) and o["nut_wet"] == 70.0
     assert r["cost"]["total"] == pytest.approx(30139, abs=5)
     assert r["raft"] == pytest.approx(2214, abs=2)
@@ -119,11 +119,11 @@ def test_case2b_extended_yard_flags_extrapolation(ext):
 
 def test_calibration_reproduced():
     """At the calibration burden the engine returns the calibration coke and blast (300.0 kg/tHM dry on the
-    laboratory's total moisture, 1,132 Nm3/tHM)."""
+    laboratory's total moisture, PCI as the plant's dry coal rate, 1,146 Nm3/tHM)."""
     e = Engine(materials=UAT)
     c = e.cal
     assert c["coke_model_cal"] == pytest.approx(300.0, abs=0.1)
-    assert c["hb_per_t_model_cal"] == pytest.approx(1132.2, abs=0.5)
+    assert c["hb_per_t_model_cal"] == pytest.approx(1146.4, abs=0.5)
 
 
 # ---------------------------------------------------------------------------------------------- bands
@@ -142,14 +142,16 @@ def test_band_01_ideal_shaft_not_reported(eng):
 
 
 def test_band_01_is_on_the_plant_basis(eng):
-    """BAND-01 is the band of the plant's fuel-rate tag: coke dry + nut coke dry + PCI as injected, in the LP row and
-    in the validity check; the as-charged sum is reported beside it."""
+    """BAND-01 is the band of the plant's fuel-rate tag: coke dry + nut coke dry + PCI dry (the plant's coal rate), in
+    the LP row and in the validity check; the as-charged sum is reported beside it."""
     base = eng.min_cost(P=P_PAGE, fuel=True)
     o, s = base["out"], base["settings"]
-    assert o["fuel_rate"] == pytest.approx(o["K"] + o["nut_dry"] + s["pci_plant"], abs=1e-9)
+    assert o["fuel_rate"] == pytest.approx(o["K"] + o["nut_dry"] + o["pci_dry"], abs=1e-9)
     assert o["fuel_charged"] == pytest.approx(o["K_wet"] + s["nut_plant"] + s["pci_plant"], abs=1e-9)
     assert o["nut_dry"] == pytest.approx(s["nut_plant"] * (1 - eng.cal["case"]["nut"]["moist_pct"] / 100))
-    assert o["fuel_charged"] - o["fuel_rate"] == pytest.approx(1.64, abs=0.05)   # the moisture of coke and nut coke
+    assert o["pci_dry"] == pytest.approx(s["pci_plant"] * (1 - eng.cal["case"]["pci"]["moist_pct"] / 100))
+    assert o["pci_wet"] == s["pci_plant"] == 190.0 and o["pci_dry"] == pytest.approx(187.16, abs=0.01)
+    assert o["fuel_charged"] - o["fuel_rate"] == pytest.approx(4.48, abs=0.05)   # the moisture of the three fuels
     mid = 0.5 * (o["fuel_rate"] + o["fuel_charged"])                            # between the two bases
     r = eng.min_cost(P=P_PAGE, L=Limits(fuel_max=mid), fuel=True)                # a ceiling the plant basis meets
     assert r["feasible"] and r["viol"]["fuel rate max"] == 0.0 and "fuel rate max" not in r["binding"]
@@ -162,7 +164,7 @@ def test_band_01_is_on_the_plant_basis(eng):
 def test_band_01_large_lower_zone_loss_not_reported():
     e = Engine(materials=UAT)
     e.cal = copy.deepcopy(e.cal)
-    e.cal["Q_LZ_GJh"] += 80.0             # about 612 kg/tHM on the plant basis (+60 stops at the 600 ceiling)
+    e.cal["Q_LZ_GJh"] += 80.0             # about 611 kg/tHM on the plant basis (+60 stops at the 600 ceiling)
     r = e.min_cost(P=P_PAGE, fuel=True)
     assert not r["feasible"]
     assert r["viol"]["fuel rate max"] > 0
@@ -217,5 +219,6 @@ def test_summary_is_flat(eng):
     r = eng.min_cost(P=P_PAGE, fuel=True)
     s = summary(r, eng)
     assert all(not isinstance(v, (dict, list)) for v in s.values())
-    assert s["fuel_rate"] == pytest.approx(565.4, abs=0.3) and s["fuel_charged"] == pytest.approx(567.0, abs=0.3)
-    assert s["coke_dry"] + s["nut_dry"] + 190.0 == pytest.approx(s["fuel_rate"], abs=1e-9)
+    assert s["fuel_rate"] == pytest.approx(562.5, abs=0.3) and s["fuel_charged"] == pytest.approx(567.0, abs=0.3)
+    assert s["coke_dry"] + s["nut_dry"] + s["pci_dry"] == pytest.approx(s["fuel_rate"], abs=1e-9)
+    assert s["coke_wet"] + s["nut_wet"] + s["pci_wet"] == pytest.approx(s["fuel_charged"], abs=1e-9)

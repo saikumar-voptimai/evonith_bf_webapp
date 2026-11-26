@@ -278,13 +278,15 @@ def report_fixture() -> dict[str, Any]:
 OPTIMISER_RUN_ID = "3c1f7a52-9b0e-4d6a-8e21-5f4b7c9d2a10"
 OPTIMISER_STEP1_ID = "8a2d4e61-0c3f-4b7a-9d15-6e2c8f1a4b37"
 CASE_CAL = ROOT / "tests" / "fixtures" / "cal_2z_jul_oct_2026_case_report_15g.json"
-#: The case report's nut coke, 70 kg/tHM as charged, as the plant's dry rate the API takes.
-NUT_DRY = 70.0 * (1 - float(json.loads(CASE_CAL.read_text(encoding="utf-8"))["case"]["nut"]["moist_pct"]) / 100)
+_CASE = json.loads(CASE_CAL.read_text(encoding="utf-8"))["case"]
+#: The case report's nut coke (70 kg/tHM as charged) and PCI (190 as injected) as the plant's dry rates the API takes.
+NUT_DRY = 70.0 * (1 - float(_CASE["nut"]["moist_pct"]) / 100)
+PCI_DRY = 190.0 * (1 - float(_CASE["pci"]["moist_pct"]) / 100)
 #: The case report's controls and thermal targets (as tests/test_api_optimiser.py).
 CASE_SETTINGS = {
     "hmt_c": 1470.0,
     "hm_si_pct": 0.3836,
-    "pci_kg_thm": 190.0,
+    "pci_kg_thm": PCI_DRY,
     "nut_coke_kg_thm": NUT_DRY,
     "blast_moisture_g_nm3": 15.0,
     "hbt_c": 1188.4,

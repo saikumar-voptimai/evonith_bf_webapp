@@ -17,7 +17,8 @@ from utils.burden_engine.facts import ENGINE_FACTS, FactRegister
 from utils.coke_energy import transit as tr
 from utils.burden_engine.scenarios import (FUEL_LABELS, binding_table, blend_compare_table, cost_table,  # noqa: F401
                                            dust_table, flux_compare_table, fuel_ash_table, limit_label, limit_labels,
-                                           material_rows, nut_as_charged, nut_moisture_pct, plan_sentence, plan_tiles,
+                                           material_rows, nut_as_charged, nut_moisture_pct, pci_as_injected,
+                                           pci_moisture_pct, plan_sentence, plan_tiles,
                                            process_table, slag_balance_table,
                                            slag_basis_note, slag_components_table, slag_removals_table,
                                            slag_rollup_table, slag_table, viu_table)
@@ -394,8 +395,10 @@ def render_fuel_ash_inputs(cal_case: Mapping[str, Any] | None, basis: Mapping[st
         "S": st.column_config.NumberColumn("S % of fuel", format="%.3f"), "P": st.column_config.NumberColumn("P % of fuel", format="%.3f")})
 
 
-def _pci_input(col: Any, thermal: Mapping[str, Any], key: str) -> float:
-    """PCI, kg/tHM as injected: the default (live tag, else the regime median) unless the override is on."""
+def _pci_input(col: Any, thermal: Mapping[str, Any], key: str, cal: Mapping[str, Any] | None = None) -> float:
+    """PCI as injected, kg/tHM (the engine's ``pci_plant``), from the plant's coal rate (dry) shown in the field: the
+    default (live tag, else the regime median) unless the override is on, converted at the coal moisture of the
+    calibration ``cal``."""
     default = float(thermal.get("pci_kg_thm", 190.0))
     source = str(thermal.get("pci_kg_thm_source", "config"))
     slot = col.container()               # the input above its toggle, in line with the other inputs
@@ -404,16 +407,20 @@ def _pci_input(col: Any, thermal: Mapping[str, Any], key: str) -> float:
     k = f"{key}_pci"
     if not on or k not in st.session_state:
         st.session_state[k] = default
-    return slot.number_input("PCI, kg/tHM", min_value=0.0, max_value=260.0, step=1.0, format="%.0f", key=k,
+    dry = slot.number_input("PCI (dry), kg/tHM", min_value=0.0, max_value=260.0, step=1.0, format="%.0f", key=k,
                             disabled=not on,
-                            help=f"Fixed input, as injected. Default: {source}. PCI acts on coke through the balance "
-                                 "(carbon, energy, H2).")
+                            help=f"Fixed input: the plant's coal rate, dry. Default: {source}. PCI acts on coke through "
+                                 "the balance (carbon, energy, H2).")
+    wet = pci_as_injected(dry, cal or {})
+    slot.caption(f"{wet:.1f} kg/tHM as injected ({pci_moisture_pct(cal or {}):.1f} % moisture)")
+    return wet
 
 
 def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_default: Mapping[str, Any] | float,
                    key: str, cal: Mapping[str, Any] | None = None) -> dict:
-    """Thermal targets and the fixed fuels as engine settings. Nut coke is entered as the plant's nut-coke rate (dry)
-    and returned as charged (``nut_plant``) at the nut-coke moisture of the calibration ``cal``."""
+    """Thermal targets and the fixed fuels as engine settings. PCI and nut coke are entered as the plant's rates (dry)
+    and returned as injected (``pci_plant``) and as charged (``nut_plant``) at the moistures of the calibration
+    ``cal``."""
     hmt_lo, hmt_hi = reg.band("BAND-02")
     si_lo, si_hi = reg.band("BAND-03")
     hd = dict(humidity_default) if isinstance(humidity_default, Mapping) else dict(value=float(humidity_default))
@@ -439,7 +446,7 @@ def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_defau
                               help="Thermal Si the coke rate is solved for (BAND-03). The slag balance holds the "
                                    "Blend Mix Optimiser's Si instead (setting_bmo.yml slag_balance), so both pages "
                                    "report one slag for one blend."),
-        pci_plant=_pci_input(c3, thermal, key),
+        pci_plant=_pci_input(c3, thermal, key, cal),
         nut_plant=nut_wet,
         humidity_g=c5.number_input("Blast moisture, g/Nm³", min_value=0.0, max_value=40.0, value=round(float(hd["value"]), 1),
                                    step=0.1, format="%.1f", key=f"{key}_hum", help=hum_help),
@@ -582,8 +589,8 @@ def render_plan_summary(r: Mapping[str, Any], title: str, *, flux_ids: list[str]
     with st.container(border=True):
         st.markdown("###### 🔥 &nbsp;Fuel rates &nbsp;<small>kg / tHM</small>", unsafe_allow_html=True)
         k = st.columns(4)
-        # the plant's basis (coke and nut coke dry, PCI as injected, as its rate tags) and two decimals throughout, so
-        # the fuels add up to the fuel rate as shown; as charged in the caption
+        # the plant's basis (coke, nut coke and PCI dry, as its rate tags) and two decimals throughout, so the fuels
+        # add up to the fuel rate as shown; as charged / as injected in the caption
         moist = lambda dry, wet: 100 * (1 - dry / wet) if wet else 0.0  # noqa: E731
         k[0].metric("Coke rate (dry)", _num(f["coke_dry"], ".2f"), _delta(d("fuel", "coke_dry"), "+.2f", tol=0.005),
                     delta_color="inverse",
@@ -592,13 +599,15 @@ def render_plan_summary(r: Mapping[str, Any], title: str, *, flux_ids: list[str]
         k[1].metric("Nut coke (dry)", _num(f["nut"], ".2f"),
                     help=f"Fixed input, the plant's nut-coke rate; {f['nut_wet']:.2f} kg/tHM as charged at "
                          f"{moist(f['nut'], f['nut_wet']):.1f} % moisture.")
-        k[2].metric("PCI", _num(f["pci"], ".2f"), help="Fixed input, as injected.")
+        k[2].metric("PCI (dry)", _num(f["pci"], ".2f"),
+                    help=f"Fixed input, the plant's coal rate; {f['pci_wet']:.2f} kg/tHM as injected at "
+                         f"{moist(f['pci'], f['pci_wet']):.1f} % moisture.")
         k[3].metric("**Fuel rate**", _num(f["total"], ".2f"), _delta(d("fuel", "total"), "+.2f", tol=0.005),
                     delta_color="inverse",
                     help="Coke dry + nut coke dry + PCI, the basis of the plant's fuel-rate tag (BAND-01: 520–600).")
         st.caption(f"As charged: coke {f['coke_wet']:.2f} ({moist(f['coke_dry'], f['coke_wet']):.1f} % moisture) + nut "
-                   f"coke {f['nut_wet']:.2f} ({moist(f['nut'], f['nut_wet']):.1f} %) + PCI {f['pci']:.2f} = "
-                   f"{f['total_charged']:.2f} kg/tHM.")
+                   f"coke {f['nut_wet']:.2f} ({moist(f['nut'], f['nut_wet']):.1f} %) + PCI as injected "
+                   f"{f['pci_wet']:.2f} ({moist(f['pci'], f['pci_wet']):.1f} %) = {f['total_charged']:.2f} kg/tHM.")
 
     s = P["slag"]
     L = r["limits"]

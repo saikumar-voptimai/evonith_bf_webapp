@@ -614,7 +614,7 @@
           "low": 520.0,
           "high": 600.0,
           "fact": "BAND-01",
-          "basis": "Plant fuel rate: coke (dry) + nut coke (dry) + PCI as injected"
+          "basis": "Plant fuel rate: coke (dry) + nut coke (dry) + PCI (the plant's coal rate, dry)"
         },
         "note": "Actual is PCI actual + coke rate + nut coke rate."
       },

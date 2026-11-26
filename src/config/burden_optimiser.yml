@@ -65,7 +65,8 @@ burden_optimiser:
     # (setting_bmo.yml -> slag_balance, operator-editable on page 9), with its dust rows and minor-oxide rules, so
     # both pages report one slag for one blend (user decision 11 Nov 2026).
     # nut_kg_thm is the plant's nut-coke rate, dry (its burden sheet: 70 dry, about 74-76 as charged); the engine
-    # charges it at the nut-coke moisture of the calibration. pci_kg_thm is as injected.
+    # charges it at the nut-coke moisture of the calibration. pci_kg_thm is the plant's coal rate, dry as well; the
+    # engine injects it with the coal moisture of the calibration.
     HMT: 1470.0
     hm_Si: 0.38
     pci_kg_thm: 190.0

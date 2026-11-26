@@ -83,9 +83,9 @@ TRACKER_MIN_AGE_H = SHIFT_HOURS - 0.1
 CALIBRATION_METHODS = ("median", "exponential")
 # Shift-input column of the plant's fuel-rate tag (kg/tHM, hourly mean over the shift) and the charge-record fuels.
 FUEL_RATE_TAG = "h_ACT. FUEL RATEKG/THM."
-# The plant's fuel-rate tag is its coke rate + nut-coke rate + PCI rate, with the coke and nut coke DRY (25 Nov 2026).
-# The charge record on that basis: dry coke and dry nut coke (wet tonnes less the total moisture) and PCI as injected.
-RECORD_FUELS = ("COKE_DRY", "NUT_DRY", "PCI_CALC_MT")
+# The plant's fuel-rate tag is its coke rate + nut-coke rate + coal rate, all dry (25-26 Nov 2026). The charge record
+# on that basis: dry coke and dry nut coke (wet tonnes less the total moisture) and the coal rate as recorded (dry).
+RECORD_FUELS = ("COKE_DRY", "NUT_DRY", "PCI_DRY")
 
 
 @dataclass(frozen=True)

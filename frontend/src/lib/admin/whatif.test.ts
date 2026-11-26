@@ -122,7 +122,7 @@ describe('what-if levers (SV-4.3, #306)', () => {
 		});
 		const names = new Map([['sinter_sp_02', 'Sinter']]);
 		expect(strataSummary({ blend: { sinter_sp_02: 100 }, settings: { pci_kg_thm: 200 } }, names)).toBe(
-			`Forced blend: Sinter 100.0${NBSP}%; PCI as injected 200.0${NBSP}kg/tHM`
+			`Forced blend: Sinter 100.0${NBSP}%; PCI, dry 200.0${NBSP}kg/tHM` // the STRATA case's PCI is the plant's dry rate
 		);
 		expect(strataSummary({ blend: null, settings: null }, names)).toBe('Cheapest blend (Step 2)');
 	});

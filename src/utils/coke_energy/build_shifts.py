@@ -63,7 +63,9 @@ def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01', key_fn=shift_key):
     f['SIN_DRY'] = f['SINTER_CALC_MT']
     f['COKE_DRY'] = f['COKE_CALC_MT'] * (1 - f['COKE_MOIST%'].clip(0, 15) / 100)
     f['NUT_DRY'] = f['NUTCOKE_CALC_MT'] * (1 - f['NUTCOKE_MOIST%'].clip(0, 15) / 100)
-    f['PCI_DRY'] = f['PCI_CALC_MT'] * (1 - f['PCI_IM%'].clip(0, 10) / 100)
+    # the plant's coal rate is reported dry (user, 26 Nov 2026): no moisture is deducted. The coal's inherent moisture
+    # (PCI_IM%) stays in the balance as the water injected with it (rist.py: dry x IM / (100 - IM))
+    f['PCI_DRY'] = f['PCI_CALC_MT']
 
     # fill ash analyses (available from Dec-2025) with the mean before that
     ashcols = [c for c in f.columns if 'ASH_ANALYSIS' in c or c.startswith('DUST_')]

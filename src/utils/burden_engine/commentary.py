@@ -162,7 +162,7 @@ def describe_inputs(s: Mapping[str, Any], L: Mapping[str, Any], *, yard_source: 
         + (f"; {cal['message']}" if cal.get("message") else ""),
         f"Thermal target: HMT {_f(s.get('HMT'), ',.0f')} °C, Si {_f(s.get('hm_Si'), '.2f')} % (the coke balance); PCI "
         f"{_f(s.get('pci_plant'), '.0f')} kg/tHM as injected and nut coke {_f(s.get('nut_plant'))} kg/tHM as charged "
-        f"(fixed inputs; the plan's fuel line gives the nut coke dry); blast moisture {_f(s.get('humidity_g'), '.0f')} "
+        f"(fixed inputs; the plan's fuel line gives both dry); blast moisture {_f(s.get('humidity_g'), '.0f')} "
         "g/Nm3",
         describe_slag_basis(slag_basis),
         f"Controls: HBT {_f(s.get('HBT'), ',.0f')} °C, hot-blast pressure {_f(s.get('Pb'), '.2f')} bar g, top pressure "
@@ -256,10 +256,11 @@ def describe_plan(r: Mapping[str, Any], label: str, names: Mapping[str, str], fl
         f"Burden Fe {_f(P['overview']['fe_wet_pct'])} % wet; ferrous {_f(P['overview']['ferrous_kg'], ',.0f')} kg/tHM",
         f"Cost Rs/tHM: ore {_f(c['ore'], ',.0f')}, flux {_f(c['flux'], ',.0f')}, fuel {_f(c['fuel'], ',.0f')} (coke "
         f"{_f(c['coke'], ',.0f')}, nut coke {_f(c['nut'], ',.0f')}, PCI {_f(c['pci'], ',.0f')}), TOTAL {_f(c['total'], ',.0f')}",
-        # the plant's basis first (its rate tags: coke and nut coke dry, PCI as injected), then as charged
-        f"Fuel kg/tHM, the plant's basis (coke and nut coke dry, PCI as injected): coke {_f(f['coke_dry'])} + nut coke "
+        # the plant's basis first (its rate tags: coke, nut coke and PCI dry), then as charged / as injected
+        f"Fuel kg/tHM, the plant's basis (coke, nut coke and PCI dry): coke {_f(f['coke_dry'])} + nut coke "
         f"{_f(f['nut'])} + PCI {_f(f['pci'])} = fuel rate {_f(f['total'])} (band 520-600); as charged: coke "
-        f"{_f(f['coke_wet'])}, nut coke {_f(f['nut_wet'])}, fuel {_f(f['total_charged'])}",
+        f"{_f(f['coke_wet'])}, nut coke {_f(f['nut_wet'])}, PCI as injected {_f(f['pci_wet'])}, fuel "
+        f"{_f(f['total_charged'])}",
         f"Slag: {_f(s['rate'], '.0f')} kg/tHM, {_f(s['t_day'], ',.0f')} t/d; Al2O3 {_f(s['Al2O3_pct'], '.2f')} %, MgO "
         f"{_f(s['MgO_pct'], '.2f')} %; CaO/SiO2 {_f(s['b2'], '.3f')} (plant band {PLANT_SLAG_BANDS['b2'][0]}-"
         f"{PLANT_SLAG_BANDS['b2'][1]}), T-basicity {_f(s['t_basicity'], '.3f')} (plant {PLANT_SLAG_BANDS['t_basicity'][0]}-"

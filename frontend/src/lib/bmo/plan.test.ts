@@ -258,7 +258,7 @@ describe('the constraints rows', () => {
 
 	it('writes the fuel line from the run’s held rates and the prices in force', () => {
 		expect(fuelLine(result, { fuel_ash_editor: { rows: { coke: { price_rs_per_mt: 32500 } } } })).toBe(
-			'PCI 190 kg/tHM, nut coke 70 kg/tHM dry (held at today’s rates); prices coke 32,500 Rs/t, nut coke 26,074 Rs/t, PCI 22,120 Rs/t.'
+			'PCI 187 kg/tHM and nut coke 70 kg/tHM, dry (held at today’s rates); prices coke 32,500 Rs/t, nut coke 26,074 Rs/t, PCI 22,120 Rs/t.'
 		);
 		expect(fuelLine(null, null)).toBe(
 			'PCI and nut coke held at today’s rates; prices coke —, nut coke —, PCI —.'

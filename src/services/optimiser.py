@@ -39,6 +39,8 @@ from utils.burden_engine.scenarios import (
     limits_from,
     nut_as_charged,
     nut_moisture_pct,
+    pci_as_injected,
+    pci_moisture_pct,
     run_candidates,
     run_cheapest_level,
     run_fixed,
@@ -76,9 +78,9 @@ coke_energy_config = memo(max_entries=2)(read_coke_energy_config)
 
 @memo(ttl_seconds=600)
 def live_pci_kg_thm() -> float | None:
-    """PCI as injected, kg/tHM: the 1-h mean of the live tag ``coal_rate_actual_value`` (the Blend Mix Optimiser's
-    reading, ``services.bmo_case``), the default PCI of a plan for today. None when InfluxDB has no reading or
-    ``BF_LIVE_PCI=0`` (tests); the regime median is then the default."""
+    """PCI, kg/tHM dry: the 1-h mean of the live tag ``coal_rate_actual_value``, the plant's coal rate (the Blend
+    Mix Optimiser's reading, ``services.bmo_case``), the default PCI of a plan for today. None when InfluxDB has no
+    reading or ``BF_LIVE_PCI=0`` (tests); the regime median is then the default."""
     if os.environ.get("BF_LIVE_PCI", "1") == "0":
         return None
     from services.bmo_case import read_recent_fuel_rates_live
@@ -401,8 +403,9 @@ class Case:
 CALIBRATION_BASES = ("day", "live", "reference")
 YARD_BASES = ("live", "reference")
 
-#: Settings of a request (``services.jobs.OptimiserSettings``) -> ``Settings`` fields. ``nut_coke_kg_thm`` is the
-#: plant's nut-coke rate (dry): ``settings_overrides`` converts it to the engine's as-charged ``nut_plant``.
+#: Settings of a request (``services.jobs.OptimiserSettings``) -> ``Settings`` fields. ``pci_kg_thm`` and
+#: ``nut_coke_kg_thm`` are the plant's rates (dry): ``settings_overrides`` converts them to the engine's as-injected
+#: ``pci_plant`` and as-charged ``nut_plant``.
 SETTINGS_FIELDS = {
     "hmt_c": "HMT",
     "hm_si_pct": "hm_Si",
@@ -492,9 +495,12 @@ def engine_overrides(values: Mapping[str, Any] | None, fields: Mapping[str, str]
 
 
 def settings_overrides(values: Mapping[str, Any] | None, cal: Mapping[str, Any]) -> dict[str, float]:
-    """A request's settings (``SETTINGS_FIELDS``) as ``Settings`` field values: the nut coke, given as the plant's
-    nut-coke rate (dry), becomes the engine's as-charged ``nut_plant`` at the nut-coke moisture of the calibration."""
+    """A request's settings (``SETTINGS_FIELDS``) as ``Settings`` field values: PCI and nut coke, given as the plant's
+    rates (dry), become the engine's as-injected ``pci_plant`` and as-charged ``nut_plant`` at the moistures of the
+    calibration."""
     out = engine_overrides(values, SETTINGS_FIELDS, "setting")
+    if "pci_plant" in out:
+        out["pci_plant"] = pci_as_injected(out["pci_plant"], cal)
     if "nut_plant" in out:
         out["nut_plant"] = nut_as_charged(out["nut_plant"], cal)
     return out
@@ -550,8 +556,8 @@ def default_case(
 ) -> Case:
     """The run page 11 would start for ``mode`` with its defaults: live yard (else the reference yard) and
     calibration (else the shipped one), today's controls, PCI (the live tag's 1-h mean, else the regime median) and
-    nut coke (config: the plant's dry rate, held by the engine as charged at the calibration's nut-coke moisture),
-    today's Open-Meteo blast moisture, the register's limits with the saved slag limits and the
+    nut coke (config): the plant's dry rates, held by the engine as injected / as charged at the calibration's
+    moistures, today's Open-Meteo blast moisture, the register's limits with the saved slag limits and the
     plant charging; Step 2 at the configured target (2,270 t/d; ``production_t_d`` overrides it, ``production_source``
     says where it came from; user decision 11 Nov 2026: no implicit production from the regime or the twin) with the
     controls held as page 11 starts them, against today's charged blend; Step 1 and maximum production searching
@@ -559,8 +565,8 @@ def default_case(
     given). ``calibration_basis`` live
     (page 11's), day (the calibration of 02:30) or reference (the shipped one, ``case_calibration``); ``yard_basis``
     live (else the reference yard) or reference. ``settings`` and ``limits`` (``SETTINGS_FIELDS``,
-    ``LIMITS_FIELDS``: the API's names; nut coke dry, ``settings_overrides``) replace the defaults last, so a request's
-    controls are held as given; ``dust``
+    ``LIMITS_FIELDS``: the API's names; PCI and nut coke dry, ``settings_overrides``) replace the defaults last, so a
+    request's controls are held as given; ``dust``
     (stream id -> ``OptimiserDustStream`` fields) replaces the named streams' kg per charge and analysis in the yard's
     slag basis for this run (page 11's dust editor applied to the run, not saved).
     ``plan_day`` (default today, IST) is the day whose Open-Meteo blast moisture the plan takes; ``calibration_info``
@@ -603,7 +609,7 @@ def default_case(
     thermal = dict(
         HMT=float(th.get("HMT", 1470.0)),
         hm_Si=float(th.get("hm_Si", 0.38)),
-        pci_plant=float(th.get("pci_kg_thm", 190.0)),
+        pci_plant=pci_as_injected(float(th.get("pci_kg_thm", 190.0)), info.cal),  # the plant's coal rate is dry
         nut_plant=nut_as_charged(float(th.get("nut_kg_thm", 70.0)), info.cal),  # the config's rate is dry
         humidity_g=round(float(humidity_g), 1),
     )
@@ -671,6 +677,7 @@ def default_case(
             Q_UZ_GJh=info.cal.get("Q_UZ_GJh"),
             coke_moisture_pct=_num(((info.cal.get("case") or {}).get("coke") or {}).get("moist_pct")),
             nut_coke_moisture_pct=nut_moisture_pct(info.cal),
+            pci_moisture_pct=pci_moisture_pct(info.cal),
             message=info.message,
             **chosen,
         ),
@@ -773,8 +780,8 @@ def run_values(
     """The headline columns and documents of ``twin.optimiser_run`` for a case and its result (or failure): status
     ok, infeasible (no plan meets every limit, or the LP or a plausibility band refused the case) or failed;
     production t/d; cost, Rs/tHM (ore + flux + fuel - slag credit); saving against today's charged blend, Rs/tHM
-    (Step 2); dry coke and its 1 sigma, kg/tHM; fuel rate on the plant's basis (coke dry + nut coke dry + PCI as
-    injected), kg/tHM; certainty tier."""
+    (Step 2); dry coke and its 1 sigma, kg/tHM; fuel rate on the plant's basis (coke dry + nut coke dry + PCI dry),
+    kg/tHM; certainty tier."""
     plan = plan_of(res) if res is not None else None
     if status is None:
         feasible = plan is not None and plan.get("feasible", True)

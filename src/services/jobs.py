@@ -57,7 +57,13 @@ class OptimiserSettings(BaseModel):
 
     hmt_c: float | None = Field(None, ge=1400, le=1600, description="Hot-metal temperature target (BAND-02), °C")
     hm_si_pct: float | None = Field(None, ge=0.1, le=1.5, description="Hot-metal Si target (BAND-03), %")
-    pci_kg_thm: float | None = Field(None, ge=0, le=260, description="PCI as injected (fixed input), kg/tHM")
+    pci_kg_thm: float | None = Field(
+        None,
+        ge=0,
+        le=260,
+        description="PCI, dry (fixed input: the plant's coal rate, which the bound applies to; the engine injects it "
+        "at the coal moisture of the calibration), kg/tHM",
+    )
     nut_coke_kg_thm: float | None = Field(
         None,
         ge=0,

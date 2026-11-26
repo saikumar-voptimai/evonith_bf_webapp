@@ -68,7 +68,7 @@ class OptimiserRunSummary(BaseModel):
     coke_sd_kg_thm: float | None = Field(None, description="1 sigma of the coke rate, kg/tHM dry (STRATA-ω)")
     fuel_rate_kg_thm: float | None = Field(
         None,
-        description="Fuel rate of the plan: coke dry + nut coke dry + PCI as injected, the basis of the plant's "
+        description="Fuel rate of the plan: coke dry + nut coke dry + PCI, the basis of the plant's "
         "fuel-rate tag (a run stored before 25 Nov 2026: the as-charged sum), kg/tHM",
     )
     certainty: str | None = Field(None, description="High, Medium, Low or Investigate (STRATA-ω)")

@@ -17,13 +17,13 @@ from utils.coke_energy.run_shifts import case_from_shift, cooling_losses
 # Stability filter of the calibration pool: column of the shift balance -> inclusive band. Charged coke kg/tHM dry,
 # C and Fe closure %, blast meter against the reconciled blast %, cooling losses MJ/tHM, production t/h.
 # Blast-meter band (26 Nov 2026): the web model's band was -9 to +15 % on a charge record that kept the coke's surface
-# moisture. With the coke and nut coke on their total moisture the carbon charged is about 2 % lower and the
-# reconciled blast with it, so the meter-against-reconciled figure of every shift rose by about 4 points (median of the
-# shifts passing the other tests +1 % -> +5 %, Aug 2025 - Nov 2026). The band moves with it, -5 to +19 %, so the same
-# shifts stay stable: left at -9..+15 the +15 edge cut into the distribution, 37 of 649 shifts left the pool and 16
-# entered, and the STRATA scales fitted on the pool moved by more than one standard error (nut coke -1.7 se; shaft-
-# efficiency skill 0.15 -> 0.07); at -5..+19 the pool is the old one within 9 shifts and the skill is 0.14.
-STABLE_BOUNDS = {"coke_kgthm_dry": (220, 400), "C_closure_pct": (-20, 5), "blast_meter_vs_reconciled_pct": (-5, 19),
+# moisture and deducted moisture from the coal rate. With the coke and nut coke on their total moisture and the coal
+# rate as reported (it is dry) the carbon charged is about 1.5 % lower and the reconciled blast with it, so the
+# meter-against-reconciled figure of a shift rose by 2.9 points (median over 779 shifts, Aug 2025 - Nov 2026). The band
+# moves with it, -6 to +18 %, so the same shifts stay stable (11 of the old pool leave, 8 enter). Left at -9..+15 the
+# +15 edge cut into the distribution, the pool changed by 37 + 16 of 649 shifts, and the STRATA scales refitted on it
+# moved by more than one standard error.
+STABLE_BOUNDS = {"coke_kgthm_dry": (220, 400), "C_closure_pct": (-20, 5), "blast_meter_vs_reconciled_pct": (-6, 18),
                  "R_out_cooling_total": (40, 400), "Fe_closure_pct": (-6, 6), "prod_th": (75, 110)}
 
 

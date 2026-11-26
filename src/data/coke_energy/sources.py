@@ -247,7 +247,6 @@ def fetch_charges(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     indexed by charge time (IST), with ``received`` = publication time (IST)."""
 
     from furnace_data.offline import fetch_offline_data
-
     from utils.coke_energy.charge_record import charge_table
 
     raw = fetch_offline_data("charge_data", time_range=(_ist_to_utc(start), _ist_to_utc(end)), query_type="raw")

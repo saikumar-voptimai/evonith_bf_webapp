@@ -9,8 +9,9 @@ import pytest
 
 from utils.burden_engine import Engine, Limits, Settings, load_register
 from utils.burden_engine.scenarios import (binding_table, blend_table, cost_table, frontier_table, fuel_defaults,
-                                           fuel_split, limits_from, nut_as_charged, nut_moisture_pct, plan_sentence,
-                                           plan_tiles, process_table, run_cheapest_level, run_fixed,
+                                           fuel_split, limits_from, nut_as_charged, nut_moisture_pct, pci_as_injected,
+                                           pci_moisture_pct, plan_sentence, plan_tiles, process_table,
+                                           run_cheapest_level, run_fixed,
                                            settings_from_regime, slag_table, value_of_limits, viu_table)
 
 THERMAL = dict(HMT=1470.0, hm_Si=0.3836, pci_kg_thm=190.0, nut_kg_thm=70.0)
@@ -37,8 +38,8 @@ def test_settings_from_regime_prefers_regime(eng):
     assert s.HBT == 1201.0 and s.Pb == 2.8
     assert s.O2_per_air == pytest.approx(eng.cal["case"]["O2_per_air"])
     assert s.HMT == 1470.0
-    # PCI: the regime's median when given, else the calibration's (as injected), not 190; nut coke: the config's
-    # rate, which is dry, held as charged at the calibration's nut-coke moisture
+    # PCI: the regime's median when given, else the calibration's (dry, held as injected), not 190; nut coke: the
+    # config's rate, which is dry, held as charged at the calibration's nut-coke moisture
     case = eng.cal["case"]
     assert s.pci_plant == pytest.approx(case["pci_kg"] / (1 - case["pci"]["moist_pct"] / 100))
     s2 = settings_from_regime(dict(pci_kgthm_dry=175.0, nut_kgthm_dry=65.0), THERMAL, eng.cal)
@@ -80,6 +81,7 @@ def test_fixed_tables(eng, fixed):
     basis = cost_table(r).set_index("item").basis
     assert basis["Coke"] == f"{r['out']['K']:.1f} kg/tHM dry ({r['out']['K_wet']:.1f} as charged)"
     assert basis["Nut coke"] == f"{r['out']['nut_dry']:.1f} kg/tHM dry (70.0 as charged)"
+    assert basis["PCI"] == f"{r['out']['pci_dry']:.1f} kg/tHM dry (190.0 as injected)"
     fuel_row = process_table(r).set_index("quantity").loc["Fuel rate (coke dry + nut coke dry + PCI)"]
     assert fuel_row["value"] == f"{r['out']['fuel_rate']:.1f} kg/tHM" and "BAND-01" in fuel_row["limit"]
     assert len(slag_table(r)) == 5 and len(process_table(r)) >= 10
@@ -90,20 +92,47 @@ def test_fixed_tables(eng, fixed):
     assert v.iloc[0]["name"] == "GEOMIN CLO"      # cheapest all-in Fe unit on the UAT yard (case report)
 
 
+def test_pci_input_is_the_plants_dry_coal_rate(eng):
+    """The PCI input (config, page, API, live tag, regime median, calibration) is the plant's coal rate, dry;
+    ``pci_as_injected`` gives the engine's as-injected ``pci_plant`` at the coal moisture of the calibration, and an
+    explicit ``pci_plant`` stays as injected."""
+    shipped = Engine().cal
+    moist = shipped["case"]["pci"]["moist_pct"]
+    assert pci_moisture_pct(shipped) == pytest.approx(moist) and 0.5 < moist < 4.0 and pci_moisture_pct({}) == 0.0
+    assert pci_as_injected(185.0, shipped) == pytest.approx(185.0 / (1 - moist / 100)) and pci_as_injected(185.0, {}) == 185.0
+    # every default is dry: the live tag, the regime median and the calibration's coal rate, then the config
+    assert fuel_defaults({"pci_kgthm_dry": 175.0}, THERMAL, shipped, live_pci=182.0)["pci_kg_thm"] == 182.0
+    assert fuel_defaults({"pci_kgthm_dry": 175.0}, THERMAL, shipped)["pci_kg_thm"] == 175.0
+    assert fuel_defaults(None, THERMAL, shipped)["pci_kg_thm"] == shipped["case"]["pci_kg"]
+    assert fuel_defaults(None, THERMAL, {}) == dict(pci_kg_thm=190.0, pci_kg_thm_source="config", nut_kg_thm=70.0,
+                                                    nut_kg_thm_source="config")
+    assert settings_from_regime({"pci_kgthm_dry": 175.0}, THERMAL, shipped).pci_plant == pytest.approx(
+        pci_as_injected(175.0, shipped))
+    assert settings_from_regime(None, THERMAL, shipped, pci_plant=190.0).pci_plant == 190.0
+    # the engine takes the as-injected value back to the dry rate: the plan's PCI is the input
+    s = settings_from_regime({"pci_kgthm_dry": 175.0}, THERMAL, eng.cal, humidity_g=eng.cal["case"]["humidity_g"])
+    out = eng.evaluate(eng.start_point(s, 2270.0 / 24), s, 2270.0 / 24, full=True)
+    assert out["pci_dry"] == pytest.approx(175.0) and out["pci_wet"] == pytest.approx(s.pci_plant) and s.pci_plant > 177.0
+    assert out["fuel_rate"] == pytest.approx(out["K"] + out["nut_dry"] + 175.0)
+
+
 def test_fuel_figures_lead_with_the_plant_basis(eng, fixed):
     """Dry coke + dry nut coke + PCI add up to the fuel rate as shown; as charged beside; charging stays as charged."""
     _, res = fixed
     r = res["with_fuel"]
     o, f = r["out"], fuel_split(r)
     assert plan_tiles(r)["fuel"] == f
-    assert (f["coke_dry"], f["coke_wet"], f["nut"], f["nut_wet"], f["pci"]) == (o["K"], o["K_wet"], o["nut_dry"], 70.0, 190.0)
+    assert (f["coke_dry"], f["coke_wet"], f["nut"], f["nut_wet"]) == (o["K"], o["K_wet"], o["nut_dry"], 70.0)
+    assert (f["pci"], f["pci_wet"]) == (o["pci_dry"], 190.0) and f["pci"] == pytest.approx(187.16, abs=0.01)
     assert f["coke_dry"] + f["nut"] + f["pci"] == f["total"] == pytest.approx(o["fuel_rate"], abs=1e-9)
-    assert f["coke_wet"] + f["nut_wet"] + f["pci"] == f["total_charged"] == pytest.approx(o["fuel_charged"], abs=1e-9)
-    assert f["total"] == pytest.approx(565.4, abs=0.3) and f["total_charged"] == pytest.approx(567.0, abs=0.3)
+    assert f["coke_wet"] + f["nut_wet"] + f["pci_wet"] == f["total_charged"] == pytest.approx(o["fuel_charged"], abs=1e-9)
+    assert f["total"] == pytest.approx(562.5, abs=0.3) and f["total_charged"] == pytest.approx(567.0, abs=0.3)
     g = plan_tiles(r)["charging"]
     assert g["coke_t"] == pytest.approx(o["K_wet"] * 2.27) and g["nut_t"] == pytest.approx(70.0 * 2.27)
+    assert g["pci_t"] == pytest.approx(190.0 * 2.27)                 # tonnes as injected
     # a result stored before the engine reported the plant basis (fuel_rate = the as-charged sum) reads the same
-    old = dict(r, out={k: v for k, v in o.items() if k not in ("fuel_charged", "nut_wet")} | {"fuel_rate": o["fuel_charged"]})
+    old = dict(r, out={k: v for k, v in o.items() if k not in ("fuel_charged", "nut_wet", "pci_wet")}
+               | {"fuel_rate": o["fuel_charged"]})
     assert fuel_split(old) == f
     kind, text = plan_sentence(r, {}, [])
     assert kind == "plain" and text.endswith(f"coke {o['K']:.2f} kg/tHM dry ({o['K_wet']:.2f} as charged).")

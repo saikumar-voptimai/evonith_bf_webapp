@@ -85,13 +85,13 @@ export const THERMAL_FIELDS: FieldSpec[] = [
 	{ key: 'hm_si_pct', label: 'Hot-metal Si', unit: '%', digits: 2, step: 0.01, min: 0.1, max: 1.5 },
 	{
 		key: 'pci_kg_thm',
-		label: 'PCI, as injected',
+		label: 'PCI, dry',
 		unit: 'kg/tHM',
 		digits: 0,
 		step: 1,
 		min: 0,
 		max: 260,
-		emptyHint: 'Empty: the live PCI tag (1-h mean); enter a value to override'
+		emptyHint: 'Empty: the live PCI tag (1-h mean), the plant’s coal rate, dry; enter a value to override'
 	},
 	{
 		key: 'nut_coke_kg_thm',
@@ -594,15 +594,19 @@ export function bandOf(
 	return { lo, hi, inside: !isNumber(value) || (lo <= value && value <= hi), label };
 }
 
-/** A fuel as charged, with the moisture between its dry and as-charged rates: "308.21 kg/tHM as charged (2.4 %
- * moisture)". */
-export function asCharged(dry: number | null | undefined, wet: number | null | undefined): string {
+/** A fuel as charged (PCI: as injected), with the moisture between its dry and as-charged rates: "308.21 kg/tHM as
+ * charged (2.4 % moisture)". */
+export function asCharged(
+	dry: number | null | undefined,
+	wet: number | null | undefined,
+	word = 'as charged'
+): string {
 	const moisture = isNumber(dry) && isNumber(wet) && wet > 0 ? 100 * (1 - dry / wet) : null;
-	const text = `${formatQuantity(wet, 2, 'kg/tHM')} as charged`;
+	const text = `${formatQuantity(wet, 2, 'kg/tHM')} ${word}`;
 	return isNumber(moisture) ? `${text} (${formatQuantity(moisture, 1, '%')} moisture)` : text;
 }
 
-/** Fuel panel on the plant's basis, as its rate tags: coke and nut coke dry, PCI as injected (fixed inputs), and their
+/** Fuel panel on the plant's basis, as its rate tags: coke, nut coke and PCI dry (the last two fixed inputs), and their
  * sum, the fuel rate, against BAND-01; the as-charged figures in the notes. Two decimals throughout (user decision
  * 11 Nov 2026), so the three fuels add up to the fuel rate as shown. */
 export function fuelCells(plan: PlanView, today: PlanView | null | undefined, ref: Reference | null): Cell[] {
@@ -628,11 +632,11 @@ export function fuelCells(plan: PlanView, today: PlanView | null | undefined, re
 		},
 		{
 			key: 'pci',
-			label: 'PCI',
+			label: 'PCI, dry',
 			value: f.pci_kg_thm,
 			unit: 'kg/tHM',
 			digits: 2,
-			note: 'Fixed input, as injected'
+			note: `Fixed input; ${asCharged(f.pci_kg_thm, f.pci_wet_kg_thm, 'as injected')}`
 		},
 		{
 			key: 'fuel_rate',
@@ -764,7 +768,14 @@ export function chargingCells(plan: PlanView): { cells: Cell[]; caption: string 
 			digits: 1,
 			note: 'Nut coke as charged × production'
 		},
-		{ key: 'pci', label: 'PCI', value: g.pci_t_d, unit: 't/d', digits: 1 },
+		{
+			key: 'pci',
+			label: 'PCI',
+			value: g.pci_t_d,
+			unit: 't/d',
+			digits: 1,
+			note: 'PCI as injected × production'
+		},
 		{
 			key: 'charges',
 			label: 'Charges',
