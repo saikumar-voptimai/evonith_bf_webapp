@@ -255,11 +255,13 @@ baseline)** — omega held at the calibration, ASM-01; the default on the page, 
   (`cost["gross"]` before it). Granulated slag sale price 457.85 Rs/t (plant, 23 Oct 2026; config
   `prices.slag_price_rs_per_t`; the operator's saved value takes precedence). Between two blends of nearly equal cost
   the one with more saleable slag is preferred; with the slag cap binding (340 kg/tHM in the reference case) the credit
-  does not move the plan. Reference plan at 2,270 t/d (16 Oct yard, plant prices, credit ₹156/tHM; Open-Meteo basis:
-  calibration at 18.45 g/Nm³, plan day 15 Oct 2026 at 15.2 g/Nm³): Fixed-ω ₹29,828/tHM (sinter 58.0 / Lloyds CLO 18.5 /
-  Geomin 13.5 / pellet 10.0 %, limestone 13.6 kg, coke 303.2); STRATA-ω ₹29,860 ± 12/tHM (sinter 61.5 / Lloyds CLO 16.0 /
-  Geomin 12.5 / pellet 10.0 %, no flux, coke 302.0 ± 0.4, High). At the UAT prices: ₹30,054 and ₹30,095 (case report
-  basis, 15 g/Nm³: ₹30,139).
+  does not move the plan. Reference plan at 2,270 t/d (16 Oct yard, plant prices, credit ₹156/tHM, page 9's slag
+  basis; dry fuel basis: shipped calibration at 18.51 g/Nm³, plan day 15 Oct 2026 at 15.2 g/Nm³, PCI 190 and nut coke
+  70 kg/tHM dry): Fixed-ω ₹29,753/tHM (sinter 62.6 / Geomin 17.1 / NMDC ROM 10.3 / pellet 10.0 %, quartz 0.2 kg, coke
+  289.8 dry); STRATA-ω ₹29,738 ± 14/tHM (sinter 62.6 / Geomin 14.3 / Lloyds CLO 13.2 / pellet 10.0 %, quartz 3.5 kg,
+  coke 289.4 ± 0.4 dry, High). On the earlier fuel basis without the slag basis (25 Oct 2026): ₹29,828 (coke 303.2) and
+  ₹29,860 ± 12 (coke 302.0 ± 0.4); the reconciliation is in the project document
+  `claude/fuel_moisture_dry_basis_2026-11-25.md` (§5.4).
 
 ### Out-of-sample test (GAS-20, VAL-01..12)
 
@@ -332,21 +334,24 @@ Report: project document `claude/strata_strict_oos_2023_24.md`; scripts `y24/` (
 
 | Pellet, % | Fixed-ω coke, kg/tHM | Fixed-ω Rs/tHM | STRATA-ω coke ± σ | STRATA-ω Rs/tHM ± σ | Tier |
 |---:|---:|---:|---:|---:|---|
-| 0 | 301.2 | 29,634 | 307.3 ± 1.4 | 29,850 ± 44 | High |
-| 2.5 | 301.2 | 29,673 | 305.9 ± 1.1 | 29,839 ± 34 | High |
-| 5 | 301.2 | 29,713 | 304.5 ± 0.8 | 29,830 ± 25 | High |
-| 7.5 | 302.6 | 29,767 | 303.2 ± 0.5 | 29,841 ± 17 | High |
-| 10 | 303.2 | 29,828 | 302.0 ± 0.4 | 29,859 ± 12 | High |
-| 12.5 | 303.2 | 29,889 | 300.8 ± 0.4 | 29,879 ± 14 | High |
-| 15 | 303.1 | 29,950 | 299.6 ± 0.7 | 29,900 ± 21 | High |
-| 17.5 | 303.1 | 30,011 | 298.5 ± 0.9 | 29,922 ± 30 | Medium |
-| 20 | 303.1 | 30,071 | 297.5 ± 1.2 | 29,946 ± 39 | Medium |
-| 22.5 | 303.0 | 30,132 | 296.4 ± 1.5 | 29,971 ± 49 | Low |
-| 25 | 303.0 | 30,192 | 295.4 ± 1.8 | 29,996 ± 58 | Low |
-| 27.5 | 303.0 | 30,252 | 294.6 ± 2.1 | 30,022 ± 68 | Investigate |
-| 30 | 302.9 | 30,313 | 295.2 ± 2.4 | 30,064 ± 76 | Investigate |
+| 0 | 289.9 | 29,542 | 294.8 ± 1.5 | 29,710 ± 47 | High |
+| 2.5 | 289.9 | 29,595 | 293.2 ± 1.1 | 29,712 ± 36 | High |
+| 5 | 289.9 | 29,648 | 291.9 ± 0.8 | 29,717 ± 26 | High |
+| 7.5 | 289.8 | 29,701 | 290.6 ± 0.6 | 29,727 ± 19 | High |
+| 10 | 289.8 | 29,753 | 289.4 ± 0.4 | 29,738 ± 14 | High |
+| 12.5 | 289.8 | 29,806 | 288.2 ± 0.5 | 29,750 ± 16 | High |
+| 15 | 289.8 | 29,858 | 287.0 ± 0.7 | 29,763 ± 22 | High |
+| 17.5 | 289.8 | 29,911 | 285.9 ± 1.0 | 29,780 ± 31 | Medium |
+| 20 | 289.9 | 29,965 | 284.8 ± 1.3 | 29,797 ± 40 | Medium |
+| 22.5 | 290.0 | 30,019 | 283.8 ± 1.5 | 29,816 ± 49 | Low |
+| 25 | 290.0 | 30,084 | 283.0 ± 1.8 | 29,851 ± 58 | Low |
+| 27.5 | 289.6 | 30,171 | 281.7 ± 2.1 | 29,906 ± 68 | Investigate |
+| 30 | 289.2 | 30,256 | 280.4 ± 2.4 | 29,962 ± 77 | Investigate |
 
-Plant prices of 23 Oct 2026 with the slag credit; STRATA 1.5; Open-Meteo basis (calibration 18.45 g/Nm³, plan day 15 Oct 2026 at 15.2 g/Nm³); 10 % pellet floor of the yard relaxed in the sweep.
+Plant prices of 23 Oct 2026 with the slag credit; page 9's slag basis; STRATA 1.5 on the dry fuel basis (shipped
+calibration at 18.51 g/Nm³, plan day 15 Oct 2026 at 15.2 g/Nm³, PCI 190 and nut coke 70 kg/tHM dry); coke dry; 10 %
+pellet floor of the yard relaxed in the sweep; certainty filter off. Recomputed on 26 Nov 2026 (on the earlier basis
+the STRATA-ω cost was lowest at 5 % pellet, Rs 29,830/tHM).
 
 ## STRATA-Learn — continuous learning, shadow mode (v1)
 

@@ -173,9 +173,11 @@ The page opens with the model against the furnace, before any plan.
   metal Si, S and C held for the slag side (page 9's values, Si 0.60 %; the coke balance keeps its thermal Si);
   TiO₂ left out of the slag total (user decision 11 Nov 2026, as the UAT page 9; `tio2_to_slag`); alkalis 80 % to slag; sulphur from ore, flux and fuel less the pig iron's and 10 %
   to gas; MnO from what is not reduced; FeO from 0.1 % of the Fe charged less the dust's; phosphorus to the hot metal.
-* **Against the lab** (284 days, Sep 2025 – Oct 2026, each day's actual charge, model minus lab): engine Al₂O₃ +0.02
-  pt, MgO +0.00, TiO₂ −0.10, CaO/SiO₂ −0.015; page 9 +0.01 / −0.06 / −0.13 / −0.017. MAE Al₂O₃ 0.54 pt, MgO 0.35 pt,
-  CaO/SiO₂ 0.041. Slag rate 338 kg/tHM, equal to the Al₂O₃-tracer estimate.
+* **Against the lab** (284 days, Sep 2025 – Oct 2026, each day's actual charge, model minus lab). Present setting
+  (sheet's dust row, TiO₂ left out): Al₂O₃ +0.24 pt (MAE 0.59), MgO −0.28 pt (MAE 0.41), CaO/SiO₂ −0.037 (MAE 0.051);
+  slag rate 333 kg/tHM against 337 from the Al₂O₃ tracer. With TiO₂ in the slag and the DPR's measured dust streams
+  (the setting before 11 Nov 2026): engine Al₂O₃ +0.02 pt, MgO +0.00, TiO₂ −0.10, CaO/SiO₂ −0.015; page 9 +0.01 /
+  −0.06 / −0.13 / −0.017; slag rate 338 kg/tHM, equal to the Al₂O₃-tracer estimate (docs/slag_replay_vs_lab.md).
 * **Top-gas dust** (page 9's row, used by the plan as well): the plant burden sheet's one stream, 530 kg per charge
   with CaO 5.63 % and MgO 3.57 %, held constant and spread over the blend's own charges per tHM (about 36 kg/tHM;
   user decision 11 Nov 2026, to match the client's burden sheets; the kg per charge and the analysis are editable on
@@ -202,25 +204,32 @@ The page opens with the model against the furnace, before any plan.
 
 ## 7. Validation against the case report (16 Oct 2026, UAT yard, PCI 190, nut coke 70, HMT 1,470 °C)
 
-* Fixed-ω, UAT prices, no slag credit, calibration and plan at 15 g/Nm³ (the report's basis; reproduced by the tests
-  on the report's calibration with the fuels on its basis, PCI 190 less its inherent moisture and nut coke 70 less
-  0.45 %; with PCI 190 and nut coke 70 dry the same case gives coke 302.8 kg/tHM, Rs 30,055/tHM): fixed 2,270 t/d with
-  fuel: coke 305.7 kg/tHM dry, slag 340, Rs 30,139/tHM; sinter 58 /
-  Lloyds CLO 18.6 / Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg/tHM; RAFT 2,214 °C. Maximum production 2,412 t/d
-  (charging binds); cheapest level 2,290 t/d at Rs 29,935/tHM; blast ≤ 105,000 Nm³/h → 2,257 t/d. Page-9 LP and the
-  engine on the same yard and objective agree within 0.3 pt of share.
-* **Open-Meteo basis** (shipped calibration re-solved at its window mean, 18.45 g/Nm³: ω 0.801, Q_LZ 44.5, Q_UZ
-  21.5 GJ/h; plan day 15 Oct 2026, 15.2 g/Nm³). Same blend and UAT prices: Fixed-ω Rs 30,054/tHM, coke 303.2 kg/tHM.
-* **At the plant prices of 23 Oct 2026 with the slag credit** (DATA-14, ASM-20; slag 340 kg/tHM × 457.85 Rs/t =
-  Rs 156/tHM), Open-Meteo basis: Fixed-ω Rs 29,828/tHM, coke 303.2, sinter 58.0 / Lloyds CLO 18.5 / Geomin 13.5 /
-  pellet 10.0 %, limestone 13.6 kg/tHM; STRATA 1.5 Rs 29,860 ± 12/tHM, coke 302.0 ± 0.4 kg/tHM, sinter 61.5 / Lloyds
-  CLO 16.0 / Geomin 12.5 / pellet 10.0 %, no flux (High certainty). STRATA carries more sinter: sinter reduces faster
-  per unit Fe at its size, and its lime replaces the limestone. Cheapest level 2,303 t/d at Rs 29,623/tHM (Fixed-ω) and
-  2,283 t/d at Rs 29,647 (STRATA); maximum 2,412 t/d (charging) in both. Value of limits at 2,270 t/d: hot blast
-  +40 °C Rs 185 (Fixed-ω) / 197 (STRATA) per tHM, slag cap +10 kg/tHM 61 / 64, CaO/SiO₂ floor −0.01 30 / 29.
-* Pellet share at 2,270 t/d (rest re-optimised, plant prices, Open-Meteo basis): STRATA-ω cost is flat within Rs 50/tHM
-  between 0 and 12.5 % pellet (lowest Rs 29,830 at 5 %); coke falls about 1.2 kg/tHM per 2.5 pt; tiers High to 15 %,
-  Medium to 20 %, Low to 25 %, Investigate above. Fixed-ω coke is flat and its cost rises with the pellet price.
+* Fixed-ω, UAT prices, no slag credit, calibration and plan at 15 g/Nm³ (the report's basis, reproduced by the tests
+  on the report's calibration with the fuels on its basis: PCI 190 less its inherent moisture, nut coke 70 less
+  0.45 %): fixed 2,270 t/d with fuel: coke 305.7 kg/tHM dry, slag 340, Rs 30,139/tHM; sinter 58 / Lloyds CLO 18.6 /
+  Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg/tHM; RAFT 2,214 °C. Maximum production 2,412 t/d (charging binds);
+  cheapest level 2,290 t/d at Rs 29,935/tHM; blast ≤ 105,000 Nm³/h → 2,257 t/d. Page-9 LP and the engine on the same
+  yard and objective agree within 0.3 pt of share. With PCI 190 and nut coke 70 dry the same cases give coke 302.8
+  kg/tHM and Rs 30,055/tHM at 2,270 t/d, 2,412 t/d at Rs 30,707 and 2,290 t/d at Rs 29,851.
+* **Reference plan on the present basis** (shipped calibration on the dry fuel basis, 18.51 g/Nm³: ω 0.792, Q_LZ 32.5,
+  Q_UZ 15.3 GJ/h; reference yard at the plant prices of 23 Oct 2026 with the slag credit, DATA-14, ASM-20; page 9's
+  slag basis; plan day 15 Oct 2026 at 15.2 g/Nm³; PCI 190 and nut coke 70 kg/tHM dry; 2,270 t/d): Fixed-ω
+  Rs 29,753/tHM, coke 289.8 kg/tHM dry, sinter 62.6 / Geomin 17.1 / NMDC ROM 10.3 / pellet 10.0 %, quartz 0.2 kg/tHM;
+  STRATA 1.5 Rs 29,738 ± 14/tHM, coke 289.4 ± 0.4 kg/tHM dry, sinter 62.6 / Geomin 14.3 / Lloyds CLO 13.2 / pellet
+  10.0 %, quartz 3.5 kg/tHM (High certainty). STRATA takes Lloyds CLO in place of NMDC ROM: the ROM lump reduces
+  slowest at its size. Cheapest level 2,283 t/d at Rs 29,558/tHM (Fixed-ω) and 2,276 t/d at Rs 29,534 ± 19 (STRATA,
+  High), both at hot blast 1,230 °C; maximum 2,397 t/d (charging binds) at Rs 30,526 and Rs 30,384 ± 46 (STRATA Low:
+  pellet 20 % and 99.9 t/h are outside what BF-02 ran). Value of limits at 2,270 t/d, Fixed-ω / STRATA, Rs/tHM: hot
+  blast +40 °C 177 / 187, slag cap +10 kg/tHM 51 / 46, CaO/SiO₂ floor −0.01 3 / 2; pellet floor −2 pt 42 under
+  Fixed-ω (STRATA's single-step re-run stops at a local optimum; the sweep below gives Rs 11 for 10 → 7.5 %).
+* **Against the figures of 25 Oct 2026** (Fixed-ω coke 303.2 kg/tHM, Rs 29,828/tHM, same yard, prices and plan day):
+  the PCI and nut-coke inputs became dry (−2.8 kg/tHM coke); the recalibration lowered the calibration's own PCI and
+  nut coke, so the plan's 190 and 70 kg/tHM lie further above it (−7.8); page 9's slag basis removed the limestone
+  (−2.8). Earlier-basis figures in decks and documents dated before 25 Nov 2026 are not comparable with these.
+* Pellet share at 2,270 t/d (rest re-optimised, 10 % yard floor relaxed): STRATA-ω coke falls about 1.2 kg/tHM per
+  2.5 pt; its cost is flat within Rs 30/tHM between 0 and 10 % pellet (lowest Rs 29,710 at 0 %) and rises to
+  Rs 29,851 at 25 %; tiers High to 15 %, Medium to 20 %, Low to 25 %, Investigate above. Fixed-ω coke is flat and its
+  cost rises by about Rs 53/tHM per 2.5 pt with the pellet price.
 
 ## 8. What the engine does not see
 
