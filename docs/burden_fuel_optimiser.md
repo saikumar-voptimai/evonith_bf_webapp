@@ -95,12 +95,24 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
   dust, packed-bed anchor. Fewer than 10 stable shifts → the shipped Jul–Oct 2026 calibration, and the page says so.
 * **Operating regime**: 14-day medians of HBT, blast, O₂, pressures, ΔP, HMT, Si, production, ηCO, top gas.
   These pre-fill the controls (Step 2) and appear as "today" next to each limit.
-* **Fact register** (`src/config/facts_register.json`, v1.8): every coefficient outside the balance, the plausibility
+* **Fact register** (`src/config/facts_register.json`, v1.9): every coefficient outside the balance, the plausibility
   bands and the default limits. Retired facts (COKE-17 webapp hand coefficients, DATA-10 regressed RAFT) are
   refused in code.
-* **Bands.** Fuel rate (coke wet + nut + PCI) above 600 kg/tHM is a limit row; below 520 the result is marked
-  infeasible and not reported (a row there would make the optimiser burn coke). HMT outside 1,440–1,520 °C and Si
-  outside 0.20–0.80 % are refused.
+* **Bands.** The dry fuel rate (coke + nut coke + PCI, the plant's basis; BAND-01) above 600 kg/tHM is a limit row.
+  Below 520 the result is marked infeasible and not reported, because a row there would make the optimiser burn coke.
+  HMT outside 1,440–1,520 °C and Si outside 0.20–0.80 % are refused.
+* **Fuel basis** (user decision 25 Nov 2026, DATA-17). The balance, the calibration, TRACE, FORGE and STRATA work on
+  dry fuels. Coke and nut coke are the charge record less their total moisture (TM of `fuel_chemistry`); PCI is taken
+  as recorded. The PCI and nut-coke inputs are the plant's dry rates: nut coke is charged wet at dry / (1 − TM), and
+  PCI takes no moisture correction. Costs and charging use the as-charged masses (prices per tonne as charged). A
+  plan reports the fuel as charged beside the dry fuel rate.
+* **Shipped calibration** (`assets/burden_engine/cal_2z_jul_oct_2026.json`, the offline fallback): recomputed on 25 Nov
+  2026 from the 173 stable shifts of 1 Jul – 7 Oct 2026 on the dry basis. ω 0.792, lower / upper-zone loss 32.5 / 15.3
+  GJ/h, coke 304.4 kg/tHM dry (coke TM 2.37 %, nut coke 6.50 %). Before: 80 shifts, ω 0.801, 44.5 / 21.5 GJ/h,
+  305.5 kg/tHM with the IM as the moisture. The case report tests keep its own calibration
+  (`tests/fixtures/cal_2z_jul_oct_2026_case_report_15g.json`). With PCI 190 and nut coke 70 kg/tHM dry they give coke
+  302.8 kg/tHM; with the fuels on the case report's basis (PCI 190 less its IM, nut coke 70 less 0.45 %) they give its
+  305.7.
 * **RAFT** is the plant workbook (`utils.energy_balance.raft`) at the input blast moisture (not measured at BF-02;
   default = the day's Open-Meteo estimate, DATA-11).
 
@@ -205,8 +217,10 @@ baseline)** — omega held at the calibration, ASM-01; the default on the page, 
   term of pellet replacing sinter), lump ore (Lloyds CLO, Geomin, NMDC ROM, Donimalai, Gomti, oversize), production
   (TRZ residence at the plan's production; scale fixed at 0 since STRATA 1.4) and other operation (coke layers, fuels,
   oxygen, blast). AR(1) Bayesian posterior of the daily change of omega against its 14-day anchor on exact network
-  channels (191 days, 15 Dec 2025 – 7 Oct 2026, Open-Meteo daily moisture), priors N(1, 0.5²): pellet 1.42 ± 0.45,
-  lump 0.92 ± 0.46, other 0.80 ± 0.28. STRATA 1.4 (RH-scaled record) had 1.39 / 0.97 / 0.83. STRATA 1.3 had a
+  channels (191 days, 15 Dec 2025 – 7 Oct 2026, Open-Meteo daily moisture), priors N(1, 0.5²), dry fuel basis
+  (25 Nov 2026): pellet 1.40 ± 0.45, lump 0.93 ± 0.46, other 0.68 ± 0.29, nut coke +0.00058 ± 0.00035 per kg/tHM dry;
+  ρ 0.70. On the earlier fuel basis: 1.42 / 0.92 / 0.80, nut coke 0.0010. STRATA 1.4 (RH-scaled record) had
+  1.39 / 0.97 / 0.83. STRATA 1.3 had a
   production channel (0.59 ± 0.30); it was removed after the strict 2023–24 test (below). Stored as (x_blend = 1, b_c = (λ_g − 1) g_c) so
   `PlanOmega` reads them as in v1.0.
 * **Blast moisture** (DATA-11, STRATA 1.5): the day's Open-Meteo relative humidity at Wardha mapped to 7–21 g/Nm³.
@@ -254,14 +268,25 @@ refit); 175 days, 1 Jan – 7 Oct 2026; skill = 1 − MSE/MSE(Fixed-ω) on the s
 moves the Fixed-ω baseline itself (RMSE 8.11 on the stepped psychrometric series, 6.94 on the RH-scaled record, 6.39
 on the Open-Meteo daily RH), so skills are compared within a basis and RMSEs across bases.
 
-| Test (burnt coke unless stated) | STRATA 1.3 (RH-scaled) | STRATA 1.4 (RH-scaled) | STRATA 1.5 (Open-Meteo) |
-|---|---:|---:|---:|
-| Fixed-ω RMSE, kg/tHM | 6.94 | 6.94 | 6.39 |
-| Expanding, omega, day | +0.160 | +0.155 | +0.144 |
-| Expanding, day (RMSE) | +0.128 (6.48) | +0.139 (6.44) | +0.120 (5.99) |
-| Expanding, 7-day | +0.219 | +0.221 | +0.221 |
-| Train Dec–May, test Jun–Oct, day | +0.061 | +0.147 | +0.095 |
-| Train Jun–Oct, test Jan–May, day | +0.134 | +0.114 | +0.111 |
+| Test (burnt coke unless stated) | STRATA 1.3 (RH-scaled) | STRATA 1.4 (RH-scaled) | STRATA 1.5 (Open-Meteo) | STRATA 1.5, dry fuel basis |
+|---|---:|---:|---:|---:|
+| Fixed-ω RMSE, kg/tHM | 6.94 | 6.94 | 6.39 | 6.77 |
+| Expanding, omega, day | +0.160 | +0.155 | +0.144 | +0.094 |
+| Expanding, day (RMSE) | +0.128 (6.48) | +0.139 (6.44) | +0.120 (5.99) | +0.100 (6.42) |
+| Expanding, 7-day | +0.219 | +0.221 | +0.221 | +0.174 |
+| Train Dec–May, test Jun–Oct, day | +0.061 | +0.147 | +0.095 | +0.099 |
+| Train Jun–Oct, test Jan–May, day | +0.134 | +0.114 | +0.111 | +0.088 |
+
+How the dry-basis column was obtained (25 Nov 2026):
+
+- The evidence seed was re-stated with the day's change between two pipeline runs on identical inputs (earlier and
+  dry basis). Each figure is the published STRATA 1.5 figure plus its change on the seed under the same protocol.
+- On the seed itself, the earlier basis gives RMSE 6.05 against 6.39 and the dry basis 6.48 against 6.77.
+- The Fixed-ω error widens on the dry basis (FORGE − TRACE SD per shift 5.94 → 6.20, DATA-06). STRATA still lowers it in
+  every split.
+- The decisions on the model form are unchanged: on the dry basis a production channel or a moisture term again lowers
+  the skill (0.068 / 0.070 against 0.092 without, ρ re-estimated per fit), and the nut-coke term still adds skill
+  (0.092 with, 0.090 without).
 
 By blend family (VAL facts, STRATA 1.5): Supported — no pellet with oversize; no pellet with ROM; pellet with CLO;
 pellet with ROM; all days; ROM ≥ 10 %; pellet ≥ 12 %. Neutral — no pellet, sinter + CLO (bias +0.8 kg/tHM). Modelled only
@@ -408,13 +433,21 @@ PCI 190, nut coke 70, HMT 1,470 °C, Jul–Oct 2026 calibration. `pytest tests/t
 (`BURDEN_ENGINE_FAST=1` skips the three slow production cases).
 
 - [x] Case 2 (fixed 2,270 t/d, with fuel): coke 305.7 kg/tHM dry, slag 340, Rs 30,139/tHM, sinter 58 / Lloyds CLO 18.6 /
-      Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg/tHM, RAFT 2,214 °C
-- [x] Case 2b (extended yard): Rs 29,306/tHM, Gomti 22 % flagged as extrapolated
-- [x] Case 3 (max production): 2,412 t/d, charging binds, pellet 19.8 % flagged
-- [x] Case 4 (cheapest level): 2,290 t/d at Rs 29,935/tHM, HBT 1,230 °C
-- [x] Case 5b (blast ≤ 105,000 Nm³/h): 2,257 t/d, O₂ 6,490 Nm³/h, blast volume binds
+      Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg/tHM, RAFT 2,214 °C (with the fuels on the case report's basis:
+      PCI 190 less its inherent moisture, nut coke 70 less 0.45 %; `test_case_report_on_its_fuel_basis`)
+- [x] Dry fuel basis (25 Nov 2026; PCI 190 and nut coke 70 kg/tHM dry): case 2 coke 302.8 kg/tHM dry, fuel rate 562.8 dry
+      (564.5 as charged), Rs 30,055/tHM. The cases below are tested on this basis; the case report's own values
+      (fuels on its basis) are given in brackets
+- [x] Case 2b (extended yard): Rs 29,223/tHM (29,306), Gomti 22 % flagged as extrapolated
+- [x] Case 3 (max production): 2,412 t/d at Rs 30,707/tHM (30,789), charging binds, pellet 19.8 % flagged
+- [x] Case 4 (cheapest level): 2,290 t/d at Rs 29,851/tHM (29,935), HBT 1,230 °C
+- [x] Case 5b (blast ≤ 105,000 Nm³/h): 2,254 t/d (2,257), O₂ 6,490 Nm³/h, blast volume binds
+- [x] Through the API (page 9's slag basis on): Step 2 Rs 30,009/tHM, coke 299.4 kg/tHM dry; Step 1 2,283 t/d at
+      Rs 29,817/tHM, highest output 2,404 t/d; maximum production 2,404 t/d at Rs 30,687/tHM, charging binds, pellet at
+      its upper bound of 20 % (`tests/test_api_optimiser.py`)
 - [x] Value of limits at 2,270 t/d: slag cap +10 → Rs 53, pellet floor −2 pt → Rs 44, basicity floor −0.01 → Rs 27
-- [x] Band guards: ideal shaft (fuel 518) and +60 GJ/h lower-zone loss (fuel 611) not reported; HMT / Si out of band refused
+- [x] Band guards: ideal shaft (fuel below 520 kg/tHM) and, on the shipped calibration, +80 GJ/h lower-zone loss (dry
+      fuel above 600 kg/tHM) not reported; HMT / Si out of band refused
 - [x] Retired facts refused; engine coefficients equal the register's
 - [x] Live calibration reproduces the window's actual coke at its own operating point; falls back below 10 shifts
 - [x] Page opens without Neon / InfluxDB (reference yard + shipped calibration, labelled)
@@ -455,7 +488,8 @@ Lloyds CLO 18.6 / pellet 10 % with 13.7 kg limestone (coke 305.7, Rs 30,139/tHM,
 14.6 / 10 % with 1.7 kg dolomite and 0.9 kg quartz (coke 302.4, Rs 30,076/tHM) with TiO₂ counted, and to 62.5 /
 14.1 / 13.4 / 10 % with 2.45 kg quartz (coke 302.2, Rs 30,092/tHM) with TiO₂ left out (the setting since 11 Nov
 2026; the test pins and the SPA fixture): the held Si credits 4.6 kg/tHM more SiO₂ to the hot metal, so the basicity
-floor needs less lime. The case-report numbers are kept by the engine tests without the basis.
+floor needs less lime. The case-report numbers are kept by the engine tests without the basis. On the dry fuel basis
+(25 Nov 2026) the same blend gives coke 299.4 kg/tHM dry (300.6 as charged), fuel rate 559.4 dry, Rs 30,009/tHM.
 
 **Slag breakup on the page (11 Nov 2026).** With the basis every plan also carries page 9's *Slag Balance Details*
 (`slag_basis.slag_detail`, in the result as `out.slag_detail`): per material the Fe and the slag-forming oxides

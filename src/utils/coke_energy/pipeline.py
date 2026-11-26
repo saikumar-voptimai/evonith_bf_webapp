@@ -25,11 +25,13 @@ The heat-loss allowance U of the oxygen-balance model stays on the 14-day median
 
 Data errors (``exclusion_reasons``): a shift is not balanced when it is on the ``bad_shifts`` list, when its ore
 moisture cannot be real, or (``PipelineSettings.fuel_rate_band_pct``) when its charge record disagrees with the plant's
-fuel rate. The charge record's fuel (coke + nut coke + PCI, t as charged, per tonne of hot metal) is compared with the plant's
-fuel-rate tag (``ACT. FUEL RATEKG/THM.``, its hourly mean over the shift), an independent record of the same fuel. On
-normal shifts the record runs 3 % above the tag (robust SD 2.2 %, Sep 2025 - Nov 2026); outside the band the record is
-wrong and every balance of the shift with it: coke counted at half in Nov 2025 (-21 to -33 %), PCI read 40-70 kg/tHM
-high on 6-16 Dec 2025 (+10 to +18 %), PCI read about 420 kg/tHM on 16-21 Oct 2026 (+43 %; burnt coke 30-60 kg/tHM).
+fuel rate. The charge record's fuel (coke + nut coke + PCI per tonne of hot metal, dry: coke and nut coke less their
+total moisture, PCI as recorded; ``build_shifts.dry_fuels``) is compared with the plant's fuel-rate tag (``ACT. FUEL
+RATEKG/THM.``, dry, its hourly mean over the shift), an independent record of the same fuel. On normal shifts the dry
+record runs 0.4 % above the tag (robust SD 2.4 %, Sep 2025 - Nov 2026; the wet record of before 25 Nov 2026 ran 2.9 %
+above); outside the band the record is wrong and every balance of the shift with it: coke counted at half in Nov 2025
+(-21 to -33 %), PCI read 40-70 kg/tHM high on 6-16 Dec 2025, PCI read about 420 kg/tHM on 16-21 Oct 2026 (+43 %;
+burnt coke 30-60 kg/tHM).
 The stable filter kept those shifts out of every calibration already; they spoiled the comparisons over every balanced
 shift, the raw mass closure and the twin windows of those days. A shift without the tag is not checked.
 
@@ -66,7 +68,7 @@ import numpy as np
 import pandas as pd
 
 from utils.coke_energy.bf_balance import DEFAULTS, solve_coke
-from utils.coke_energy.build_shifts import build_shift_inputs
+from utils.coke_energy.build_shifts import ChargeMoisture, build_shift_inputs
 from utils.coke_energy.burnt import k_burnt
 from utils.coke_energy.rist import TZ, calibrate_2z, solve_2z
 from utils.coke_energy.run_shifts import case_from_shift, shift_balance
@@ -81,9 +83,10 @@ SHIFT_HOURS = 8.0
 # windows, the pool shift ended before the target began (6 min of tolerance).
 TRACKER_MIN_AGE_H = SHIFT_HOURS - 0.1
 CALIBRATION_METHODS = ("median", "exponential")
-# Shift-input column of the plant's fuel-rate tag (kg/tHM, hourly mean over the shift) and the charge-record fuels.
+# Shift-input column of the plant's fuel-rate tag (kg/tHM, dry, hourly mean over the shift) and the charge-record fuels
+# on the same dry basis (build_shifts.dry_fuels: coke and nut coke less their TM, PCI as recorded).
 FUEL_RATE_TAG = "h_ACT. FUEL RATEKG/THM."
-CHARGED_FUELS = ("COKE_CALC_MT", "NUTCOKE_CALC_MT", "PCI_CALC_MT")
+CHARGED_FUELS = ("COKE_DRY", "NUT_DRY", "PCI_DRY")
 
 
 @dataclass(frozen=True)
@@ -105,6 +108,8 @@ class PipelineSettings:
     # (low, high) % of the charge record's fuel against the plant's fuel-rate tag; outside it the shift is a data error.
     # None = no check (the web model)
     fuel_rate_band_pct: tuple[float, float] | None = None
+    # wet charge record -> dry fuel mass (coke and nut coke less their TM; PCI as recorded)
+    charge_moisture: ChargeMoisture = field(default_factory=ChargeMoisture)
 
     def __post_init__(self) -> None:
         if self.calibration not in CALIBRATION_METHODS:
@@ -146,6 +151,7 @@ class PipelineSettings:
             half_life_days=float(tracker.get("half_life_days", cls.half_life_days)),
             tracker_min_shifts=int(tracker.get("min_shifts", cls.tracker_min_shifts)),
             fuel_rate_band_pct=None if band is None else (float(band[0]), float(band[1])),
+            charge_moisture=ChargeMoisture.from_config(cfg.get("charge_moisture")),
         )
 
 
@@ -203,7 +209,8 @@ def valid_shift_mask(S: pd.DataFrame) -> pd.Series:
 
 
 def charge_record_fuel(S: pd.DataFrame) -> pd.Series:
-    """Fuel of the charge record, kg per tonne of hot metal as charged: (coke + nut coke + PCI) / production."""
+    """Fuel of the charge record, dry kg per tonne of hot metal: (coke + nut coke + PCI, dry) / production. The plant's
+    fuel-rate tag is on the same dry basis (coke and nut coke less their total moisture, PCI as recorded)."""
 
     if any(c not in S.columns for c in (*CHARGED_FUELS, "PRODUCTIONTONNESPERHR")):
         return pd.Series(np.nan, index=S.index)
@@ -237,8 +244,8 @@ def exclusion_reasons(S: pd.DataFrame, settings: PipelineSettings) -> dict[str, 
         for k in S.index[(dev < lo) | (dev > hi)]:
             out.setdefault(
                 str(k),
-                f"data error: charge record fuel {fuel[k]:.0f} kg/tHM is {dev[k]:+.0f} % against the plant fuel rate "
-                f"{S.at[k, FUEL_RATE_TAG]:.0f} kg/tHM (accepted {lo:+g} to {hi:+g} %)",
+                f"data error: charge record fuel {fuel[k]:.0f} kg/tHM dry is {dev[k]:+.0f} % against the plant fuel "
+                f"rate {S.at[k, FUEL_RATE_TAG]:.0f} kg/tHM (accepted {lo:+g} to {hi:+g} %)",
             )
     return out
 
@@ -592,7 +599,7 @@ def run_pipeline(fd: pd.DataFrame, m10: pd.DataFrame, hm: pd.DataFrame, dpr: pd.
     with warnings.catch_warnings():
         # The web scripts ran with all warnings silenced (pandas/numpy noise on all-NaN shifts); keep that local.
         warnings.simplefilter("ignore")
-        S = build_shift_inputs(fd, m10, hm, dpr, start=settings.history_start)
+        S = build_shift_inputs(fd, m10, hm, dpr, start=settings.history_start, moisture=settings.charge_moisture)
         good = valid_shift_mask(S)
         reasons = exclusion_reasons(S, settings)
         keys = S.index[good & ~S.index.isin(list(reasons))]

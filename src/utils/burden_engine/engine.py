@@ -84,8 +84,8 @@ class Settings:
     humidity_g: float | None = None      # blast moisture, g/Nm3; None = Open-Meteo for today (DATA-04/11, live)
     HMT: float = 1470.0
     hm_Si: float = 0.3836
-    pci_plant: float = 190.0             # kg/tHM as injected
-    nut_plant: float = 70.0              # kg/tHM as charged
+    pci_plant: float = 190.0             # kg/tHM dry, as injected (the plant's coal rate; no moisture correction)
+    nut_plant: float = 70.0              # kg/tHM dry (the plant's nut-coke rate; charged wet = dry / (1 - TM))
     Pb: float = 2.79                     # hot-blast pressure, bar g
     Pt: float = 1.42                     # top pressure, bar g
     omega: float | None = None           # shaft efficiency; None = calibrated value (fixed mode)
@@ -116,7 +116,7 @@ class Limits:
     charge_t: float = 26.46              # non-coke t per charge (ferrous + flux + nut coke)
     charges_per_h: float = 6.5
     T_top_min: float = 120.0             # degC, upper-zone heat check (ASM-05/13)
-    fuel_min: float = 520.0              # kg/tHM, coke wet + nut + PCI (BAND-01)
+    fuel_min: float = 520.0              # kg/tHM, coke + nut coke + PCI, dry: the plant's fuel rate (BAND-01)
     fuel_max: float = 600.0
     process: bool = False
     Pb_max: float = 2.85                 # bar g
@@ -234,7 +234,7 @@ class Engine:
                 self.case0[key] = fu
             self.charge_t = float(self.slag_basis.get("charge_t") or Limits.charge_t)
             wet_cal = sum(float(b["dry_kg"]) / (1 - float(b.get("moist_pct", 0.0)) / 100) for b in c["burden_cal"])
-            nut_wet = float(self.case0["nut_kg"]) / (1 - float(self.case0["nut"]["moist_pct"]) / 100)
+            nut_wet = self.nut_wet(float(self.case0["nut_kg"]))
             self.case0["dust"] = self.dust_streams(self.case0["dust"], (wet_cal + nut_wet) / 1000 / self.charge_t)
         # Hot-blast meter vs model: at the calibration point the model's blast + O2 per tHM x production reproduces the
         # meter's average to ~1 % (DATA-01); this factor removes the remainder.
@@ -264,6 +264,10 @@ class Engine:
         window's Open-Meteo mean, DATA-11): the engine's default when a call gives no settings. Plans for a day pass
         their own settings (Settings() = today's Open-Meteo moisture)."""
         return Settings(humidity_g=float(self.case0.get("humidity_g", 15.0)), **kw)
+
+    def nut_wet(self, nut_dry: float) -> float:
+        """Nut coke as charged (wet), kg/tHM, from dry kg/tHM at the calibration's nut-coke total moisture."""
+        return float(nut_dry) / (1 - float(self.case0["nut"].get("moist_pct", 0.0) or 0.0) / 100)
 
     def omega_model(self) -> OmegaModel:
         """The blend-dependent omega model, anchored on this engine's calibration (built on first use)."""
@@ -325,9 +329,7 @@ class Engine:
                     wet[mm] = wet.get(mm, 0.0) + kg * float(f)
         sh, fe, cls = m.blend_parts(wet)
         r_o2 = float(case["O2_per_air"])
-        return OmegaState(sh, fe, cls, coke=float(cal["K"]),
-                          nut=float(case["nut_kg"]) / (1 - float(case["nut"]["moist_pct"]) / 100),
-                          pci=float(case["pci_kg"]) / (1 - float(case["pci"]["moist_pct"]) / 100),
+        return OmegaState(sh, fe, cls, coke=float(cal["K"]), nut=float(case["nut_kg"]), pci=float(case["pci_kg"]),
                           prod=float(case["prod_th"]), blast_t=self.c_hb * float(cal["hb_per_t_model_cal"]),
                           o2=r_o2 / (1 + r_o2), rdi=m.rdi, fer=sum(wet.values()),
                           humidity=float(case.get("humidity_g", float("nan"))))
@@ -396,13 +398,14 @@ class Engine:
             dry = max(w, 0.0) * (1 - v.moist / 100)
             c["burden"].append(dict(name=v.id, kind=v.kind, dry_kg=dry, comp=v.chem, moist_pct=v.moist,
                                     LOI_type=v.loi_type))
-        c["pci_kg"] = s.pci_plant * (1 - c["pci"]["moist_pct"] / 100)
-        c["nut_kg"] = s.nut_plant * (1 - c["nut"]["moist_pct"] / 100)
+        # dry basis (user decision 25 Nov 2026): the plant's coal and nut-coke rates are dry; PCI takes no correction
+        c["pci_kg"] = s.pci_plant
+        c["nut_kg"] = s.nut_plant
         c["hm"] = dict(c["hm"]); c["hm"]["Si"] = s.hm_Si
         c["HMT"], c["HBT"], c["O2_per_air"], c["humidity_g"] = s.HMT, s.HBT, s.O2_per_air, s.humidity_g
         c["prod_th"] = P
         if self.slag_basis:
-            wet = float(np.sum(np.maximum(np.asarray(z, float), 0.0))) + s.nut_plant
+            wet = float(np.sum(np.maximum(np.asarray(z, float), 0.0))) + self.nut_wet(s.nut_plant)
             c["dust"] = self.dust_streams(c["dust"], wet / 1000 / self.charge_t)
         return c
 
@@ -438,7 +441,8 @@ class Engine:
         if full:
             out.update(air=r["V"], y_d=r["y_d"], r_d=r["r_d"], topgas=ro["V_tg"], B2=sl["B2"], Al2O3_pct=sl["Al2O3_pct"],
                        MgO_pct=sl["MgO_pct"], O_err=r["O_err"], E_err=r["E_err"], omega=r["omega"], R_cap=r["R_cap"],
-                       fuel_dry=K + c["nut_kg"] + c["pci_kg"], fuel_rate=Kw + s.nut_plant + s.pci_plant,
+                       fuel_dry=K + c["nut_kg"] + c["pci_kg"], fuel_rate=K + c["nut_kg"] + c["pci_kg"],
+                       fuel_charged=Kw + self.nut_wet(s.nut_plant) + s.pci_plant, nut_wet=self.nut_wet(s.nut_plant),
                        nut_dry=c["nut_kg"], pci_dry=c["pci_kg"], CO2_carb=ro["CO2_carb_kg"],
                        TiO2=sl["TiO2"], MnO=sl["MnO"], FeO=sl["FeO"], slag_minor=sl["minor"],
                        dust_kg=dust_kg(c["dust"]), Fe_dust=dust_fe(c["dust"]), slag_detail=sl.get("detail"))
@@ -506,8 +510,8 @@ class Engine:
         ore = float(pr[:self.nf] @ z[:self.nf]) / 1000
         flx = float(pr[self.nf:] @ z[self.nf:]) / 1000
         s = s or self.cal_settings()
-        coke = o["K_wet"] * self.prices_fuel["coke"] / 1000
-        nut = s.nut_plant * self.prices_fuel["nut"] / 1000
+        coke = o["K_wet"] * self.prices_fuel["coke"] / 1000                     # prices per tonne as charged (wet)
+        nut = self.nut_wet(s.nut_plant) * self.prices_fuel["nut"] / 1000
         pci = s.pci_plant * self.prices_fuel["pci"] / 1000
         slag_credit = float(o.get("slag", 0.0)) * self.prices_fuel.get("slag", 0.0) / 1000
         sigma = float(o.get("sig_K", 0.0)) * self.prices_fuel["coke"] / 1000          # 1 sigma of the coke cost
@@ -573,7 +577,7 @@ class Engine:
             ub.append((name, a, rhs - c, scale, soft))
 
         aS, cS = lin("slag"); aCa, cCa = lin("CaO"); aSi, cSi = lin("SiO2"); aMg, cMg = lin("MgO"); aAl, cAl = lin("Al2O3")
-        aFe, cFe = lin("Fe_res"); aT, cT = lin("T_top"); aKw, cKw = lin("K_wet")
+        aFe, cFe = lin("Fe_res"); aT, cT = lin("T_top"); aK, cK = lin("K")
         eq.append(("Fe balance", aFe, -cFe, 1.0))
         le("slag cap", aS, cS, L.slag_max, 1.0)
         le("basicity min", L.B2_min * aSi - aCa, L.B2_min * cSi - cCa, 0.0, 1.0)
@@ -582,12 +586,12 @@ class Engine:
         le("MgO min", L.MgO_min / 100 * aS - aMg, L.MgO_min / 100 * cS - cMg, 0.0, 1.0)
         le("MgO/Al2O3 min", L.MgO_Al2O3_min * aAl - aMg, L.MgO_Al2O3_min * cAl - cMg, 0.0, 1.0)
         le("top gas temp min", -aT, -cT, -L.T_top_min, 1.0)
-        fixed_fuel = s.nut_plant + s.pci_plant
-        le("fuel rate max", aKw, cKw + fixed_fuel, L.fuel_max, 1.0)
+        fixed_fuel = s.nut_plant + s.pci_plant                 # BAND-01 on the plant's dry basis
+        le("fuel rate max", aK, cK + fixed_fuel, L.fuel_max, 1.0)
         # The band's lower end is a validity check only (see violation): a row would make the optimiser burn coke.
         cap = L.charge_t * L.charges_per_h
         a_ch = np.full(self.n, P / 1000)
-        le("charging", a_ch, P / 1000 * s.nut_plant, cap, 1.0)
+        le("charging", a_ch, P / 1000 * self.nut_wet(s.nut_plant), cap, 1.0)
         lim = self.omega_limits(s)
         if lim:                                              # certainty filter (blend mode)
             if math.isfinite(lim["sigma_max"]):
@@ -639,11 +643,11 @@ class Engine:
         v["MgO min"] = max(0.0, L.MgO_min / 100 * o["slag"] - o["MgO"])
         v["MgO/Al2O3 min"] = max(0.0, L.MgO_Al2O3_min * o["Al2O3"] - o["MgO"])
         v["top gas temp min"] = max(0.0, L.T_top_min - o["T_top"])
-        fuel = o["K_wet"] + s.nut_plant + s.pci_plant
+        fuel = o["K"] + s.nut_plant + s.pci_plant              # dry (BAND-01, the plant's fuel-rate basis)
         v["fuel rate max"] = max(0.0, fuel - L.fuel_max)
         if checks:
             v["fuel rate min"] = max(0.0, L.fuel_min - fuel)
-        v["charging"] = max(0.0, P / 1000 * (z.sum() + s.nut_plant) - L.charge_t * L.charges_per_h)
+        v["charging"] = max(0.0, P / 1000 * (z.sum() + self.nut_wet(s.nut_plant)) - L.charge_t * L.charges_per_h)
         lim = self.omega_limits(s)
         if lim:
             if math.isfinite(lim["sigma_max"]):
@@ -905,7 +909,8 @@ class Engine:
                    duals=duals, slack_used=slack_used, lp_iterations=last.get("iters"),
                    blast_nm3h=V, O2_nm3h=P * o["O2"], enrich_tag=self.hy.enrich_tag(s.O2_per_air), raft=raft,
                    dlnK=d, V_ceiling=self.hy.v_ceiling(s.Pb, s.Pt, d), Pb_needed=self.hy.pb_needed(V, s.Pt, d),
-                   charging_th=P / 1000 * (zs.sum() + s.nut_plant), charges_per_h=P / 1000 * (zs.sum() + s.nut_plant) / L.charge_t,
+                   charging_th=P / 1000 * (zs.sum() + self.nut_wet(s.nut_plant)),
+                   charges_per_h=P / 1000 * (zs.sum() + self.nut_wet(s.nut_plant)) / L.charge_t,
                    charging_cap_th=L.charge_t * L.charges_per_h, warnings=warnings, omega=om_info,
                    facts_version=self.facts.label, facts=list(ENGINE_FACTS))
         out["dP_needed"] = out["Pb_needed"] - s.Pt
@@ -1305,7 +1310,8 @@ def summary(r, eng: Engine) -> dict[str, Any]:
     for v in eng.flux:
         d["kg_" + v.id] = r["wet_kg"][v.id]
     d.update(ferrous_wet=r["ferrous_wet"], fe_pct=r["fe_wet_pct"], coke_dry=o["K"], coke_wet=o["K_wet"],
-             fuel_rate=o["fuel_rate"], slag=o["slag"], B2=o["B2"], Al2O3_pct=o["Al2O3_pct"], MgO_pct=o["MgO_pct"],
+             nut_wet=o.get("nut_wet", s["nut_plant"]), fuel_rate=o["fuel_rate"],
+             fuel_charged=o.get("fuel_charged", o["fuel_rate"]), slag=o["slag"], B2=o["B2"], Al2O3_pct=o["Al2O3_pct"], MgO_pct=o["MgO_pct"],
              MgO_Al2O3=o["MgO"] / o["Al2O3"], eta_CO=o["eta"], T_top=o["T_top"], HBT=s["HBT"], enrich=r["enrich_tag"],
              raft=r["raft"], blast=r["blast_nm3h"], O2=r["O2_nm3h"], Pb=s["Pb"], Pt=s["Pt"], Pb_needed=r["Pb_needed"],
              dP_needed=r["dP_needed"], V_ceiling=r["V_ceiling"], charges_h=r["charges_per_h"], ore_cost=c["ore"],

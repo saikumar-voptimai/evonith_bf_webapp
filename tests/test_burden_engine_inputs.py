@@ -90,9 +90,11 @@ def test_operator_file_carries_plant_prices():
 
 
 def test_adapter_reproduces_case2(inputs):
+    """The reference inputs on the shipped calibration (dry fuel basis, 25 Nov 2026): case 2 at 2,270 t/d. The case
+    report itself is reproduced on its own calibration (tests/test_burden_engine.py)."""
     r = Engine(inputs).min_cost(prod_t_day=2270, fuel=True)
-    assert r["out"]["K"] == pytest.approx(305.7, abs=0.3)
-    assert r["cost"]["total"] == pytest.approx(30139, abs=5)
+    assert r["out"]["K"] == pytest.approx(295.0, abs=0.3)
+    assert r["cost"]["total"] == pytest.approx(30066, abs=5)
 
 
 def test_fallback_chemistry_left_out():

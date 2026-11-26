@@ -117,7 +117,7 @@ def test_without_a_run_the_console_shows_the_asset_only(client, tmp_path, monkey
     monkeypatch.setattr(learn, "STORE_DIR", tmp_path)
     body = call(client, "GET", "adm", URL).json()
     assert body["run"] is None and body["proposal"] is None and body["skill"] == [] and body["runs"] == []
-    assert body["validation"]["expanding"]["rmse_fixed"] == 6.39 and body["job"]["schedule"] == "03:00"
+    assert body["validation"]["expanding"]["rmse_fixed"] == 6.77 and body["job"]["schedule"] == "03:00"
     r = call(client, "POST", "adm", DECIDE, json={"proposal": "x", "items": ["VAL-02"], "approve": True})
     assert r.status_code == 404 and r.json()["title"] == "No run"
 

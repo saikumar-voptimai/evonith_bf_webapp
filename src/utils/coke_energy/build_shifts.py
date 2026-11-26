@@ -10,10 +10,90 @@ statements run inside ``build_shift_inputs``, which takes those four frames as a
 Windows (SV-1.1, #281): ``key_fn`` assigns the rows to their aggregation period. ``shift_key`` (the default) gives the
 A/B/C shifts; ``window_key(start, end)`` gives one window [start, end) of any length, aggregated by the same statements,
 so a window that coincides with a shift returns that shift's row (under the window's key).
+
+Dry basis of the fuels (user decision 25 Nov 2026, ``ChargeMoisture``): the charge record holds coke and nut coke as
+charged, wet. Their dry mass is wet x (1 - TM / 100) with the total moisture (TM) of the raw-material analysis
+(``COKE_MOIST%`` / ``NUTCOKE_MOIST%``); the plant's coke-rate and nut-coke-rate tags are on this dry basis (1 Sep -
+11 Nov 2026, daily medians: coke 297.7 against the tag 297.6, nut coke 71.1 against 70.0 kg/tHM). From 7 Dec 2025 to
+25 Nov 2026 the hourly dataset carried the inherent moisture (IM) of the lab sample (0.30 - 0.53 %) in those columns, the
+same value as ``COKE_IM%`` / ``NUTCOKE_IM%``, and the wet coke entered every balance as dry. A reading is therefore taken
+as the TM only when it is at least ``ChargeMoisture.min_tm_pct`` and differs from the IM reading of the same hour; else
+the default TM of the material replaces it (counted per shift in ``COKE_TM_DEFAULT_H`` / ``NUT_TM_DEFAULT_H``). The
+charge-weighted TM was 1.40 - 9.19 % (coke) and 3.50 - 13.80 % (nut coke) per hour from Aug 2025 to Nov 2026. PCI enters
+as recorded: the plant's coal rate is dry (``pci_less_im`` restores the deduction of the inherent moisture used before).
 """
 import re
+from dataclasses import dataclass
+from typing import Any, Mapping
 
 import pandas as pd, numpy as np
+
+
+@dataclass(frozen=True)
+class ChargeMoisture:
+    """Wet charge record -> dry fuel mass (``coke_energy.yml -> charge_moisture``)."""
+
+    coke_tm_pct: float = 2.5       # default TM of coke (coke_1 2.2 %, coke_2 3.7 %, weighted by the charge, Sep-Nov 2026)
+    nut_coke_tm_pct: float = 6.5   # default TM of nut coke (Sep-Nov 2026 mean; 3.6-13.8 %)
+    min_tm_pct: float = 1.0        # a reading below this is the inherent moisture, not the TM (coke_1 TM >= 1.7 %)
+    max_tm_pct: float = 15.0       # readings above are clipped (as before)
+    pci_less_im: bool = False      # True: PCI dry = recorded x (1 - PCI_IM% / 100), the rule before 25 Nov 2026
+
+    @classmethod
+    def from_config(cls, cfg: Mapping[str, Any] | None) -> "ChargeMoisture":
+        c, d = dict(cfg or {}), cls()
+        return cls(
+            coke_tm_pct=float(c.get("coke_tm_default_pct", d.coke_tm_pct)),
+            nut_coke_tm_pct=float(c.get("nut_coke_tm_default_pct", d.nut_coke_tm_pct)),
+            min_tm_pct=float(c.get("min_tm_pct", d.min_tm_pct)),
+            max_tm_pct=float(c.get("max_tm_pct", d.max_tm_pct)),
+            pci_less_im=str(c.get("pci", "as_recorded")).lower() == "less_im",
+        )
+
+
+def is_total_moisture(values, im=None, cm: ChargeMoisture = ChargeMoisture()) -> pd.Series:
+    """True where a moisture reading is a TM: at least ``min_tm_pct`` and not equal to the IM reading ``im`` of the same
+    row (the hourly dataset's mapping from 7 Dec 2025 to 25 Nov 2026 wrote the IM into both columns)."""
+    v = pd.to_numeric(pd.Series(values), errors='coerce').reset_index(drop=True)
+    ok = v >= cm.min_tm_pct
+    if im is not None:
+        i = pd.to_numeric(pd.Series(im), errors='coerce').reset_index(drop=True)
+        ok &= ~((v - i).abs() < 1e-9)
+    return ok
+
+
+def total_moisture(values, default: float, cm: ChargeMoisture = ChargeMoisture(), im=None) -> pd.Series:
+    """TM of coke or nut coke, %: the reading where it is a TM (:func:`is_total_moisture`; clipped at ``max_tm_pct``),
+    else the material's default. Keeps the index of ``values``."""
+    v = pd.to_numeric(pd.Series(values), errors='coerce')
+    ok = is_total_moisture(v, im, cm).to_numpy()
+    return v.where(ok, float(default)).clip(upper=cm.max_tm_pct)
+
+
+def dry_fuels(f: pd.DataFrame, cm: ChargeMoisture = ChargeMoisture()) -> pd.DataFrame:
+    """Adds the dry masses ``COKE_DRY``, ``NUT_DRY``, ``PCI_DRY`` (t) of an hourly charge frame, the TM used
+    (``COKE_TM_USED%``, ``NUTCOKE_TM_USED%``) and the hours that took the default TM (``COKE_TM_DEFAULT_H``,
+    ``NUT_TM_DEFAULT_H``: 1 for an hour with fuel charged and no TM reading)."""
+    def reading(col: str) -> pd.Series:
+        return pd.to_numeric(f[col], errors='coerce') if col in f else pd.Series(np.nan, index=f.index)
+
+    raw_coke, raw_nut = reading('COKE_MOIST%'), reading('NUTCOKE_MOIST%')
+    im_coke, im_nut = reading('COKE_IM%'), reading('NUTCOKE_IM%')
+    coke_tm = total_moisture(raw_coke, cm.coke_tm_pct, cm, im=im_coke)
+    nut_tm = total_moisture(raw_nut, cm.nut_coke_tm_pct, cm, im=im_nut)
+    f['COKE_TM_USED%'] = coke_tm
+    f['NUTCOKE_TM_USED%'] = nut_tm
+    f['COKE_DRY'] = f['COKE_CALC_MT'] * (1 - coke_tm / 100)
+    f['NUT_DRY'] = f['NUTCOKE_CALC_MT'] * (1 - nut_tm / 100)
+    if cm.pci_less_im:
+        f['PCI_DRY'] = f['PCI_CALC_MT'] * (1 - f['PCI_IM%'].clip(0, 10) / 100)
+    else:
+        f['PCI_DRY'] = f['PCI_CALC_MT']
+    coke_ok = is_total_moisture(raw_coke, im_coke, cm).to_numpy()
+    nut_ok = is_total_moisture(raw_nut, im_nut, cm).to_numpy()
+    f['COKE_TM_DEFAULT_H'] = ((f['COKE_CALC_MT'] > 0) & ~coke_ok).astype(float)
+    f['NUT_TM_DEFAULT_H'] = ((f['NUTCOKE_CALC_MT'] > 0) & ~nut_ok).astype(float)
+    return f
 
 
 def shift_key(ts):
@@ -41,14 +121,14 @@ def window_key(start, end, key='W'):
     return key_fn
 
 
-def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01', key_fn=shift_key):
+def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01', key_fn=shift_key, moisture: ChargeMoisture | None = None):
     """Shift-level inputs S from the hourly furnace dataset (fd, 'time' column, IST), the 10-min process data
     (m10, 'ts' column, IST bin start), tap-wise HM/slag analyses (hm, 't' column, IST) and the daily DPR (dpr, indexed
     by IST date, columns hm_t, dc_dust_t, gcp_dust_t, coke_rate_dpr, ...).
 
     ``key_fn(ts) -> (key, date, letter)`` assigns rows to periods (default: the A/B/C shifts). Rows of the hourly
     dataset from ``start`` on enter the median fill of the ash analyses whatever their period, so a window and the
-    shift it coincides with are filled from the same rows."""
+    shift it coincides with are filled from the same rows. ``moisture``: the dry basis of the fuels (module notes)."""
     # ---------------- hourly charge & raw material composition ----------------
     f = fd.copy()
     f = f[f.time >= start]
@@ -56,9 +136,7 @@ def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01', key_fn=shift_key):
     f['ORE_DRY'] = f['ORE_CALC_MT'] * (1 - f['ORE_TM%'].clip(0, 15) / 100)
     f['PEL_DRY'] = f['TOTAL_PELLET_CALC_MT'] * (1 - f['PELLET_PCT_TM'].clip(0, 15) / 100)
     f['SIN_DRY'] = f['SINTER_CALC_MT']
-    f['COKE_DRY'] = f['COKE_CALC_MT'] * (1 - f['COKE_MOIST%'].clip(0, 15) / 100)
-    f['NUT_DRY'] = f['NUTCOKE_CALC_MT'] * (1 - f['NUTCOKE_MOIST%'].clip(0, 15) / 100)
-    f['PCI_DRY'] = f['PCI_CALC_MT'] * (1 - f['PCI_IM%'].clip(0, 10) / 100)
+    f = dry_fuels(f, moisture or ChargeMoisture())
 
     # fill ash analyses (available from Dec-2025) with the mean before that
     ashcols = [c for c in f.columns if 'ASH_ANALYSIS' in c or c.startswith('DUST_')]
@@ -66,7 +144,8 @@ def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01', key_fn=shift_key):
         f[c] = f[c].fillna(f[c].median())
 
     mass_sum = ['COKE_CALC_MT', 'NUTCOKE_CALC_MT', 'PCI_CALC_MT', 'SINTER_CALC_MT', 'ORE_CALC_MT', 'TOTAL_PELLET_CALC_MT',
-                'FLUX_CALC_MT', 'ORE_DRY', 'PEL_DRY', 'SIN_DRY', 'COKE_DRY', 'NUT_DRY', 'PCI_DRY', 'PRODUCTIONTONNESPERHR']
+                'FLUX_CALC_MT', 'ORE_DRY', 'PEL_DRY', 'SIN_DRY', 'COKE_DRY', 'NUT_DRY', 'PCI_DRY', 'PRODUCTIONTONNESPERHR',
+                'COKE_TM_DEFAULT_H', 'NUT_TM_DEFAULT_H']
     # charge of each ore type (ORE_1 .. ORE_12, wet t; STRATA's blend by ore, SV-1.1); not used by the balances
     mass_sum += sorted((c for c in f.columns if re.fullmatch(r'ORE_\d+_CALC_MT', c)), key=lambda c: int(c.split('_')[1]))
     # composition columns weighted by the relevant mass

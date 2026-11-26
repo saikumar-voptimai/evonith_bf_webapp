@@ -8143,7 +8143,7 @@
             "type": "number"
           },
           "coke_moisture_pct": {
-            "description": "Coke moisture as charged, mass %",
+            "description": "Coke total moisture as charged, mass %",
             "title": "Coke Moisture Pct",
             "type": "number"
           },
@@ -8173,7 +8173,7 @@
             "type": "number"
           },
           "nut_coke_kg_thm": {
-            "description": "Nut coke as charged, kg/tHM",
+            "description": "Nut coke, dry (the plant's nut-coke rate), kg/tHM",
             "title": "Nut Coke Kg Thm",
             "type": "number"
           },
@@ -8183,7 +8183,7 @@
             "type": "number"
           },
           "pci_kg_thm": {
-            "description": "PCI as injected, kg/tHM",
+            "description": "PCI as injected, dry (the plant's coal rate), kg/tHM",
             "title": "Pci Kg Thm",
             "type": "number"
           },
@@ -8274,7 +8274,7 @@
                 "type": "null"
               }
             ],
-            "description": "Coke moisture as charged, mass %",
+            "description": "Coke total moisture as charged, mass %",
             "title": "Coke Moisture Pct"
           },
           "coke_vm_pct": {
@@ -8358,7 +8358,7 @@
                 "type": "null"
               }
             ],
-            "description": "Nut coke as charged, kg/tHM",
+            "description": "Nut coke, dry (plant nut-coke rate), kg/tHM",
             "title": "Nut Coke Kg Thm"
           },
           "o2_per_air": {
@@ -8386,7 +8386,7 @@
                 "type": "null"
               }
             ],
-            "description": "PCI as injected, kg/tHM",
+            "description": "PCI as injected, dry (plant coal rate), kg/tHM",
             "title": "Pci Kg Thm"
           },
           "production_t_h": {
@@ -8462,7 +8462,7 @@
             "type": "number"
           },
           "fuel_rate_kg_thm": {
-            "description": "Coke as charged + nut coke + PCI, kg/tHM",
+            "description": "Fuel rate, dry: coke + nut coke + PCI (plant basis, BAND-01), kg/tHM",
             "title": "Fuel Rate Kg Thm",
             "type": "number"
           },
@@ -9394,7 +9394,7 @@
                 "type": "null"
               }
             ],
-            "description": "Fuel rate, kg/tHM",
+            "description": "Fuel rate, dry (plant basis), kg/tHM",
             "title": "Fuel Rate Kg Thm"
           },
           "fuel_rs_thm": {
@@ -10140,6 +10140,7 @@
         "type": "object"
       },
       "FuelSplit": {
+        "description": "Fuels of a plan as charged (coke and nut coke wet, PCI as injected; they add up to ``fuel_charged_kg_thm``) and\ndry (they add up to ``fuel_rate_kg_thm``, the plant's fuel-rate basis; user decision 25 Nov 2026).",
         "properties": {
           "coke_dry_kg_thm": {
             "description": "Coke rate, dry, kg/tHM",
@@ -10159,22 +10160,46 @@
             "title": "Coke Sigma Kg Thm"
           },
           "coke_wet_kg_thm": {
-            "description": "Coke rate as charged, kg/tHM",
+            "description": "Coke rate as charged (wet), kg/tHM",
             "title": "Coke Wet Kg Thm",
             "type": "number"
           },
+          "fuel_charged_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke wet + nut coke wet + PCI, as charged, kg/tHM",
+            "title": "Fuel Charged Kg Thm"
+          },
           "fuel_rate_kg_thm": {
-            "description": "Coke wet + nut coke + PCI (BAND-01 520-600), kg/tHM",
+            "description": "Fuel rate, dry: coke + nut coke + PCI (the plant's fuel-rate basis; BAND-01 520-600), kg/tHM",
             "title": "Fuel Rate Kg Thm",
             "type": "number"
           },
+          "nut_coke_dry_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut coke, dry: the fixed input (plant rate), kg/tHM",
+            "title": "Nut Coke Dry Kg Thm"
+          },
           "nut_coke_kg_thm": {
-            "description": "Nut coke as charged (fixed input), kg/tHM",
+            "description": "Nut coke as charged (wet), kg/tHM",
             "title": "Nut Coke Kg Thm",
             "type": "number"
           },
           "pci_kg_thm": {
-            "description": "PCI as injected (fixed input), kg/tHM",
+            "description": "PCI as injected, dry (fixed input; no moisture correction), kg/tHM",
             "title": "Pci Kg Thm",
             "type": "number"
           }
@@ -17963,7 +17988,7 @@
                 "type": "null"
               }
             ],
-            "description": "Nut coke as charged (fixed input), kg/tHM",
+            "description": "Nut coke, dry: the plant's nut-coke rate (fixed input), kg/tHM",
             "title": "Nut Coke Kg Thm"
           },
           "o2_per_air": {
@@ -17991,7 +18016,7 @@
                 "type": "null"
               }
             ],
-            "description": "PCI as injected (fixed input), kg/tHM",
+            "description": "PCI as injected, dry: the plant's coal rate (fixed input), kg/tHM",
             "title": "Pci Kg Thm"
           },
           "top_pressure_bar_g": {
@@ -20832,7 +20857,7 @@
                 "type": "null"
               }
             ],
-            "description": "Nut coke as charged (fixed input), kg/tHM",
+            "description": "Nut coke, dry (fixed input; charged wet), kg/tHM",
             "title": "Nut Coke Kg Thm"
           },
           "o2_per_air": {
@@ -20856,7 +20881,7 @@
                 "type": "null"
               }
             ],
-            "description": "PCI as injected (fixed input), kg/tHM",
+            "description": "PCI as injected, dry (fixed input), kg/tHM",
             "title": "Pci Kg Thm"
           },
           "top_pressure_bar_g": {
@@ -25295,7 +25320,7 @@
                 "type": "null"
               }
             ],
-            "description": "Coke as charged + nut coke + PCI, kg/tHM",
+            "description": "Fuel rate, dry: coke + nut coke + PCI (plant basis, BAND-01), kg/tHM",
             "title": "Fuel Rate Kg Thm"
           },
           "fuel_rs_thm": {
@@ -25611,7 +25636,7 @@
             "type": "number"
           },
           "nut_coke_kg_thm": {
-            "description": "Nut coke as charged, kg/tHM",
+            "description": "Nut coke, dry (the plant's nut-coke rate), kg/tHM",
             "title": "Nut Coke Kg Thm",
             "type": "number"
           },
@@ -25621,7 +25646,7 @@
             "type": "number"
           },
           "pci_kg_thm": {
-            "description": "PCI as injected, kg/tHM",
+            "description": "PCI as injected, dry (the plant's coal rate), kg/tHM",
             "title": "Pci Kg Thm",
             "type": "number"
           }

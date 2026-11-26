@@ -30,7 +30,7 @@ SLAG_BAND_LABELS: dict[str, tuple[str, str, str]] = {
 }
 #: Register bands the page draws: fuel rate (BAND-01), hot-metal temperature (BAND-02) and Si (BAND-03).
 REGISTER_BANDS: dict[str, tuple[str, str, str]] = {
-    "fuel_rate": ("BAND-01", "Fuel rate (coke wet + nut coke + PCI)", "kg/tHM"),
+    "fuel_rate": ("BAND-01", "Fuel rate, dry (coke + nut coke + PCI, plant basis)", "kg/tHM"),
     "hmt": ("BAND-02", "Hot-metal temperature", "°C"),
     "hm_si": ("BAND-03", "Hot-metal Si", "%"),
 }

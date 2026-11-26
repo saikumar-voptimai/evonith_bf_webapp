@@ -94,7 +94,7 @@ def test_summary_states_the_validation_tiers_and_the_current_blend(twin, client)
     body = get(client, "/api/strata/summary").json()
     assert body["version"] == "STRATA 1.5"
     v = body["validation"]
-    assert (v["expanding"]["rmse_strata"], v["expanding"]["rmse_fixed"]) == (5.99, 6.39)
+    assert (v["expanding"]["rmse_strata"], v["expanding"]["rmse_fixed"]) == (6.42, 6.77)  # dry fuel basis
     assert (v["strict"]["rmse_strata"], v["strict"]["rmse_fixed"]) == (8.0, 8.23)
     assert len(body["families"]) == 12 and body["reference"][0]["id"] == "MOD-01"
     assert body["tiers"]["levels"][3]["tier"] == "Investigate"
@@ -152,7 +152,7 @@ def test_live_point_is_empty_before_the_job_and_then_the_saved_document(client) 
     body = get(client, "/api/strata/live-point").json()
     assert body["made_at"].startswith("2026-10-27T21:47") and body["calibration"]["basis"] == "day"
     r = body["responses"][0]
-    assert r["strata_omega"] == -6.1 and r["reference_strata_omega"] == -5.96 and r["reference_sigma_strata"] == 1.19
+    assert r["strata_omega"] == -6.1 and r["reference_strata_omega"] == -5.93 and r["reference_sigma_strata"] == 1.21
     assert body["rings"]["rings"][0]["limited_by"] == "ore"
 
 

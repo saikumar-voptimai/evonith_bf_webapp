@@ -1,6 +1,7 @@
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from furnace_data.dataset.fetcher import DatasetFetcher
 from furnace_data.dataset.service import DatasetService
@@ -317,38 +318,44 @@ def test_dataset_service_extracts_pellet_chemistry_from_ore_table(monkeypatch) -
     assert float(df.iloc[0]["pellet_tm_pct"]) == 0.7
 
 
-def test_dataset_service_maps_fuel_moisture_to_moisture_and_im(monkeypatch) -> None:
+def test_dataset_service_maps_fuel_total_moisture_and_inherent_moisture(monkeypatch) -> None:
+    """COKE_MOIST% / NUTCOKE_MOIST% carry the total moisture (``tm``) that turns the wet charge into dry mass, weighted
+    by the charged quantities and taken from the latest sample with a TM; ``moisture`` is the inherent moisture (IM)."""
+
     def fake_offline_fetch(table_name, time_range):
         idx = pd.DatetimeIndex(["2026-01-02T00:00:00Z"], name="time")
         if table_name == "offline_feed.charge_data":
-            return pd.DataFrame({"coke_1_mt": [4.0], "nut_coke_1_mt": [1.0]}, index=idx)
+            return pd.DataFrame({"coke_1_mt": [3.0], "coke_2_mt": [1.0], "nut_coke_1_mt": [1.0]}, index=idx)
         if table_name == "offline_feed.raw_material_strength_analysis":
             return pd.DataFrame()
         if table_name == "offline_feed.v_charge_material_quantities":
             return pd.DataFrame(
                 {
-                    "material_code": ["coke_1", "nut_coke_1"],
-                    "quantity": [4.0, 1.0],
-                    "source_column_name": ["coke_1_mt", "nut_coke_1_mt"],
+                    "material_code": ["coke_1", "coke_2", "nut_coke_1"],
+                    "quantity": [3.0, 1.0, 1.0],
+                    "source_column_name": ["coke_1_mt", "coke_2_mt", "nut_coke_1_mt"],
                 },
                 index=pd.DatetimeIndex(
-                    ["2026-01-02T00:00:00Z", "2026-01-02T00:00:00Z"],
+                    ["2026-01-02T00:00:00Z", "2026-01-02T00:00:00Z", "2026-01-02T00:00:00Z"],
                     name="time",
                 ),
             )
         if table_name == "offline_feed.fuel_chemistry":
             return pd.DataFrame(
                 {
-                    "material_code": ["coke_1", "nut_coke_1", "pci_1"],
-                    "moisture": [5.0, 7.0, 1.5],
-                    "ash": [12.0, 13.0, 8.0],
-                    "vm": [2.0, 3.0, 18.0],
-                    "fc": [80.0, 78.0, 72.0],
+                    "material_code": ["coke_1", "coke_2", "nut_coke_1", "nut_coke_1", "pci_1"],
+                    "tm": [2.0, 4.0, 6.0, None, None],
+                    "moisture": [0.4, 0.5, 0.45, 0.5, 1.5],
+                    "ash": [12.0, 12.0, 13.0, 13.0, 8.0],
+                    "vm": [2.0, 2.0, 3.0, 3.0, 18.0],
+                    "fc": [80.0, 80.0, 78.0, 78.0, 72.0],
                 },
                 index=pd.DatetimeIndex(
                     [
                         "2026-01-01T00:00:00Z",
                         "2026-01-01T00:00:00Z",
+                        "2026-01-01T00:00:00Z",
+                        "2026-01-01T12:00:00Z",
                         "2026-01-01T00:00:00Z",
                     ],
                     name="time",
@@ -373,10 +380,11 @@ def test_dataset_service_maps_fuel_moisture_to_moisture_and_im(monkeypatch) -> N
         mode="charge",
     )
 
-    assert float(df.iloc[0]["coke_moist_pct"]) == 5.0
-    assert float(df.iloc[0]["coke_im_pct"]) == 5.0
-    assert float(df.iloc[0]["nutcoke_moist_pct"]) == 7.0
-    assert float(df.iloc[0]["nutcoke_im_pct"]) == 7.0
+    assert float(df.iloc[0]["coke_moist_pct"]) == pytest.approx((2.0 * 3.0 + 4.0 * 1.0) / 4.0)
+    assert float(df.iloc[0]["coke_im_pct"]) == pytest.approx((0.4 * 3.0 + 0.5 * 1.0) / 4.0)
+    # the latest nut-coke sample has no TM: the TM of the sample before it, the IM of the latest
+    assert float(df.iloc[0]["nutcoke_moist_pct"]) == 6.0
+    assert float(df.iloc[0]["nutcoke_im_pct"]) == 0.5
     assert float(df.iloc[0]["pci2_im_pct"]) == 1.5
     assert float(df.iloc[0]["pci2_ash_pct"]) == 8.0
     assert float(df.iloc[0]["pci2_vm_pct"]) == 18.0

@@ -57,8 +57,12 @@ class OptimiserSettings(BaseModel):
 
     hmt_c: float | None = Field(None, ge=1400, le=1600, description="Hot-metal temperature target (BAND-02), °C")
     hm_si_pct: float | None = Field(None, ge=0.1, le=1.5, description="Hot-metal Si target (BAND-03), %")
-    pci_kg_thm: float | None = Field(None, ge=0, le=260, description="PCI as injected (fixed input), kg/tHM")
-    nut_coke_kg_thm: float | None = Field(None, ge=0, le=150, description="Nut coke as charged (fixed input), kg/tHM")
+    pci_kg_thm: float | None = Field(
+        None, ge=0, le=260, description="PCI as injected, dry: the plant's coal rate (fixed input), kg/tHM"
+    )
+    nut_coke_kg_thm: float | None = Field(
+        None, ge=0, le=150, description="Nut coke, dry: the plant's nut-coke rate (fixed input), kg/tHM"
+    )
     blast_moisture_g_nm3: float | None = Field(None, ge=0, le=40, description="Blast moisture (DATA-11), g/Nm³")
     hbt_c: float | None = Field(None, ge=900, le=1300, description="Hot-blast temperature, °C")
     o2_per_air: float | None = Field(
@@ -208,6 +212,13 @@ class TwinEvaluateParams(BaseModel):
         ),
     )
     strata: bool = Field(True, description="Evaluate K_STRATA (3 network solves per window and 1 per 14-day anchor)")
+    redo: bool = Field(
+        False,
+        description=(
+            "Evaluate every window of the backfill period again, stored or not: after a change of the model or of the "
+            "data basis (e.g. the dry fuel basis of 25 Nov 2026)"
+        ),
+    )
 
 
 class ShiftReportParams(BaseModel):
@@ -376,9 +387,9 @@ class ForgeLevers(BaseModel):
     coke_fc_pct: float | None = Field(None, ge=70, le=95, description="Coke fixed carbon, dry mass %")
     coke_ash_pct: float | None = Field(None, ge=5, le=25, description="Coke ash, dry mass %")
     coke_vm_pct: float | None = Field(None, ge=0, le=5, description="Coke volatile matter, dry mass %")
-    coke_moisture_pct: float | None = Field(None, ge=0, le=15, description="Coke moisture as charged, mass %")
-    pci_kg_thm: float | None = Field(None, ge=0, le=260, description="PCI as injected, kg/tHM")
-    nut_coke_kg_thm: float | None = Field(None, ge=0, le=150, description="Nut coke as charged, kg/tHM")
+    coke_moisture_pct: float | None = Field(None, ge=0, le=15, description="Coke total moisture as charged, mass %")
+    pci_kg_thm: float | None = Field(None, ge=0, le=260, description="PCI as injected, dry (plant coal rate), kg/tHM")
+    nut_coke_kg_thm: float | None = Field(None, ge=0, le=150, description="Nut coke, dry (plant nut-coke rate), kg/tHM")
     eta_co_pct: float | None = Field(
         None,
         ge=30,

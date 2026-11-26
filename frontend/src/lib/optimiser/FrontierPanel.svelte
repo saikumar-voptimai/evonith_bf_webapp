@@ -29,7 +29,7 @@ frontier table.
 		{ key: 'ore_flux_rs_thm', label: 'Ore + flux', unit: 'Rs/tHM', numeric: true, digits: 0 },
 		{ key: 'fuel_rs_thm', label: 'Fuel', unit: 'Rs/tHM', numeric: true, digits: 0 },
 		{ key: 'coke_wet_kg_thm', label: 'Coke, as charged', unit: 'kg/tHM', numeric: true, digits: 2 },
-		{ key: 'fuel_rate_kg_thm', label: 'Fuel rate', unit: 'kg/tHM', numeric: true, digits: 2 },
+		{ key: 'fuel_rate_kg_thm', label: 'Fuel rate, dry', unit: 'kg/tHM', numeric: true, digits: 2 },
 		{ key: 'slag_kg_thm', label: 'Slag', unit: 'kg/tHM', numeric: true, digits: 0 },
 		{ key: 'hbt_c', label: 'HBT', unit: '°C', numeric: true, digits: 0 },
 		{ key: 'enrichment_tag_pct', label: 'Enrichment', unit: '%', numeric: true, digits: 2 },

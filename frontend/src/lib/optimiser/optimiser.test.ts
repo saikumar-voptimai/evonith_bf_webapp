@@ -103,21 +103,27 @@ describe('overview strip and panels equal page 11', () => {
 			if (Math.abs(d) >= 0.5) close(c.delta!.value, d);
 			else expect(c.delta).toBeUndefined();
 		});
-		expect(caption).toContain('coke 9,709 Rs/tHM');
+		expect(caption).toContain('coke 9,618 Rs/tHM'); // dry fuel basis (25 Nov 2026)
 	});
 
-	it('fuel: coke as charged (dry in the note), fixed inputs, total against BAND-01', () => {
+	it('fuel: coke and nut coke as charged (dry in the notes), PCI, the total as charged, the dry fuel rate against BAND-01', () => {
 		const cells = fuelCells(plan, today, ref);
 		const f = exp2.tiles.fuel;
 		close(cells[0]!.value, f.coke_wet);
 		close(cells[1]!.value, f.nut);
 		close(cells[2]!.value, f.pci);
-		close(cells[3]!.value, f.total);
+		close(cells[3]!.value, f.charged);
+		close(cells[4]!.value, f.total);
 		close(plan.fuel.coke_dry_kg_thm, f.coke_dry);
+		close(plan.fuel.nut_coke_dry_kg_thm, f.nut_dry);
+		close(f.coke_wet + f.nut + f.pci, f.charged); // as charged: the three fuels add up to the total
+		close(f.coke_dry + f.nut_dry + f.pci, f.total); // dry: the plant's fuel-rate basis
 		close(cells[0]!.delta!.value, exp2.deltas.fuel.coke_wet);
-		expect(cells.map((c) => c.digits)).toEqual([2, 2, 2, 2]); // the three fuels add up to the total as shown
+		expect(cells.map((c) => c.digits)).toEqual([2, 2, 2, 2, 2]);
 		expect(cells[0]!.note).toContain(`${f.coke_dry.toFixed(2)}\u00a0kg/tHM dry`);
-		expect(cells[3]!.band).toMatchObject({ lo: 520, hi: 600, inside: true, label: 'BAND-01 520–⁠600' });
+		expect(cells[1]!.note).toContain(`${f.nut_dry.toFixed(2)}\u00a0kg/tHM dry`);
+		expect(cells[3]!.band).toBeUndefined();
+		expect(cells[4]!.band).toMatchObject({ lo: 520, hi: 600, inside: true, label: 'BAND-01 520–⁠600' });
 	});
 
 	it('slag: chemistry, limits and the plant bands of the three ratios', () => {
@@ -154,7 +160,7 @@ describe('overview strip and panels equal page 11', () => {
 		close(cells[4]!.value, g.hm_per_charge);
 		close(plan.charging.ferrous_t_d, g.ferrous_t);
 		close(plan.charging.flux_kg_thm, g.flux_kg);
-		expect(caption).toBe('Ferrous 3,938 t/d wet; flux 2.4 kg/tHM.');
+		expect(caption).toBe('Ferrous 3,938 t/d wet; flux 2.5 kg/tHM.');
 	});
 
 	it('lead line: page 11 plan_sentence', () => {

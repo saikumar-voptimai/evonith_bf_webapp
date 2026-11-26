@@ -18,7 +18,9 @@ Row fields (the same definitions as the out-of-sample test, GAS-20):
   sh_*            class shares of ferrous, wet %; family from blend_family()
   trial           trial code or empty
 The seed (``assets/burden_engine/strata_evidence_seed.csv``) holds 191 days, 15 Dec 2025 - 7 Oct 2026 (STRATA 1.5
-channels on the Open-Meteo daily moisture, s15/final15.py)."""
+channels on the Open-Meteo daily moisture, s15/final15.py). Dry fuel basis since 25 Nov 2026: omega_obs, omega_anchor,
+dobs, K_burnt, K_held and d_nut re-stated with the coke and nut coke less their total moisture and PCI as recorded (the
+day's change between the two bases from pipeline runs on identical inputs; the network channels are unchanged)."""
 
 from __future__ import annotations
 

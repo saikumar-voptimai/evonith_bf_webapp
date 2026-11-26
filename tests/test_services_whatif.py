@@ -3,9 +3,12 @@ what-if days, the register version of every result, and the saved cases with the
 
 The deck is "BF-02 coke model: what the latest results mean" (15 Oct 2026), page 10: the what-if table on the
 Jul-Oct 2026 operation (coke 305.5 kg/tHM, PCI 184, nut coke 73, ηCO 42.2 %, top gas 208 °C) with the old
-fixed-ηCO model and the two-zone model; its two-zone values are the register's COKE-01..08 and COKE-14. They were
-computed on the Jul-Oct 2026 calibration at 15 g/Nm³ (``tests/fixtures/cal_2z_jul_oct_2026_case_report_15g.json``).
-The STRATA plans reproduce the 16 Oct 2026 case report (``tests/test_burden_engine.py``, case 2).
+fixed-ηCO model and the two-zone model. They were computed on the Jul-Oct 2026 calibration at 15 g/Nm³
+(``tests/fixtures/cal_2z_jul_oct_2026_case_report_15g.json``), with PCI +10 kg/tHM as injected and nut coke +10 kg/tHM
+as charged; on the dry basis of 25 Nov 2026 (the levers are the plant's dry rates) those are +9.85 kg/tHM PCI (less
+its inherent moisture, the rule then) and +9.95 kg/tHM nut coke (less the 0.45 % then taken as its moisture). The
+register's COKE-01..06, 08 and 14 are the same what-ifs with +10 kg/tHM dry on the shipped calibration (dry basis).
+The STRATA plans reproduce the 16 Oct 2026 case report on the dry basis (``tests/test_burden_engine.py``, case 2).
 """
 
 from __future__ import annotations
@@ -31,6 +34,9 @@ from utils.burden_engine.engine import REFERENCE_INPUTS_PATH, Engine, Limits
 from utils.burden_engine.facts import ApprovedOverlay, load_register
 
 CASE_CAL = os.path.join(os.path.dirname(__file__), "fixtures", "cal_2z_jul_oct_2026_case_report_15g.json")
+SHIPPED_CAL = os.path.join(
+    os.path.dirname(__file__), "..", "src", "assets", "burden_engine", "cal_2z_jul_oct_2026.json"
+)
 slow = pytest.mark.skipif(os.environ.get("BURDEN_ENGINE_FAST") == "1", reason="STRATA-ω network solves are slow")
 ALICE = Actor("alice", "admin", "10.0.0.5")
 BOB = Actor("bob", "admin")
@@ -55,14 +61,12 @@ def lever(base, name, value):
     return {"name": name, "levers": {name: value}}
 
 
-@pytest.fixture(scope="module")
-def deck(cal, base):
+def deck_cases(b, d_pci=10.0, d_nut=10.0):
     """The deck's levers (whatif_2z.py of the web model): PCI and nut coke +10 kg/tHM, HBT +50 °C, HM Si +0.1 %,
     HMT +10 °C, O2 +10 % (relative), blast moisture +5 g/Nm³, production +5 % (losses fixed in GJ/h), ω +0.01."""
-    b = base["inputs"]
-    cases = [
-        lever(b, "pci_kg_thm", b["pci_kg_thm"] + 10),
-        lever(b, "nut_coke_kg_thm", b["nut_coke_kg_thm"] + 10),
+    return [
+        lever(b, "pci_kg_thm", b["pci_kg_thm"] + d_pci),
+        lever(b, "nut_coke_kg_thm", b["nut_coke_kg_thm"] + d_nut),
         lever(b, "hbt_c", b["hbt_c"] + 50),
         lever(b, "hm_si_pct", b["hm_si_pct"] + 0.1),
         lever(b, "hmt_c", b["hmt_c"] + 10),
@@ -71,7 +75,25 @@ def deck(cal, base):
         lever(b, "production_t_h", b["production_t_h"] * 1.05),
         lever(b, "shaft_efficiency", b["shaft_efficiency"] + 0.01),
     ]
+
+
+@pytest.fixture(scope="module")
+def deck(cal, base):
+    """The deck's what-ifs on its basis: PCI +10 kg/tHM as injected and nut coke +10 kg/tHM as charged, i.e. less the
+    moisture each then carried (PCI its inherent moisture, nut coke 0.45 %) in the plant's dry rates."""
+    c = cal["case"]
+    cases = deck_cases(base["inputs"], 10 * (1 - c["pci"]["moist_pct"] / 100), 10 * (1 - c["nut"]["moist_pct"] / 100))
     out = whatif.forge_compute(cal, cases)
+    return {c["name"]: c for c in out["cases"]} | {"_run": out}
+
+
+@pytest.fixture(scope="module")
+def shipped_deck():
+    """The same what-ifs with +10 kg/tHM dry PCI and nut coke on the shipped calibration (dry basis): the register's
+    COKE facts."""
+    with open(SHIPPED_CAL, encoding="utf-8") as fh:
+        cal = json.load(fh)
+    out = whatif.forge_compute(cal, deck_cases(whatif.forge_compute(cal, [])["base"]["inputs"]))
     return {c["name"]: c for c in out["cases"]} | {"_run": out}
 
 
@@ -79,11 +101,12 @@ def deck(cal, base):
 
 
 def test_the_base_is_the_calibration_point(base) -> None:
-    """The deck's base: Jul-Oct 2026 operation, coke 305.5 kg/tHM, PCI 184, nut coke 73, ηCO 42.2 %, top gas 208 °C."""
+    """The deck's base: Jul-Oct 2026 operation, coke 305.5 kg/tHM, PCI 184, nut coke 73, ηCO 42.2 %, top gas 208 °C.
+    PCI and nut coke are the plant's dry rates (25 Nov 2026): the calibration's 184.0 and 73.2 kg/tHM dry."""
     tz, fx, b = base["two_zone"], base["fixed_eta"], base["inputs"]
     assert tz["coke_kg_thm"] == pytest.approx(305.5, abs=0.05) and fx["coke_kg_thm"] == pytest.approx(305.5, abs=0.05)
     assert tz["eta_co_pct"] == pytest.approx(42.2, abs=0.05) and tz["top_gas_c"] == pytest.approx(208, abs=0.5)
-    assert b["pci_kg_thm"] == pytest.approx(186.8, abs=0.1) and b["nut_coke_kg_thm"] == pytest.approx(73.6, abs=0.1)
+    assert b["pci_kg_thm"] == pytest.approx(184.0, abs=0.1) and b["nut_coke_kg_thm"] == pytest.approx(73.2, abs=0.1)
     assert round(b["shaft_efficiency"], 3) == 0.8 and tz["d_coke_kg_thm"] == 0.0 == fx["d_coke_kg_thm"]
 
 
@@ -135,10 +158,11 @@ def test_the_decks_other_effects_are_reproduced(deck, base) -> None:
         ("shaft_efficiency", "COKE-14"),
     ],
 )
-def test_the_registers_coke_responses_are_reproduced(deck, name, fact) -> None:
-    """The register's COKE facts are the deck's two-zone what-ifs on the Jul-Oct 2026 calibration."""
+def test_the_registers_coke_responses_are_reproduced(shipped_deck, name, fact) -> None:
+    """The register's COKE facts are the deck's two-zone what-ifs on the shipped Jul-Oct 2026 calibration, dry basis
+    (PCI and nut coke +10 kg/tHM dry; register v1.9)."""
     value = load_register()[fact].value
-    assert deck[name]["two_zone"]["d_coke_kg_thm"] == pytest.approx(value, abs=0.06)
+    assert shipped_deck[name]["two_zone"]["d_coke_kg_thm"] == pytest.approx(value, abs=0.06)
 
 
 def test_each_lever_reaches_its_model_only(deck) -> None:
@@ -153,12 +177,12 @@ def test_each_lever_reaches_its_model_only(deck) -> None:
 def test_the_register_version_and_its_bands_are_those_in_force(cal, monkeypatch) -> None:
     monkeypatch.setattr(register, "_source", None)  # the file alone
     out = whatif.forge_compute(cal, [{"name": "hot", "levers": {"hmt_c": 1530.0}}])
-    assert out["facts_version"] == load_register().label == "1.8"
+    assert out["facts_version"] == load_register().label == "1.9"
     assert out["cases"][0]["warnings"] == ["HMT 1,530 °C is outside BAND-02 (1,440–1,520 °C)."]
-    approved = ApprovedOverlay(3, "1.8", {"BAND-02": {"band": [1440, 1540]}}, "h3")
+    approved = ApprovedOverlay(3, "1.9", {"BAND-02": {"band": [1440, 1540]}}, "h3")
     monkeypatch.setattr(register, "_source", lambda: approved)  # an approved overlay in force (SV-4.2)
     out = whatif.forge_compute(cal, [{"name": "hot", "levers": {"hmt_c": 1530.0}}])
-    assert out["facts_version"] == "1.8 + overlay 3" and out["cases"][0]["warnings"] == []
+    assert out["facts_version"] == "1.9 + overlay 3" and out["cases"][0]["warnings"] == []
 
 
 def test_eta_and_coke_chemistry_levers(cal) -> None:
@@ -201,12 +225,15 @@ def test_strata_forced_blends_reproduce_the_case_report(cal, strata_inputs) -> N
         json.dumps(inputs), json.dumps(cal), settings, asdict(Limits()), 2270.0, cases, names
     )
     assert cheapest["status"] == "ok" and not cheapest["forced"]
-    assert cheapest["coke_kg_thm"] == pytest.approx(305.7, abs=0.3)
-    assert cheapest["cost_rs_thm"] == pytest.approx(30139, abs=5)
-    assert cheapest["fuel_rate_kg_thm"] == pytest.approx(567.0, abs=0.3)
+    # dry fuel basis (25 Nov 2026): PCI 190 and nut coke 70 dry, the fuel rate dry (BAND-01)
+    assert cheapest["coke_kg_thm"] == pytest.approx(302.8, abs=0.3)
+    assert cheapest["cost_rs_thm"] == pytest.approx(30055, abs=5)
+    assert cheapest["fuel_rate_kg_thm"] == pytest.approx(562.8, abs=0.3)
     assert forced["forced"] and forced["status"] == "ok"
-    for key in ("coke_kg_thm", "cost_rs_thm", "fuel_rate_kg_thm", "slag_kg_thm"):
-        assert forced[key] == pytest.approx(cheapest[key], abs=0.01), key
+    # the case report's case-2 blend, forced: within 0.05 kg/tHM coke, Rs 2/tHM and 0.2 kg/tHM slag of the cheapest
+    # plan on the dry fuel basis, whose blend moved by 0.03 pt (Geomin 13.41 against 13.38 %)
+    for key, tol in (("coke_kg_thm", 0.05), ("cost_rs_thm", 2.0), ("fuel_rate_kg_thm", 0.05), ("slag_kg_thm", 0.2)):
+        assert forced[key] == pytest.approx(cheapest[key], abs=tol), key
     assert {b["id"]: round(b["share_pct"], 6) for b in jul_oct["blend"]} == {
         "sinter_sp_02": 64.0, "lloyds_clo": 25.0, "lloyds_pellet": 11.0}  # fmt: skip
     assert jul_oct["status"] == "ok" and jul_oct["settings"]["pci_kg_thm"] == 190.0
@@ -339,8 +366,9 @@ def test_the_forge_job_stores_each_result_with_its_case(twin, monkeypatch, cal) 
     assert HANDLERS["whatif.forge"] is whatif_kind.forge and HANDLERS["whatif.strata"] is whatif_kind.strata
     monkeypatch.setattr(whatif, "resolve_calibration", lambda basis, day=None: (cal, whatif._basis_fields(
         cal, "reference", None, "2026-07-01 to 2026-10-15", 80)))  # fmt: skip
+    # PCI as recorded, dry: the calibration's 184.0 kg/tHM + 10
     a = whatif.save_case(twin, ALICE, kind="forge", name="PCI +10", inputs=whatif.case_inputs(
-        "forge", forge={"pci_kg_thm": 196.8}))  # fmt: skip
+        "forge", forge={"pci_kg_thm": 194.0}))  # fmt: skip
     params = whatif.run_params(twin, "alice", "forge", [a["id"]], calibration="reference", day=None)
 
     class Jobs:
@@ -354,9 +382,9 @@ def test_the_forge_job_stores_each_result_with_its_case(twin, monkeypatch, cal) 
         job_id="j7", kind=CATALOG["whatif.forge"], attempt=1, store=Jobs(), bus=MemoryEventBus(), pool=None
     )
     out = asyncio.run(HANDLERS["whatif.forge"](job, params))
-    assert out["stored"] == [a["id"]] and out["facts_version"] == "1.8" and out["kind"] == "forge"
+    assert out["stored"] == [a["id"]] and out["facts_version"] == "1.9" and out["kind"] == "forge"
     (case,) = whatif.list_cases(twin, "alice")
     run = whatif.ForgeCaseRun.model_validate(case["forge_run"])
-    assert run.job_id == "j7" and run.facts_version == "1.8" and run.basis.calibration == "reference"
-    assert run.result.two_zone.d_coke_kg_thm == pytest.approx(-8.7, abs=0.05)
+    assert run.job_id == "j7" and run.facts_version == "1.9" and run.basis.calibration == "reference"
+    assert run.result.two_zone.d_coke_kg_thm == pytest.approx(-8.8, abs=0.05)  # +10 kg/tHM dry (deck: -8.7 for 9.85)
     assert run.base.two_zone.coke_kg_thm == pytest.approx(305.5, abs=0.05)

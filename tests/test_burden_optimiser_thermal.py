@@ -29,7 +29,7 @@ def test_thermal_inputs_render():
         "Hot metal temperature, °C",
         "Hot metal Si, %",
         "PCI, kg/tHM",
-        "Nut coke, kg/tHM",
+        "Nut coke, dry kg/tHM",
         "Blast moisture, g/Nm³",
     ]
     assert [n.value for n in at.number_input] == [1480.0, 0.42, 190.0, 70.0, 18.4]

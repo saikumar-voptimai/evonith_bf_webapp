@@ -5982,7 +5982,7 @@ export interface components {
             coke_fc_pct: number;
             /**
              * Coke Moisture Pct
-             * @description Coke moisture as charged, mass %
+             * @description Coke total moisture as charged, mass %
              */
             coke_moisture_pct: number;
             /**
@@ -6012,7 +6012,7 @@ export interface components {
             hmt_c: number;
             /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged, kg/tHM
+             * @description Nut coke, dry (the plant's nut-coke rate), kg/tHM
              */
             nut_coke_kg_thm: number;
             /**
@@ -6022,7 +6022,7 @@ export interface components {
             o2_per_air: number;
             /**
              * Pci Kg Thm
-             * @description PCI as injected, kg/tHM
+             * @description PCI as injected, dry (the plant's coal rate), kg/tHM
              */
             pci_kg_thm: number;
             /**
@@ -6059,7 +6059,7 @@ export interface components {
             coke_fc_pct?: number | null;
             /**
              * Coke Moisture Pct
-             * @description Coke moisture as charged, mass %
+             * @description Coke total moisture as charged, mass %
              */
             coke_moisture_pct?: number | null;
             /**
@@ -6089,7 +6089,7 @@ export interface components {
             hmt_c?: number | null;
             /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged, kg/tHM
+             * @description Nut coke, dry (plant nut-coke rate), kg/tHM
              */
             nut_coke_kg_thm?: number | null;
             /**
@@ -6099,7 +6099,7 @@ export interface components {
             o2_per_air?: number | null;
             /**
              * Pci Kg Thm
-             * @description PCI as injected, kg/tHM
+             * @description PCI as injected, dry (plant coal rate), kg/tHM
              */
             pci_kg_thm?: number | null;
             /**
@@ -6150,7 +6150,7 @@ export interface components {
             eta_co_pct: number;
             /**
              * Fuel Rate Kg Thm
-             * @description Coke as charged + nut coke + PCI, kg/tHM
+             * @description Fuel rate, dry: coke + nut coke + PCI (plant basis, BAND-01), kg/tHM
              */
             fuel_rate_kg_thm: number;
             /**
@@ -6617,7 +6617,7 @@ export interface components {
             enrichment_tag_pct?: number | null;
             /**
              * Fuel Rate Kg Thm
-             * @description Fuel rate, kg/tHM
+             * @description Fuel rate, dry (plant basis), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -6991,7 +6991,11 @@ export interface components {
              */
             vm_pct?: number | null;
         };
-        /** FuelSplit */
+        /**
+         * FuelSplit
+         * @description Fuels of a plan as charged (coke and nut coke wet, PCI as injected; they add up to ``fuel_charged_kg_thm``) and
+         *     dry (they add up to ``fuel_rate_kg_thm``, the plant's fuel-rate basis; user decision 25 Nov 2026).
+         */
         FuelSplit: {
             /**
              * Coke Dry Kg Thm
@@ -7005,22 +7009,32 @@ export interface components {
             coke_sigma_kg_thm?: number | null;
             /**
              * Coke Wet Kg Thm
-             * @description Coke rate as charged, kg/tHM
+             * @description Coke rate as charged (wet), kg/tHM
              */
             coke_wet_kg_thm: number;
             /**
+             * Fuel Charged Kg Thm
+             * @description Coke wet + nut coke wet + PCI, as charged, kg/tHM
+             */
+            fuel_charged_kg_thm?: number | null;
+            /**
              * Fuel Rate Kg Thm
-             * @description Coke wet + nut coke + PCI (BAND-01 520-600), kg/tHM
+             * @description Fuel rate, dry: coke + nut coke + PCI (the plant's fuel-rate basis; BAND-01 520-600), kg/tHM
              */
             fuel_rate_kg_thm: number;
             /**
+             * Nut Coke Dry Kg Thm
+             * @description Nut coke, dry: the fixed input (plant rate), kg/tHM
+             */
+            nut_coke_dry_kg_thm?: number | null;
+            /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged (fixed input), kg/tHM
+             * @description Nut coke as charged (wet), kg/tHM
              */
             nut_coke_kg_thm: number;
             /**
              * Pci Kg Thm
-             * @description PCI as injected (fixed input), kg/tHM
+             * @description PCI as injected, dry (fixed input; no moisture correction), kg/tHM
              */
             pci_kg_thm: number;
         };
@@ -10670,7 +10684,7 @@ export interface components {
             hot_blast_pressure_bar_g?: number | null;
             /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged (fixed input), kg/tHM
+             * @description Nut coke, dry: the plant's nut-coke rate (fixed input), kg/tHM
              */
             nut_coke_kg_thm?: number | null;
             /**
@@ -10680,7 +10694,7 @@ export interface components {
             o2_per_air?: number | null;
             /**
              * Pci Kg Thm
-             * @description PCI as injected (fixed input), kg/tHM
+             * @description PCI as injected, dry: the plant's coal rate (fixed input), kg/tHM
              */
             pci_kg_thm?: number | null;
             /**
@@ -12176,7 +12190,7 @@ export interface components {
             hot_blast_pressure_bar_g?: number | null;
             /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged (fixed input), kg/tHM
+             * @description Nut coke, dry (fixed input; charged wet), kg/tHM
              */
             nut_coke_kg_thm?: number | null;
             /**
@@ -12186,7 +12200,7 @@ export interface components {
             o2_per_air?: number | null;
             /**
              * Pci Kg Thm
-             * @description PCI as injected (fixed input), kg/tHM
+             * @description PCI as injected, dry (fixed input), kg/tHM
              */
             pci_kg_thm?: number | null;
             /**
@@ -14471,7 +14485,7 @@ export interface components {
             forced: boolean;
             /**
              * Fuel Rate Kg Thm
-             * @description Coke as charged + nut coke + PCI, kg/tHM
+             * @description Fuel rate, dry: coke + nut coke + PCI (plant basis, BAND-01), kg/tHM
              */
             fuel_rate_kg_thm?: number | null;
             /**
@@ -14630,7 +14644,7 @@ export interface components {
             hmt_c: number;
             /**
              * Nut Coke Kg Thm
-             * @description Nut coke as charged, kg/tHM
+             * @description Nut coke, dry (the plant's nut-coke rate), kg/tHM
              */
             nut_coke_kg_thm: number;
             /**
@@ -14640,7 +14654,7 @@ export interface components {
             o2_per_air: number;
             /**
              * Pci Kg Thm
-             * @description PCI as injected, kg/tHM
+             * @description PCI as injected, dry (the plant's coal rate), kg/tHM
              */
             pci_kg_thm: number;
         };

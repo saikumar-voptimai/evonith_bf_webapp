@@ -129,8 +129,8 @@ class OmegaState:
     fe_frac: dict[str, float]         # share of the charge's Fe by model material
     cls: dict[str, float]             # wet % of ferrous by data class (sinter, pellet, clo, rom, gomti, oversize)
     coke: float                       # dry coke, kg/tHM
-    nut: float                        # nut coke as charged, kg/tHM
-    pci: float                        # PCI as injected, kg/tHM
+    nut: float                        # nut coke, dry kg/tHM (the plant's basis; as charged before 25 Nov 2026)
+    pci: float                        # PCI as injected (dry, no moisture correction), kg/tHM
     prod: float                       # t/h
     blast_t: float                    # hot blast incl. O2, Nm3/tHM (meter basis)
     o2: float                         # O2 fraction of the hot blast (oxygen added / total)

@@ -37,6 +37,8 @@ COMPONENTS = ("sio2", "al2o3", "cao", "mgo", "mn", "p", "s", "ti", "zn", "alkali
 
 # fuels of the two-zone case -> page 9's fuel ids
 FUEL_KEYS = (("coke", "coke"), ("nut", "nut_coke"), ("pci", "pci"))
+# fuels charged wet (kg as charged = dry / (1 - TM)); PCI is injected as recorded, the dry rate (user decision 25 Nov 2026)
+WET_CHARGED_FUELS = ("coke", "nut")
 
 
 def _f(v: Any) -> float:
@@ -166,7 +168,9 @@ def fuel_by_fuel(K: float, case: Mapping[str, Any]) -> dict[str, dict[str, Any]]
             t["alkali"] = _mass(ash, alk)
             t["s"] = _mass(kg, fu.get("S_pct"))
             t["p"] = _mass(kg, fu.get("P_pct"))
-        moist = _pct(fu.get("moist_pct"))
+        # coke and nut coke are charged wet at their total moisture; PCI as injected = dry (user decision 25 Nov 2026:
+        # the plant's coal rate takes no moisture correction), so its moisture here is 0
+        moist = _pct(fu.get("moist_pct")) if name in WET_CHARGED_FUELS else 0.0
         dry = max(0.0, _f(kg))
         out[name] = dict(dry_kg=dry, wet_kg=dry / (1 - moist / 100.0) if moist < 100.0 else dry, ash_kg=ash, comp=t,
                          slag_kg=slag_forming_kg(t), moist_pct=moist, ash_pct=_pct(fu.get("ash")),

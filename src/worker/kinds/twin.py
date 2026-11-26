@@ -80,7 +80,13 @@ async def evaluate(job: JobContext, params: TwinEvaluateParams) -> dict[str, Any
         try:
             provisional = await asyncio.to_thread(_provisional_dates)
             windows = await asyncio.to_thread(
-                twin.due_windows, store, end, params.backfill_hours, provisional, 24 * ce.dpr_carry_forward_days()
+                twin.due_windows,
+                store,
+                end,
+                params.backfill_hours,
+                provisional,
+                24 * ce.dpr_carry_forward_days(),
+                params.redo,
             )
         except Exception as exc:
             if not outbox.is_outage(exc):

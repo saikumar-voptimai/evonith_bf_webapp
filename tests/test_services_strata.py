@@ -310,14 +310,14 @@ def test_the_model_summary_holds_the_validation_tiers_and_reference_responses() 
     reg = load_register()
     assert s["version"] == "STRATA 1.5" and s["register_version"] == reg.version
     v = s["validation"]
-    assert (v["expanding"]["rmse_strata"], v["expanding"]["rmse_fixed"]) == (5.99, 6.39)
+    assert (v["expanding"]["rmse_strata"], v["expanding"]["rmse_fixed"]) == (6.42, 6.77)  # dry fuel basis
     assert (v["strict"]["rmse_strata"], v["strict"]["rmse_fixed"]) == (8.0, 8.23)
     assert {p["period"] for p in v["strict"]["periods"]} >= {"All days"} and len(v["time_splits"]) == 2
     fams = s["families"]
     assert [f["id"] for f in fams] == [f.id for f in reg.facts(group="VAL", include_retired=False)]
     assert fams[0]["family"] == "N1 No pellet, sinter + CLO" and fams[0]["verdict"] == reg["VAL-01"].status
     ref = {r["id"]: r for r in s["reference"]}
-    assert (ref["MOD-01"]["strata_omega"], ref["MOD-01"]["sigma_strata"]) == (-5.96, 1.19)
+    assert (ref["MOD-01"]["strata_omega"], ref["MOD-01"]["sigma_strata"]) == (-5.93, 1.21)  # dry fuel basis
     t = s["tiers"]
     assert [lv["tier"] for lv in t["levels"]] == ["High", "Medium", "Low", "Investigate"]
     assert [lv["sigma_max_kg_thm"] for lv in t["levels"][:2]] == [2.0, 5.0]

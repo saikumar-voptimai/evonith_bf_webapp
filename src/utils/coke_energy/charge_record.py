@@ -9,9 +9,11 @@ the charging within the hour of publication:
 
 ``f`` puts the ratio on the pipeline's basis (dry coke per tonne of hot metal): the median, over the last stored 8-hour
 twin windows, of the window's K_charged over the same ratio of the window's own charges. It carries the coke moisture
-and the hot metal per tonne of ferrous burden, and follows a blend change within three days. 16 Oct-12 Nov 2026:
-f 1.697 (weekly medians 1.689-1.716); K_charged,now of 6 charges less the 8-hour K_charged: mean +0.3, SD 8.1 kg/tHM;
-hour-to-hour change 3.6 kg/tHM (robust SD) against 4.4 for the 8-hour figure.
+(the total moisture of the raw-material analysis, about 2.5 % since the dry basis of 25 Nov 2026) and the hot metal
+per tonne of ferrous burden, and follows a blend change within three days. 16 Oct-12 Nov 2026: f 1.697 (weekly medians
+1.689-1.716) with the inherent moisture the hourly dataset carried then; 1.657 per shift on the dry basis (1.694 per
+shift before); K_charged,now of 6 charges less the 8-hour K_charged: mean +0.3, SD 8.1 kg/tHM; hour-to-hour change
+3.6 kg/tHM (robust SD) against 4.4 for the 8-hour figure.
 
 Pure numerics on a charge table indexed by charge time with ``coke_t`` and ``ferrous_t``: no I/O.
 """
@@ -41,7 +43,7 @@ class Settings:
     min_window_charges: int = 40  # charges a window needs to enter the factor (an 8-hour window holds about 51)
     max_windows: int = 72  # newest windows of the factor's median
     min_windows: int = 12  # fewer: the default factor
-    default_factor: float = 1.70  # 16 Oct-12 Nov 2026 median 1.697
+    default_factor: float = 1.66  # 16 Oct-12 Nov 2026, dry basis (25 Nov 2026): 1.657 per shift (1.694 before)
 
     @classmethod
     def from_config(cls, cfg: Mapping[str, Any] | None) -> Settings:

@@ -32,7 +32,8 @@ PCI_MAX_KG_THM = 260.0
 # ---------------------------------------------------------------------------------------------- starting point
 def fuel_defaults(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], cal: Mapping[str, Any],
                   live_pci: float | None = None) -> dict[str, Any]:
-    """PCI and nut coke defaults, kg/tHM as injected / as charged (user decision 7 Nov 2026). PCI: the live tag's
+    """PCI and nut coke defaults, dry kg/tHM, the plant's coal and nut-coke rates (user decisions 7 and 25 Nov 2026;
+    nut coke is charged wet at dry / (1 - TM), PCI takes no moisture correction). PCI: the live tag's
     1-h mean (``live_pci``, the Blend Mix Optimiser's reading; ignored above ``PCI_MAX_KG_THM``: the tag spikes when
     production stops and stuck at about 430 on 16-21 Oct 2026), else the regime window's median, else the
     calibration's, else the page config. Nut coke: the page config (70 kg/tHM). Returns pci_kg_thm, nut_kg_thm and the
@@ -40,14 +41,15 @@ def fuel_defaults(regime: Mapping[str, Any] | None, thermal: Mapping[str, Any], 
     case = cal.get("case", {}) if isinstance(cal, Mapping) else {}
     reg = dict(regime or {})
     out: dict[str, Any] = {}
-    moist = float((case.get("pci") or {}).get("moist_pct", 0.0)) / 100.0
+    # dry basis (user decision 25 Nov 2026): the plant's coal rate is dry and PCI takes no moisture correction, so the
+    # tag, the regime median and the calibration's PCI enter as they are
     v = reg.get("pci_kgthm_dry")
     if live_pci is not None and np.isfinite(live_pci) and 0 < live_pci <= PCI_MAX_KG_THM:
         out["pci_kg_thm"], out["pci_kg_thm_source"] = float(live_pci), "live tag, 1-h mean"
     elif v is not None and np.isfinite(v) and v > 0:
-        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(v) / (1 - moist), "regime median"
+        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(v), "regime median"
     elif case.get("pci_kg"):
-        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(case["pci_kg"]) / (1 - moist), "calibration"
+        out["pci_kg_thm"], out["pci_kg_thm_source"] = float(case["pci_kg"]), "calibration"
     else:
         out["pci_kg_thm"], out["pci_kg_thm_source"] = float(thermal.get("pci_kg_thm", Settings.pci_plant)), "config"
     out["nut_kg_thm"], out["nut_kg_thm_source"] = float(thermal.get("nut_kg_thm", Settings.nut_plant)), "config"
@@ -284,13 +286,17 @@ def plan_tiles(r: Mapping[str, Any], flux_ids: Sequence[str] = ()) -> dict[str, 
         cost=dict(ore=float(c["ore"]), flux=float(c["flux"]), fuel=float(c["fuel"]), coke=float(c["coke"]),
                   nut=float(c["nut"]), pci=float(c["pci"]), slag_credit=float(c.get("slag_credit", 0.0)),
                   gross=float(c.get("gross", c["total"])), total=float(c["total"])),
-        fuel=dict(coke_dry=float(o["K"]), coke_wet=float(o.get("K_wet", o["K"])), nut=float(s["nut_plant"]),
-                  pci=float(s["pci_plant"]), total=float(o["fuel_rate"])),
+        # as charged (coke and nut coke wet, PCI as injected) adds up to ``charged``; the dry figures add up to ``total``,
+        # the plant's fuel-rate basis (BAND-01; user decision 25 Nov 2026)
+        fuel=dict(coke_dry=float(o["K"]), coke_wet=float(o.get("K_wet", o["K"])),
+                  nut=float(o.get("nut_wet", s["nut_plant"])), nut_dry=float(s["nut_plant"]), pci=float(s["pci_plant"]),
+                  charged=float(o.get("fuel_charged", o["fuel_rate"])), total=float(o["fuel_rate"])),
         slag=dict(rate=float(o["slag"]), t_day=float(o["slag"]) * P_t / 1000.0, Al2O3_pct=float(o["Al2O3_pct"]),
                   MgO_pct=float(o["MgO_pct"]), b2=ratio(ox["CaO"], ox["SiO2"]),
                   t_basicity=ratio(ox["CaO"] + ox["MgO"], ox["SiO2"]),
                   ib4=ratio(ox["CaO"] + ox["MgO"], ox["SiO2"] + ox["Al2O3"]), mgo_al2o3=ratio(ox["MgO"], ox["Al2O3"])),
-        charging=dict(coke_t=float(o.get("K_wet", o["K"])) * P_t / 1000.0, nut_t=float(s["nut_plant"]) * P_t / 1000.0,
+        charging=dict(coke_t=float(o.get("K_wet", o["K"])) * P_t / 1000.0,
+                      nut_t=float(o.get("nut_wet", s["nut_plant"])) * P_t / 1000.0,
                       pci_t=float(s["pci_plant"]) * P_t / 1000.0, ferrous_t=float(r["ferrous_wet"]) * P_t / 1000.0,
                       charges_per_h=cph, hm_per_charge=float(r["P_th"]) / cph if cph else math.nan,
                       flux_kg=flux_kg),
@@ -323,7 +329,8 @@ def cost_table(r: Mapping[str, Any]) -> pd.DataFrame:
     c, o, s = r["cost"], r["out"], r["settings"]
     rows = [("Ore", c["ore"], ""), ("Flux", c["flux"], ""),
             ("Coke", c["coke"], f"{o['K_wet']:.1f} kg/tHM wet ({o['K']:.1f} dry)"),
-            ("Nut coke", c["nut"], f"{s['nut_plant']:.0f} kg/tHM"), ("PCI", c["pci"], f"{s['pci_plant']:.0f} kg/tHM")]
+            ("Nut coke", c["nut"], f"{o.get('nut_wet', s['nut_plant']):.1f} kg/tHM wet ({s['nut_plant']:.1f} dry)"),
+            ("PCI", c["pci"], f"{s['pci_plant']:.0f} kg/tHM")]
     if c.get("slag_credit", 0.0):
         rows.append(("Slag credit", -c["slag_credit"], f"{o['slag']:.0f} kg/tHM at Rs {c.get('slag_price', 0.0):,.0f}/t"))
     rows.append(("Total", c["total"], f"{c['total'] * r['P_tday'] / 1e5:,.1f} lakh Rs/day"))
@@ -523,7 +530,9 @@ def process_table(r: Mapping[str, Any]) -> pd.DataFrame:
     o, s, L = r["out"], r["settings"], r["limits"]
     rows = [
         ("Production", f"{r['P_th']:.1f} t/h · {r['P_tday']:,.0f} t/d", ""),
-        ("Fuel rate (coke wet + nut + PCI)", f"{o['fuel_rate']:.1f} kg/tHM", f"{L['fuel_min']:.0f} – {L['fuel_max']:.0f} (BAND-01)"),
+        ("Fuel rate, dry (coke + nut coke + PCI, plant basis)", f"{o['fuel_rate']:.1f} kg/tHM"
+         + (f" · {o['fuel_charged']:.1f} as charged" if o.get("fuel_charged") is not None else ""),
+         f"{L['fuel_min']:.0f} – {L['fuel_max']:.0f} (BAND-01)"),
         ("ηCO / top gas", f"{o['eta']:.1f} % · {o['T_top']:.0f} °C", f"top gas ≥ {L['T_top_min']:.0f} °C"),
         ("Shaft efficiency ω", f"{o['omega']:.3f}" + (f" ± {r['omega']['sigma_omega']:.3f}" if (r.get("omega") or {}).get("mode") == "blend" else ""),
          "STRATA-ω, " + (r.get("omega") or {}).get("certainty", "") + " certainty"

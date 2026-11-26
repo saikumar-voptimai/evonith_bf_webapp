@@ -614,7 +614,7 @@
           "low": 520.0,
           "high": 600.0,
           "fact": "BAND-01",
-          "basis": "Fuel rate, coke (wet) + nut coke + PCI"
+          "basis": "Fuel rate, coke + nut coke + PCI, dry (as the plant's fuel-rate tag)"
         },
         "note": "Actual is PCI actual + coke rate + nut coke rate."
       },

@@ -150,21 +150,21 @@ def test_the_early_deployment_evaluates_the_gate(stored) -> None:
 def test_the_asset_results_are_those_of_the_strata_page(stored) -> None:
     v = console.view(None, directory=stored["deployed"][0])["validation"]
     assert v == strata.validation(SPEC)
-    assert (v["expanding"]["rmse_strata"], v["expanding"]["rmse_fixed"]) == (5.99, 6.39)
+    assert (v["expanding"]["rmse_strata"], v["expanding"]["rmse_fixed"]) == (6.42, 6.77)  # dry fuel basis, 25 Nov 2026
     assert (v["strict"]["rmse_fixed"], v["strict"]["rmse_strata"], v["strict"]["skill_coke_day"]) == (8.23, 8.0, 0.055)
 
 
 def test_the_families_carry_the_val_fact_in_force(stored) -> None:
     fams = {f["family"]: f for f in console.view(None, directory=stored["deployed"][0])["families"]}
     n1 = fams["N1 No pellet, sinter + CLO"]
-    assert n1["fact"]["id"] == "VAL-01" and n1["fact"]["status"] == "Neutral" and n1["fact"]["value_kg_thm"] == 296.0
+    assert n1["fact"]["id"] == "VAL-01" and n1["fact"]["status"] == "Neutral" and n1["fact"]["value_kg_thm"] == 290.5
     assert all(f["fact"] is not None for f in fams.values())
 
 
 def test_without_a_run_the_console_shows_the_asset_only(tmp_path) -> None:
     v = console.view(None, directory=tmp_path)
     assert v["run"] is None and v["proposal"] is None and v["trajectory"] is None and v["runs"] == []
-    assert v["validation"]["expanding"]["rmse_strata"] == 5.99 and v["job"]["schedule"] == "03:00"
+    assert v["validation"]["expanding"]["rmse_strata"] == 6.42 and v["job"]["schedule"] == "03:00"
     with pytest.raises(console.NoRun):
         console.decide(None, ALICE, proposal="x", keys=["VAL-02"], approve=False, directory=tmp_path)  # type: ignore[arg-type]
 
@@ -298,10 +298,10 @@ def test_a_decision_made_meanwhile_rolls_the_approval_back(stored, store, monkey
     refuses the approval, and neither the version nor an audit row is kept."""
     folder = stored["deployed"][0]
     h = _hash(folder)
-    console.decide(store, BOB, proposal=h, keys=["VAL-04"], approve=False, directory=folder, at=T0)
+    console.decide(store, BOB, proposal=h, keys=["VAL-05"], approve=False, directory=folder, at=T0)
     monkeypatch.setattr(console, "decisions", lambda *_: {})  # the check before the transaction misses it
-    with pytest.raises(console.AlreadyDecided, match="VAL-04 was rejected by bob"):
-        console.decide(store, ALICE, proposal=h, keys=["VAL-04"], approve=True, directory=folder, at=T0 + H)
+    with pytest.raises(console.AlreadyDecided, match="VAL-05 was rejected by bob"):
+        console.decide(store, ALICE, proposal=h, keys=["VAL-05"], approve=True, directory=folder, at=T0 + H)
     assert versions(store) == 0 and [r.action for r in rows(store)] == ["learn.reject"]
 
 

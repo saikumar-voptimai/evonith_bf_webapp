@@ -146,13 +146,17 @@ def test_step2_reproduces_cases_1_and_2_of_the_case_report(api) -> None:
     # On page 9's slag basis (held Si 0.60 %, the plant burden sheet's dust row of 530 kg/charge held constant, minors
     # from the analyses, FeO rule, TiO2 left out of the slag as on the UAT page; 11 Nov 2026) the case report's plan
     # moves: sinter 62.5 %, quartz 2.5 kg/tHM, the Al2O3 cap binding (the engine tests without the basis keep the case
-    # report's own figures).
+    # report's own figures). Dry fuel basis (25 Nov 2026): PCI 190 and nut coke 70 kg/tHM dry, the fuel rate dry
+    # (BAND-01), the fuel as charged beside it.
     plan = res["plan"]  # case 2: fuel in the objective
     assert plan["feasible"] and plan["production_t_d"] == pytest.approx(2270.0)
-    assert plan["fuel"]["coke_dry_kg_thm"] == pytest.approx(302.2, abs=0.3)
+    assert plan["fuel"]["coke_dry_kg_thm"] == pytest.approx(299.4, abs=0.3)
     assert plan["slag"]["rate_kg_thm"] == pytest.approx(340.0, abs=0.1)
-    assert plan["fuel"]["fuel_rate_kg_thm"] == pytest.approx(563.5, abs=0.3)
-    assert plan["cost"]["total_rs_thm"] == pytest.approx(30092, abs=5)
+    fuel = plan["fuel"]
+    assert fuel["fuel_rate_kg_thm"] == pytest.approx(fuel["coke_dry_kg_thm"] + 70.0 + 190.0)
+    assert fuel["nut_coke_dry_kg_thm"] == 70.0 and fuel["nut_coke_kg_thm"] > 70.0 and fuel["pci_kg_thm"] == 190.0
+    assert fuel["fuel_charged_kg_thm"] == pytest.approx(fuel["coke_wet_kg_thm"] + fuel["nut_coke_kg_thm"] + 190.0)
+    assert plan["cost"]["total_rs_thm"] == pytest.approx(30009, abs=5)
     assert plan["process"]["raft_c"] == pytest.approx(2212, abs=2)
     assert {b["limit"] for b in plan["binding"]} >= {"slag cap", "basicity min", "Al2O3 max"}
     assert plan["warnings"] == [] and plan["shaft_efficiency"]["certainty"] == "Held"
@@ -162,10 +166,10 @@ def test_step2_reproduces_cases_1_and_2_of_the_case_report(api) -> None:
     )
     assert cost["total_sigma_rs_thm"] is None and plan["fuel"]["coke_sigma_kg_thm"] is None  # Fixed-ω
     ore = res["ore_flux_plan"]  # case 1: page 9's objective
-    assert ore["cost"]["total_rs_thm"] == pytest.approx(30175, abs=5)
+    assert ore["cost"]["total_rs_thm"] == pytest.approx(30091, abs=5)
     sh = shares(ore)
     assert sh["sinter_sp_02"] == pytest.approx(58.0, abs=0.1) and sh["lloyds_pellet"] == pytest.approx(10.0, abs=0.1)
-    assert sh["geomin_clo"] == pytest.approx(16.5, abs=0.2) and flux(ore)["dolomite"] == pytest.approx(20.0, abs=0.3)
+    assert sh["geomin_clo"] == pytest.approx(16.65, abs=0.2) and flux(ore)["dolomite"] == pytest.approx(19.0, abs=0.3)
     assert sum(b["share_wet_pct"] for b in plan["blend"]) == pytest.approx(100.0, abs=0.1)
     # page 9's blend-table columns and Slag Balance Details on the plan (the breakup of the slag rate)
     sinter = next(b for b in plan["blend"] if b["id"] == "sinter_sp_02")
@@ -225,7 +229,8 @@ def test_a_run_can_deduct_its_own_dust(api) -> None:
 def test_step1_reproduces_case_4_of_the_case_report(api) -> None:
     res = run_through_api(api, {"mode": "step1", **CASE})
     assert res["plan"]["production_t_d"] == pytest.approx(2283, abs=3)
-    assert res["plan"]["cost"]["total_rs_thm"] == pytest.approx(29900, abs=10)
+    # PCI 190 and nut coke 70 kg/tHM dry (25 Nov 2026; Rs 29,900 on the case report's fuel basis)
+    assert res["plan"]["cost"]["total_rs_thm"] == pytest.approx(29817, abs=10)
     assert res["plan"]["process"]["hbt_c"] == pytest.approx(1230.0)
     assert res["highest_output_plan"]["production_t_d"] == pytest.approx(2404, abs=3)
     assert min(p["cost_rs_thm"] for p in res["frontier"]) >= res["plan"]["cost"]["total_rs_thm"] - 1
@@ -236,9 +241,9 @@ def test_maximum_production_reproduces_case_3_of_the_case_report(api) -> None:
     res = run_through_api(api, {"mode": "max_production", **CASE})
     plan = res["plan"]
     assert plan["production_t_d"] == pytest.approx(2404, abs=3)
-    assert plan["cost"]["total_rs_thm"] == pytest.approx(30758, abs=10)
+    assert plan["cost"]["total_rs_thm"] == pytest.approx(30687, abs=10)  # dry PCI and nut coke (30,758 before)
     assert "charging" in {b["limit"] for b in plan["binding"]}
-    assert shares(plan)["lloyds_pellet"] == pytest.approx(19.5, abs=0.3)
+    assert shares(plan)["lloyds_pellet"] == pytest.approx(20.0, abs=0.3)  # at its upper bound (19.5 before)
 
 
 # ------------------------------------------------------------------------------------------------- requests
@@ -298,7 +303,7 @@ def test_step1_and_maximum_production_views_validate(case_plan, mode) -> None:
            "finished_at": datetime(2026, 10, 29, 0, 1, tzinfo=UTC)}  # fmt: skip
     view = optimiser_results.result_view(row)
     OptimiserResult.model_validate(view.model_dump(mode="json"))
-    assert view.plan.cost.total_rs_thm == pytest.approx(30139, abs=5) and view.run_s == 60.0
+    assert view.plan.cost.total_rs_thm == pytest.approx(30055, abs=5) and view.run_s == 60.0
     if mode == "step1":
         assert view.highest_output_plan is not None and len(view.frontier) == 2
         assert view.frontier[1].marginal_rs_per_t is not None and view.frontier[0].marginal_rs_per_t is None

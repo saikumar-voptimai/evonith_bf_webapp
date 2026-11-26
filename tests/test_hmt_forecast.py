@@ -62,6 +62,9 @@ def test_k_arr_uses_the_coke_to_ferrous_ratio_of_the_last_hour() -> None:
     )
     assert hf.k_arr(rec, "2026-05-01 02:00", 1700.0) == pytest.approx(27.3 * 0.99 / 156.0 * 1700.0)
     assert hf.k_arr(rec, "2026-05-01 05:00", 1700.0) is None  # no record of the last hour
+    # an inherent-moisture reading (0.45 %) is not a total moisture: the default TM of coke (2.5 %) applies
+    rec["COKE_MOIST%"] = 0.45
+    assert hf.k_arr(rec, "2026-05-01 02:00", 1700.0) == pytest.approx(27.3 * 0.975 / 156.0 * 1700.0)
 
 
 def _rows(model_err, persistence_err) -> pd.DataFrame:

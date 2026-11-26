@@ -1,5 +1,5 @@
 {
- "version": "STRATA 1.5 (2026-10-25): STRATA-omega on STRATA-Flow network solves; blast moisture = Open-Meteo daily RH at Wardha (in the balance, no moisture data term); RI and RDI from the Evonith laboratory tests (set T26), beta 0, n 1, ore RDI as shaft fines, Lloyds fines oversize without size credit, Donimalai oversize return as Donimalai; blend scales per group, other-operation channel and nut coke from the AR(1) posterior (Dec 2025 - Oct 2026); no production channel (strict 2023-24 test)",
+ "version": "STRATA 1.5 (2026-10-25; dry fuel basis 2026-11-25): STRATA-omega on STRATA-Flow network solves; blast moisture = Open-Meteo daily RH at Wardha (in the balance, no moisture data term); coke and nut coke on the dry basis (charge record less the total moisture), PCI as recorded; RI and RDI from the Evonith laboratory tests (set T26), beta 0, n 1, ore RDI as shaft fines, Lloyds fines oversize without size credit, Donimalai oversize return as Donimalai; blend scales per group, other-operation channel and nut coke from the AR(1) posterior (Dec 2025 - Oct 2026); no production channel (strict 2023-24 test)",
  "materials": {
   "sinter": {
    "ri_pct": 66.0,
@@ -2991,11 +2991,11 @@
   ],
   "mean": [
    1.0,
-   0.0004028572072836267,
-   3.117616431263494e-05,
-   5.158530280595781e-05,
-   4.290740139934808e-05,
-   3.117616431263494e-05
+   0.00038153364397861206,
+   2.880586072516271e-05,
+   4.766330563287232e-05,
+   3.964517945164146e-05,
+   2.880586072516271e-05
   ],
   "cov": [
    [
@@ -3008,49 +3008,49 @@
    ],
    [
     0.0,
-    1.8334361104685196e-07,
-    8.154267666953444e-09,
-    1.3492370727278637e-08,
-    1.1222626118951388e-08,
-    8.154267666953444e-09
+    1.874534682215274e-07,
+    7.4372514984170565e-09,
+    1.230596768552513e-08,
+    1.023580489730595e-08,
+    7.4372514984170565e-09
    ],
    [
     0.0,
-    8.154267666953464e-09,
-    3.1625618657964604e-08,
-    5.2328987573230094e-08,
-    4.352598031792036e-08,
-    3.1625618657964604e-08
+    7.437251498417054e-09,
+    3.215122592338031e-08,
+    5.3198677945387023e-08,
+    4.424936763681723e-08,
+    3.215122592338031e-08
    ],
    [
     0.0,
-    1.3492370727278671e-08,
-    5.23289875732301e-08,
-    8.658559284024155e-08,
-    7.201979217552802e-08,
-    5.23289875732301e-08
+    1.2305967685525126e-08,
+    5.3198677945387023e-08,
+    8.802461660035687e-08,
+    7.321673717225943e-08,
+    5.3198677945387023e-08
    ],
    [
     0.0,
-    1.1222626118951418e-08,
-    4.352598031792036e-08,
-    7.201979217552802e-08,
-    5.990431311796255e-08,
-    4.352598031792036e-08
+    1.0235804897305946e-08,
+    4.424936763681723e-08,
+    7.321673717225943e-08,
+    6.089990288159898e-08,
+    4.424936763681723e-08
    ],
    [
     0.0,
-    8.154267666953464e-09,
-    3.1625618657964604e-08,
-    5.2328987573230094e-08,
-    4.352598031792036e-08,
-    3.1625618657964604e-08
+    7.437251498417054e-09,
+    3.215122592338031e-08,
+    5.3198677945387023e-08,
+    4.424936763681723e-08,
+    3.215122592338031e-08
    ]
   ],
-  "note": "blend channel = network physics (x_blend coefficient 1) + b_c = (lam_g - 1) g_c; lam_pellet 1.421 +/- 0.448, lam_lump 0.920 +/- 0.458 (lump = CLO, ROM, Gomti, oversize); AR(1) posterior of the daily change of omega against its 14-day anchor on exact network channels, STRATA 1.5 (Open-Meteo daily blast moisture; no production channel, no moisture term); g_c physics change of omega per wet pt replacing sinter (RI set T26)"
+  "note": "blend channel = network physics (x_blend coefficient 1) + b_c = (lam_g - 1) g_c; lam_pellet 1.399 +/- 0.453, lam_lump 0.926 +/- 0.462 (lump = CLO, ROM, Gomti, oversize); AR(1) posterior of the daily change of omega against its 14-day anchor on exact network channels, STRATA 1.5 on the dry fuel basis of 25 Nov 2026 (Open-Meteo daily blast moisture; no production channel, no moisture term); g_c physics change of omega per wet pt replacing sinter (RI set T26)"
  },
  "priors": {
-  "oper_rel_sd": 0.282,
+  "oper_rel_sd": 0.29,
   "gas_capacity_rel_sd": 0.0
  },
  "support": {
@@ -3102,8 +3102,8 @@
  },
  "sigma": {
   "omega_cal_se": 0.006,
-  "omega_day_sd": 0.0235,
-  "note": "omega_day_sd: out-of-sample RMSE of STRATA 1.5 against the daily omega (expanding test)"
+  "omega_day_sd": 0.0249,
+  "note": "omega_day_sd: out-of-sample RMSE of STRATA 1.5 against the daily omega (expanding test; dry fuel basis 25 Nov 2026)"
  },
  "reference": {
   "R": 0.704,
@@ -3119,56 +3119,56 @@
   "sinter_strength_basis": "latest raw-material strength test (routine, sinter_3, 4 Oct 2026: RI 66.0, RDI 30.06; Jul-Oct 2026 median RI 66.0, RDI 31.0); not from the laboratory report (user decision 23 Oct 2026). Live: the calibration takes the latest strength values"
  },
  "validation": {
-  "method": "day minus its 14-day anchor (the Coke Energy pipeline rolling calibration); channels from network runs of each day (window blend and operation, day blend, day production, day operation; window charging matrix and top gas); parameters estimated on days before the predicted month only (expanding window, refit monthly) or on the other half of the record (time split); skill = 1 - MSE / MSE(Fixed-omega). Coke target: oxygen-balance burnt coke. 175 days, 1 Jan - 7 Oct 2026; blast moisture from the RH estimate.",
+  "method": "day minus its 14-day anchor (the Coke Energy pipeline rolling calibration); channels from network runs of each day (window blend and operation, day blend, day production, day operation; window charging matrix and top gas); parameters estimated on days before the predicted month only (expanding window, refit monthly) or on the other half of the record (time split); skill = 1 - MSE / MSE(Fixed-omega). Coke target: oxygen-balance burnt coke. 175 days, 1 Jan - 7 Oct 2026; blast moisture from the RH estimate. Dry fuel basis (25 Nov 2026): every figure = the published STRATA 1.5 figure + its change between the earlier and the dry basis on the evidence seed (175 test days; same protocol, rho and sigma_e as the posterior); on the seed the earlier basis gives rmse 6.05 against Fixed-omega 6.39 (published 5.99), the dry basis 6.48 against 6.77. Earlier-basis figures under v15_earlier_basis and by_blend_earlier_basis.",
   "expanding": {
-   "omega_day": 0.144,
-   "coke_day": 0.12,
-   "coke_7d": 0.221,
-   "rmse_coke": 5.99,
-   "rmse_fixed": 6.39
+   "omega_day": 0.094,
+   "coke_day": 0.1,
+   "coke_7d": 0.174,
+   "rmse_coke": 6.42,
+   "rmse_fixed": 6.77
   },
   "time_split": {
    "train Dec-May, test Jun-Oct": {
-    "omega_day": 0.178,
-    "coke_day": 0.095
+    "omega_day": 0.12,
+    "coke_day": 0.099
    },
    "train Jun-Oct, test Jan-May": {
-    "omega_day": 0.072,
-    "coke_day": 0.111
+    "omega_day": 0.022,
+    "coke_day": 0.088
    }
   },
   "alternatives": {
    "STRATA 1.5 (final)": {
-    "coke_day": 0.12,
-    "coke_7d": 0.221,
-    "omega_day": 0.144,
-    "rmse_coke": 5.99,
-    "split_dec_may": 0.095,
-    "split_jun_oct": 0.111
+    "coke_day": 0.1,
+    "coke_7d": 0.174,
+    "omega_day": 0.094,
+    "rmse_coke": 6.42,
+    "split_dec_may": 0.099,
+    "split_jun_oct": 0.088
    },
    "with moisture term (STRATA 1.4 form)": {
-    "coke_day": 0.089,
-    "coke_7d": 0.2,
-    "omega_day": 0.088,
-    "rmse_coke": 6.1,
-    "split_dec_may": 0.096,
-    "split_jun_oct": 0.114
+    "coke_day": 0.077,
+    "coke_7d": 0.176,
+    "omega_day": 0.046,
+    "rmse_coke": 6.51,
+    "split_dec_may": 0.07,
+    "split_jun_oct": 0.088
    },
    "with production channel": {
-    "coke_day": 0.102,
-    "coke_7d": 0.21,
-    "omega_day": 0.146,
-    "rmse_coke": 6.06,
-    "split_dec_may": 0.021,
-    "split_jun_oct": 0.134
+    "coke_day": 0.083,
+    "coke_7d": 0.175,
+    "omega_day": 0.096,
+    "rmse_coke": 6.49,
+    "split_dec_may": 0.017,
+    "split_jun_oct": 0.103
    },
    "without nut-coke term": {
-    "coke_day": 0.105,
-    "coke_7d": 0.185,
-    "omega_day": 0.099,
-    "rmse_coke": 6.05,
-    "split_dec_may": 0.12,
-    "split_jun_oct": 0.102
+    "coke_day": 0.099,
+    "coke_7d": 0.163,
+    "omega_day": 0.084,
+    "rmse_coke": 6.43,
+    "split_dec_may": 0.132,
+    "split_jun_oct": 0.089
    },
    "with PCI term": {
     "coke_day": 0.098,
@@ -3176,7 +3176,8 @@
     "omega_day": 0.129,
     "rmse_coke": 6.07,
     "split_dec_may": 0.043,
-    "split_jun_oct": 0.095
+    "split_jun_oct": 0.095,
+    "note": "earlier fuel basis; not repeated (the evidence seed carries no PCI column)"
    }
   },
   "v14_expanding": {
@@ -3199,6 +3200,404 @@
    "coke_7d": 0.188
   },
   "by_blend": [
+   {
+    "family": "N1 No pellet, sinter + CLO",
+    "n": 21,
+    "pellet": 0.0,
+    "clo": 32.0,
+    "rom": 0.1,
+    "gomti": 0.0,
+    "oversize": 0.1,
+    "realised": 291.8,
+    "fixed_omega": 291.0,
+    "strata": 290.5,
+    "rmse_fixed": 4.44,
+    "rmse_strata": 4.53,
+    "skill": -0.036,
+    "bias": 1.34,
+    "se_bias": 1.3,
+    "verdict": "Neutral"
+   },
+   {
+    "family": "N2 No pellet, with Gomti",
+    "n": 9,
+    "pellet": 0.0,
+    "clo": 26.5,
+    "rom": 0.5,
+    "gomti": 6.9,
+    "oversize": 0.0,
+    "realised": 299.5,
+    "fixed_omega": 296.2,
+    "strata": 296.6,
+    "rmse_fixed": 8.01,
+    "rmse_strata": 7.78,
+    "skill": 0.059,
+    "bias": 2.81,
+    "se_bias": 2.53,
+    "verdict": "Modelled only"
+   },
+   {
+    "family": "N3 No pellet, with oversize",
+    "n": 30,
+    "pellet": 0.0,
+    "clo": 25.4,
+    "rom": 0.1,
+    "gomti": 0.0,
+    "oversize": 9.9,
+    "realised": 301.6,
+    "fixed_omega": 300.2,
+    "strata": 300.3,
+    "rmse_fixed": 6.49,
+    "rmse_strata": 6.15,
+    "skill": 0.102,
+    "bias": 1.31,
+    "se_bias": 1.41,
+    "verdict": "Supported"
+   },
+   {
+    "family": "N4 No pellet, with ROM",
+    "n": 30,
+    "pellet": 0.2,
+    "clo": 22.4,
+    "rom": 12.3,
+    "gomti": 0.0,
+    "oversize": 0.0,
+    "realised": 300.4,
+    "fixed_omega": 298.6,
+    "strata": 298.7,
+    "rmse_fixed": 10.22,
+    "rmse_strata": 9.49,
+    "skill": 0.14,
+    "bias": 1.63,
+    "se_bias": 2.94,
+    "verdict": "Supported"
+   },
+   {
+    "family": "N5 No pellet, ROM + oversize",
+    "n": 1,
+    "pellet": 0.0,
+    "clo": 27.0,
+    "rom": 4.0,
+    "gomti": 0.0,
+    "oversize": 5.1,
+    "realised": 288.9,
+    "fixed_omega": 287.3,
+    "strata": 286.7,
+    "rmse_fixed": 1.64,
+    "rmse_strata": 2.24,
+    "skill": -0.886,
+    "bias": 2.24,
+    "se_bias": null,
+    "verdict": "Modelled only"
+   },
+   {
+    "family": "P1 Pellet, sinter + CLO",
+    "n": 43,
+    "pellet": 12.2,
+    "clo": 23.6,
+    "rom": 0.2,
+    "gomti": 0.0,
+    "oversize": 0.0,
+    "realised": 308.3,
+    "fixed_omega": 309.1,
+    "strata": 309.3,
+    "rmse_fixed": 5.45,
+    "rmse_strata": 5.38,
+    "skill": 0.028,
+    "bias": -1.09,
+    "se_bias": 1.53,
+    "verdict": "Supported"
+   },
+   {
+    "family": "P2 Pellet, with oversize",
+    "n": 6,
+    "pellet": 14.9,
+    "clo": 10.4,
+    "rom": 0.2,
+    "gomti": 0.0,
+    "oversize": 9.9,
+    "realised": 311.8,
+    "fixed_omega": 307.4,
+    "strata": 307.3,
+    "rmse_fixed": 6.06,
+    "rmse_strata": 5.88,
+    "skill": 0.06,
+    "bias": 4.43,
+    "se_bias": 1.76,
+    "verdict": "Modelled only"
+   },
+   {
+    "family": "P3 Pellet, with ROM",
+    "n": 27,
+    "pellet": 10.1,
+    "clo": 17.7,
+    "rom": 7.9,
+    "gomti": 0.0,
+    "oversize": 0.0,
+    "realised": 300.8,
+    "fixed_omega": 301.5,
+    "strata": 302.1,
+    "rmse_fixed": 4.98,
+    "rmse_strata": 4.73,
+    "skill": 0.098,
+    "bias": -1.26,
+    "se_bias": 1.73,
+    "verdict": "Supported"
+   },
+   {
+    "family": "P4 Pellet, ROM + oversize",
+    "n": 8,
+    "pellet": 15.0,
+    "clo": 10.0,
+    "rom": 4.4,
+    "gomti": 0.0,
+    "oversize": 6.8,
+    "realised": 292.6,
+    "fixed_omega": 294.9,
+    "strata": 291.8,
+    "rmse_fixed": 7.65,
+    "rmse_strata": 6.67,
+    "skill": 0.239,
+    "bias": 0.78,
+    "se_bias": 2.51,
+    "verdict": "Modelled only"
+   },
+   {
+    "family": "All days",
+    "n": 175,
+    "pellet": 5.8,
+    "clo": 22.9,
+    "rom": 3.6,
+    "gomti": 0.4,
+    "oversize": 2.4,
+    "realised": 301.5,
+    "fixed_omega": 301.0,
+    "strata": 301.0,
+    "rmse_fixed": 6.77,
+    "rmse_strata": 6.42,
+    "skill": 0.1,
+    "bias": 0.54,
+    "se_bias": 0.81,
+    "verdict": "Supported"
+   },
+   {
+    "family": "ROM >= 10 % (any family)",
+    "n": 26,
+    "pellet": 3.7,
+    "clo": 17.7,
+    "rom": 15.8,
+    "gomti": 0.0,
+    "oversize": 0.0,
+    "realised": 299.8,
+    "fixed_omega": 301.2,
+    "strata": 301.6,
+    "rmse_fixed": 6.99,
+    "rmse_strata": 6.17,
+    "skill": 0.219,
+    "bias": -1.74,
+    "se_bias": 1.89,
+    "verdict": "Supported"
+   },
+   {
+    "family": "Pellet >= 12 % (any family)",
+    "n": 35,
+    "pellet": 14.5,
+    "clo": 17.3,
+    "rom": 1.1,
+    "gomti": 0.0,
+    "oversize": 3.3,
+    "realised": 303.7,
+    "fixed_omega": 304.7,
+    "strata": 304.0,
+    "rmse_fixed": 7.01,
+    "rmse_strata": 6.69,
+    "skill": 0.088,
+    "bias": -0.25,
+    "se_bias": 1.91,
+    "verdict": "Supported"
+   }
+  ],
+  "credit_2026": {
+   "Fixed-omega": {
+    "Pellet": {
+     "slope": -4.5,
+     "se": 3.9
+    },
+    "CLO (Lloyds, Geomin)": {
+     "slope": -1.1,
+     "se": 3.4
+    },
+    "ROM (NMDC, Donimalai)": {
+     "slope": -2.3,
+     "se": 3.3
+    },
+    "Gomti": {
+     "slope": -2.2,
+     "se": 4.0
+    },
+    "Lloyds fines oversize": {
+     "slope": -1.3,
+     "se": 3.1
+    },
+    "joint_p": 0.724,
+    "rmse": 6.392
+   },
+   "STRATA 1.5": {
+    "Pellet": {
+     "slope": -2.6,
+     "se": 3.5
+    },
+    "CLO (Lloyds, Geomin)": {
+     "slope": -2.8,
+     "se": 2.9
+    },
+    "ROM (NMDC, Donimalai)": {
+     "slope": -4.2,
+     "se": 2.9
+    },
+    "Gomti": {
+     "slope": -4.4,
+     "se": 3.7
+    },
+    "Lloyds fines oversize": {
+     "slope": -3.0,
+     "se": 2.7
+    },
+    "joint_p": 0.451,
+    "rmse": 5.995
+   }
+  },
+  "strict_2023_24": {
+   "method": "parameters frozen as fitted on Dec 2025 - Oct 2026; 411 stable days, 2023-03-05 - 2024-07-11 (July 2023 missing); omega anchor and zone losses = 14 previous days; network solves per day (T26 catalogue); blast moisture = Open-Meteo daily ambient + measured steam injection; K = K_held + dK/domega x domega_model",
+   "rmse": {
+    "All days": {
+     "Fixed-omega": 8.23,
+     "STRATA 1.5": 8.0
+    },
+    "Pellet era (Feb - Oct 2023)": {
+     "Fixed-omega": 7.88,
+     "STRATA 1.5": 7.69
+    },
+    "Lump era (Nov 2023 - Jul 2024)": {
+     "Fixed-omega": 8.5,
+     "STRATA 1.5": 8.24
+    }
+   },
+   "skill_day": {
+    "STRATA 1.5": 0.055
+   },
+   "skill_7d": {
+    "STRATA 1.5": 0.061
+   },
+   "skill_omega": {
+    "STRATA 1.5": 0.081
+   },
+   "weekly_rmse": {
+    "Fixed-omega": 6.34,
+    "STRATA 1.5": 6.15
+   },
+   "dmse_15_fixed": {
+    "mean": -3.74,
+    "se": 2.01,
+    "t": -1.86
+   },
+   "credit": {
+    "Fixed-omega": {
+     "Pellet": {
+      "slope": -0.6,
+      "se": 2.9
+     },
+     "CLO (Lloyds, Geomin, GIMPL, Neco)": {
+      "slope": 8.4,
+      "se": 3.2
+     },
+     "NMDC": {
+      "slope": 13.2,
+      "se": 4.0
+     },
+     "joint_p": 0.001
+    },
+    "STRATA 1.5": {
+     "Pellet": {
+      "slope": 2.8,
+      "se": 2.7
+     },
+     "CLO (Lloyds, Geomin, GIMPL, Neco)": {
+      "slope": 8.2,
+      "se": 3.1
+     },
+     "NMDC": {
+      "slope": 12.1,
+      "se": 3.9
+     },
+     "joint_p": 0.01
+    }
+   },
+   "refit_2023_24": {
+    "q_pel": 1.594,
+    "q_lump_all": 1.1148,
+    "q_rest": 1.1007,
+    "d_nut": 0.0003
+   },
+   "refit_2023_24_sd": {
+    "q_pel": 0.3914,
+    "q_lump_all": 0.4953,
+    "q_rest": 0.3867,
+    "d_nut": 0.0004
+   },
+   "rh_scaled_basis": {
+    "rmse": {
+     "All days": {
+      "Fixed-omega": 7.95,
+      "STRATA 1.2": 7.48,
+      "STRATA 1.3": 7.57,
+      "STRATA 1.4": 7.4
+     },
+     "Pellet era (Feb - Oct 2023)": {
+      "Fixed-omega": 7.27,
+      "STRATA 1.2": 7.16,
+      "STRATA 1.3": 6.97,
+      "STRATA 1.4": 6.81
+     },
+     "Lump era (Nov 2023 - Jul 2024)": {
+      "Fixed-omega": 8.44,
+      "STRATA 1.2": 7.71,
+      "STRATA 1.3": 8.0,
+      "STRATA 1.4": 7.83
+     }
+    },
+    "skill_day": {
+     "STRATA 1.2": 0.115,
+     "STRATA 1.3": 0.094,
+     "STRATA 1.4": 0.133
+    },
+    "note": "STRATA 1.4 strict test on the day-of-year RH-scaled ambient moisture (+ steam), 413 days"
+   },
+   "note": "STRATA 1.5 is better than Fixed-omega on the strict 2023-24 test (RMSE 8.00 against 8.23, t -1.9). Both are higher than on the RH-scaled climatology (7.40 / 7.95): in 2023-24 (steam injection 0-2.9 t/h) the burnt coke did not follow the day-to-day ambient moisture, so the daily series widens the energy-model gap in that period. Day-level per-ore credit test fails for Fixed-omega and STRATA in 2023-24 (CLO and NMDC over-credited): an unmodelled sinter-related effect; the 2026 credit test passes (joint p 0.45)",
+   "fuel_basis": "Not repeated on the dry fuel basis of 25 Nov 2026: the 2023-24 data set (DATA-15) carried the total moisture of coke and nut coke, so their dry mass is unchanged; its PCI was taken less the inherent moisture (about 1 %), which moves burnt and modelled coke alike (COKE-01). The data set is not in the recalibration workspace."
+  },
+  "verdict_rule": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
+  "note": "STRATA 1.5 on the Open-Meteo daily moisture: 2026 expanding test RMSE 5.99 against Fixed-omega 6.39 kg/tHM (STRATA 1.4 on the RH-scaled record: 6.44 against 6.94); both 2026 time splits and the strict 2023-24 test better than Fixed-omega. Pellet + oversize (6 days, June 2026, first month of pellet) remains biased; families with fewer than 10 days are modelled only.",
+  "v15_earlier_basis": {
+   "expanding": {
+    "omega_day": 0.144,
+    "coke_day": 0.12,
+    "coke_7d": 0.221,
+    "rmse_coke": 5.99,
+    "rmse_fixed": 6.39
+   },
+   "time_split": {
+    "train Dec-May, test Jun-Oct": {
+     "omega_day": 0.178,
+     "coke_day": 0.095
+    },
+    "train Jun-Oct, test Jan-May": {
+     "omega_day": 0.072,
+     "coke_day": 0.111
+    }
+   }
+  },
+  "by_blend_earlier_basis": [
    {
     "family": "N1 No pellet, sinter + CLO",
     "n": 21,
@@ -3415,181 +3814,21 @@
     "se_bias": 1.84,
     "verdict": "Supported"
    }
-  ],
-  "credit_2026": {
-   "Fixed-omega": {
-    "Pellet": {
-     "slope": -4.5,
-     "se": 3.9
-    },
-    "CLO (Lloyds, Geomin)": {
-     "slope": -1.1,
-     "se": 3.4
-    },
-    "ROM (NMDC, Donimalai)": {
-     "slope": -2.3,
-     "se": 3.3
-    },
-    "Gomti": {
-     "slope": -2.2,
-     "se": 4.0
-    },
-    "Lloyds fines oversize": {
-     "slope": -1.3,
-     "se": 3.1
-    },
-    "joint_p": 0.724,
-    "rmse": 6.392
-   },
-   "STRATA 1.5": {
-    "Pellet": {
-     "slope": -2.6,
-     "se": 3.5
-    },
-    "CLO (Lloyds, Geomin)": {
-     "slope": -2.8,
-     "se": 2.9
-    },
-    "ROM (NMDC, Donimalai)": {
-     "slope": -4.2,
-     "se": 2.9
-    },
-    "Gomti": {
-     "slope": -4.4,
-     "se": 3.7
-    },
-    "Lloyds fines oversize": {
-     "slope": -3.0,
-     "se": 2.7
-    },
-    "joint_p": 0.451,
-    "rmse": 5.995
-   }
-  },
-  "strict_2023_24": {
-   "method": "parameters frozen as fitted on Dec 2025 - Oct 2026; 411 stable days, 2023-03-05 - 2024-07-11 (July 2023 missing); omega anchor and zone losses = 14 previous days; network solves per day (T26 catalogue); blast moisture = Open-Meteo daily ambient + measured steam injection; K = K_held + dK/domega x domega_model",
-   "rmse": {
-    "All days": {
-     "Fixed-omega": 8.23,
-     "STRATA 1.5": 8.0
-    },
-    "Pellet era (Feb - Oct 2023)": {
-     "Fixed-omega": 7.88,
-     "STRATA 1.5": 7.69
-    },
-    "Lump era (Nov 2023 - Jul 2024)": {
-     "Fixed-omega": 8.5,
-     "STRATA 1.5": 8.24
-    }
-   },
-   "skill_day": {
-    "STRATA 1.5": 0.055
-   },
-   "skill_7d": {
-    "STRATA 1.5": 0.061
-   },
-   "skill_omega": {
-    "STRATA 1.5": 0.081
-   },
-   "weekly_rmse": {
-    "Fixed-omega": 6.34,
-    "STRATA 1.5": 6.15
-   },
-   "dmse_15_fixed": {
-    "mean": -3.74,
-    "se": 2.01,
-    "t": -1.86
-   },
-   "credit": {
-    "Fixed-omega": {
-     "Pellet": {
-      "slope": -0.6,
-      "se": 2.9
-     },
-     "CLO (Lloyds, Geomin, GIMPL, Neco)": {
-      "slope": 8.4,
-      "se": 3.2
-     },
-     "NMDC": {
-      "slope": 13.2,
-      "se": 4.0
-     },
-     "joint_p": 0.001
-    },
-    "STRATA 1.5": {
-     "Pellet": {
-      "slope": 2.8,
-      "se": 2.7
-     },
-     "CLO (Lloyds, Geomin, GIMPL, Neco)": {
-      "slope": 8.2,
-      "se": 3.1
-     },
-     "NMDC": {
-      "slope": 12.1,
-      "se": 3.9
-     },
-     "joint_p": 0.01
-    }
-   },
-   "refit_2023_24": {
-    "q_pel": 1.594,
-    "q_lump_all": 1.1148,
-    "q_rest": 1.1007,
-    "d_nut": 0.0003
-   },
-   "refit_2023_24_sd": {
-    "q_pel": 0.3914,
-    "q_lump_all": 0.4953,
-    "q_rest": 0.3867,
-    "d_nut": 0.0004
-   },
-   "rh_scaled_basis": {
-    "rmse": {
-     "All days": {
-      "Fixed-omega": 7.95,
-      "STRATA 1.2": 7.48,
-      "STRATA 1.3": 7.57,
-      "STRATA 1.4": 7.4
-     },
-     "Pellet era (Feb - Oct 2023)": {
-      "Fixed-omega": 7.27,
-      "STRATA 1.2": 7.16,
-      "STRATA 1.3": 6.97,
-      "STRATA 1.4": 6.81
-     },
-     "Lump era (Nov 2023 - Jul 2024)": {
-      "Fixed-omega": 8.44,
-      "STRATA 1.2": 7.71,
-      "STRATA 1.3": 8.0,
-      "STRATA 1.4": 7.83
-     }
-    },
-    "skill_day": {
-     "STRATA 1.2": 0.115,
-     "STRATA 1.3": 0.094,
-     "STRATA 1.4": 0.133
-    },
-    "note": "STRATA 1.4 strict test on the day-of-year RH-scaled ambient moisture (+ steam), 413 days"
-   },
-   "note": "STRATA 1.5 is better than Fixed-omega on the strict 2023-24 test (RMSE 8.00 against 8.23, t -1.9). Both are higher than on the RH-scaled climatology (7.40 / 7.95): in 2023-24 (steam injection 0-2.9 t/h) the burnt coke did not follow the day-to-day ambient moisture, so the daily series widens the energy-model gap in that period. Day-level per-ore credit test fails for Fixed-omega and STRATA in 2023-24 (CLO and NMDC over-credited): an unmodelled sinter-related effect; the 2026 credit test passes (joint p 0.45)"
-  },
-  "verdict_rule": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
-  "note": "STRATA 1.5 on the Open-Meteo daily moisture: 2026 expanding test RMSE 5.99 against Fixed-omega 6.39 kg/tHM (STRATA 1.4 on the RH-scaled record: 6.44 against 6.94); both 2026 time splits and the strict 2023-24 test better than Fixed-omega. Pellet + oversize (6 days, June 2026, first month of pellet) remains biased; families with fewer than 10 days are modelled only."
+  ]
  },
  "channel_scales": {
-  "lam_pellet": 1.4213987523887308,
-  "lam_lump": 0.91964906104991,
-  "sd_pellet": 0.4478937457158164,
-  "sd_lump": 0.45834003054853245,
+  "lam_pellet": 1.3990937698521047,
+  "lam_lump": 0.9257580909145291,
+  "sd_pellet": 0.4528859500926759,
+  "sd_lump": 0.4621330651932068,
   "cov_pellet_lump": [
    [
-    0.20060880745134443,
-    -0.02198342445691197
+    0.20510568379134575,
+    -0.020050391176770307
    ],
    [
-    -0.021983424456912027,
-    0.21007558360322967
+    -0.0200503911767703,
+    0.2135669699448687
    ]
   ],
   "g_per_pt": {
@@ -3599,7 +3838,7 @@
    "sh_gomti": -0.000534,
    "sh_oversize": -0.000388
   },
-  "rho": 0.6819990594235956,
+  "rho": 0.7040944087666471,
   "n_days": 191,
   "names": [
    "q_pel",
@@ -3616,45 +3855,29 @@
    "d_nut"
   ],
   "mean": [
-   1.4213987523887308,
-   0.91964906104991,
+   1.3990937698521047,
+   0.9257580909145291,
    0.0,
-   0.8020679911901002,
+   0.6764420789351421,
    0.0,
-   0.0009950117140218335
+   0.0005832612346571695
   ],
   "cov": [
    [
-    0.20060880745134443,
-    -0.02198342445691197,
+    0.20510568379134575,
+    -0.020050391176770307,
     0.0,
-    -0.00195833709087121,
+    -0.0020631151427300803,
     0.0,
-    2.8966306362854107e-07
+    -1.0988347833405525e-07
    ],
    [
-    -0.021983424456912027,
-    0.21007558360322967,
+    -0.0200503911767703,
+    0.2135669699448687,
     0.0,
-    -0.0022487015803174873,
+    -0.002283625860021515,
     0.0,
-    -4.288872537208052e-07
-   ],
-   [
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0
-   ],
-   [
-    -0.0019583370908712095,
-    -0.0022487015803174725,
-    0.0,
-    0.07934469713129651,
-    0.0,
-    1.7930161637930788e-07
+    -2.798675009722283e-07
    ],
    [
     0.0,
@@ -3665,15 +3888,31 @@
     0.0
    ],
    [
-    2.896630636352964e-07,
-    -4.288872537126736e-07,
+    -0.002063115142730951,
+    -0.0022836258600207804,
     0.0,
-    1.793016163792492e-07,
+    0.08404968927373237,
     0.0,
-    1.1294146137964904e-07
+    -5.8869308818949725e-06
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    -1.0988347833390622e-07,
+    -2.798675009756983e-07,
+    0.0,
+    -5.8869308818948e-06,
+    0.0,
+    1.1920736228019694e-07
    ]
   ],
-  "sigma_e": 0.017238932347978853,
+  "sigma_e": 0.017942406341987457,
   "fixed": {
    "q_prod": 0.0,
    "d_humidity_g": 0.0
@@ -3704,7 +3943,37 @@
     0.002394099003991651,
     0.00034648447916820797
    ]
-  }
+  },
+  "v15_earlier_basis": {
+   "names": [
+    "q_pel",
+    "q_lump",
+    "q_prod",
+    "q_oper_rest",
+    "d_humidity_g",
+    "d_nut"
+   ],
+   "mean": [
+    1.4213987523887308,
+    0.91964906104991,
+    0.0,
+    0.8021,
+    0.0,
+    0.000995
+   ],
+   "sd": [
+    0.4478937457158164,
+    0.45834003054853245,
+    0.0,
+    0.2817,
+    0.0,
+    0.000336
+   ],
+   "rho": 0.6819990594235956,
+   "sigma_e": 0.017238932347978853,
+   "note": "STRATA 1.5 of 25 Oct 2026 on the earlier fuel basis (wet coke and nut coke less the inherent moisture of the lab sample, 0.4 %, entered as dry; PCI less its inherent moisture)"
+  },
+  "basis": "Dry fuel basis (user decision 25 Nov 2026). The evidence seed's omega_obs, omega_anchor, dobs, K_burnt, K_held and d_nut are re-stated as seed + (dry - earlier) day values of the same definitions from two Coke Energy pipeline runs on identical inputs (1 Aug 2025 - 25 Nov 2026, coke and nut-coke TM from fuel_chemistry); the network channels q_* are unchanged (network response to the fuel basis: coke +10 kg -0.00346 dry against -0.00351 as charged, nut coke -0.00189 against -0.00201). rho and sigma_e = the earlier values + their change on the seed; posterior at those values."
  },
  "gas_capacity_channel": false,
  "moisture": {
@@ -3712,7 +3981,7 @@
   "se": 0.0,
   "unit": "omega per g/Nm3",
   "source": "open_meteo",
-  "basis": "STRATA 1.5: no moisture data term. Blast moisture = Open-Meteo daily mean RH at Wardha mapped linearly to 7-21 g/Nm3 (RH 26.1 -> 7, 86.2 -> 21 g/Nm3; DATA-11), used in the coke-energy pipeline, the calibration and the balance of every plan. With the day's moisture in the balance the data term is +0.0000 +/- 0.0009 and lowers out-of-sample skill (coke 0.089 with, 0.120 without), so it is dropped (GAS-19). Validation of the series: top-gas H2 rises 0.041 +/- 0.003 pt per g/Nm3 within months in 2026 (wx26/h2) and 0.037 +/- 0.003 in 2023-24 (physical expectation 0.04-0.05; RH-scaled record 0.020 +/- 0.011). STRATA 1.4 (RH-scaled record): a_h 0.0016 +/- 0.0024"
+  "basis": "STRATA 1.5: no moisture data term. Blast moisture = Open-Meteo daily mean RH at Wardha mapped linearly to 7-21 g/Nm3 (RH 26.1 -> 7, 86.2 -> 21 g/Nm3; DATA-11), used in the coke-energy pipeline, the calibration and the balance of every plan. With the day's moisture in the balance the data term is +0.0000 +/- 0.0009 and lowers out-of-sample skill (coke 0.089 with, 0.120 without; dry fuel basis of 25 Nov 2026: 0.070 with, 0.092 without), so it is dropped (GAS-19). Validation of the series: top-gas H2 rises 0.041 +/- 0.003 pt per g/Nm3 within months in 2026 (wx26/h2) and 0.037 +/- 0.003 in 2023-24 (physical expectation 0.04-0.05; RH-scaled record 0.020 +/- 0.011). STRATA 1.4 (RH-scaled record): a_h 0.0016 +/- 0.0024"
  },
  "validation_v10_lomo": {
   "note": "v1.0 leave-one-month-out CV of the level (kept for reference): physics 0.0288, XGBoost 0.0298, mean 0.0296 (RMSE omega)"
@@ -3733,11 +4002,11 @@
  "operating_scales": {
   "production": 0.0,
   "production_sd": 0.0,
-  "other": 0.8021,
-  "other_sd": 0.2817,
+  "other": 0.6764,
+  "other_sd": 0.2899,
   "corr": 0.0,
   "production_channel": false,
-  "basis": "STRATA 1.5 (as 1.4): no production channel. The physics production part (omega change of the plan blend at the calibration operation but the plan production, TRZ residence) is computed and reported but carries scale 0; other = coke layers, fuels, oxygen, blast, scaled 0.80 +/- 0.28. On the Open-Meteo basis the production channel again lowers out-of-sample coke skill (0.102 with, 0.120 without; GAS-16 retired, GAS-25). Production acts on coke through the balance (heat loss per tHM, GAS-22)"
+  "basis": "STRATA 1.5 (as 1.4): no production channel. The physics production part (omega change of the plan blend at the calibration operation but the plan production, TRZ residence) is computed and reported but carries scale 0; other = coke layers, fuels, oxygen, blast, scaled 0.68 +/- 0.29 (dry fuel basis, 25 Nov 2026; 0.80 +/- 0.28 before). On the dry basis the production channel again lowers out-of-sample coke skill (0.068 with, 0.092 without; evidence seed, rho re-estimated per fit; GAS-16 retired, GAS-25). Production acts on coke through the balance (heat loss per tHM, GAS-22)"
  },
  "ri_set": {
   "name": "T26",
@@ -3874,9 +4143,9 @@
   "use": "network solve at the calibration (plus 16 solves for the Jacobian, cached per calibration), one solve per SLP iterate (plan blend) and three per reported plan (blend, blend + production, full operation); between solves the network Jacobian. Reported results carry the number of solves and the distance from the nearest solve."
  },
  "nut_coke": {
-  "coef": 0.000995,
-  "se": 0.000336,
+  "coef": 0.000583,
+  "se": 0.000345,
   "unit": "omega per kg/tHM nut coke",
-  "basis": "STRATA 1.5 posterior (GAS-23): omega rises with nut coke charged in the ore layer (mixed-layer reduction and cohesive-zone permeability), which the network carries only as coke-layer mass (network -0.00019 per kg); out-of-sample coke skill 0.120 with the term, 0.105 without. PCI: no data term (skill 0.098 with it); PCI acts through the balance and the network (-0.000005 omega per kg)"
+  "basis": "STRATA 1.5 posterior (GAS-23), dry nut coke (25 Nov 2026; 0.0010 +/- 0.0003 per kg/tHM on the earlier basis): omega rises with nut coke charged in the ore layer (mixed-layer reduction and cohesive-zone permeability), which the network carries only as coke-layer mass (network -0.00019 per kg); out-of-sample coke skill 0.092 with the term, 0.090 without, omega skill 0.097 against 0.083 (evidence seed, rho re-estimated per fit). PCI: no data term (skill 0.098 with it on the earlier basis); PCI acts through the balance and the network (-0.000005 omega per kg)"
  }
 }

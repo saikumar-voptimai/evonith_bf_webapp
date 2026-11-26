@@ -2,6 +2,10 @@
 
 Reference numbers are the engine runs behind *BF-02 blend optimiser with fuel cost and production: case report*
 (16 Oct 2026): UAT yard and prices, PCI 190, nut coke 70, HMT 1,470 degC, Jul-Oct 2026 two-zone calibration.
+Dry fuel basis (user decision 25 Nov 2026): PCI 190 and nut coke 70 kg/tHM are now the plant's dry rates (nut coke
+charged wet at dry / (1 - TM), PCI without moisture correction), so the cases give coke 302.8 kg/tHM; with the fuels on
+the case report's basis (PCI 190 less its inherent moisture, nut coke 70 less 0.45 %) the engine reproduces the case
+report's coke 305.7 and blend (``test_case_report_on_its_fuel_basis``).
 The production cases take 10-50 s each; set BURDEN_ENGINE_FAST=1 to skip them.
 """
 
@@ -47,11 +51,11 @@ def test_register_matches_schema():
     data = load_register_data()
     with open(SCHEMA_PATH, encoding="utf-8") as fh:
         jsonschema.validate(data, json.load(fh))
-    assert data["version"] == "1.8"
+    assert data["version"] == "1.9"
     groups = {}
     for f in data["facts"]:
         groups[f["group"]] = groups.get(f["group"], 0) + 1
-    assert groups == {"COKE": 17, "GAS": 25, "FLOW": 16, "DATA": 16, "BAND": 3, "ASM": 16, "MOD": 11, "VAL": 12}
+    assert groups == {"COKE": 17, "GAS": 25, "FLOW": 16, "DATA": 17, "BAND": 3, "ASM": 16, "MOD": 11, "VAL": 12}
 
 
 def test_retired_facts_are_refused():
@@ -87,40 +91,63 @@ def test_no_hard_coded_rule_duplicates():
 def test_case1_page_objective(eng):
     r = eng.min_cost(P=P_PAGE, fuel=False)
     assert r["feasible"]
-    assert r["cost"]["total"] == pytest.approx(30139, abs=5)
+    assert r["cost"]["total"] == pytest.approx(30055, abs=5)
     sh = r["share_wet"]
     assert sh["sinter_sp_02"] == pytest.approx(58.0, abs=0.1)
     assert sh["lloyds_pellet"] == pytest.approx(10.0, abs=0.1)
     assert sh["geomin_clo"] == pytest.approx(13.4, abs=0.2)
-    assert r["wet_kg"]["limestone"] == pytest.approx(13.7, abs=0.3)
+    assert r["wet_kg"]["limestone"] == pytest.approx(13.6, abs=0.3)
 
 
 def test_case2_fuel_added(eng):
+    """Dry fuel basis: PCI 190 and nut coke 70 kg/tHM dry; the fuel rate (BAND-01) is dry, the fuel as charged beside
+    it (coke and nut coke wet, PCI as injected)."""
     r = eng.min_cost(P=P_PAGE, fuel=True)
     o = r["out"]
     assert r["feasible"] and r["lp_iterations"] <= 5
-    assert o["K"] == pytest.approx(305.7, abs=0.3)
+    assert o["K"] == pytest.approx(302.8, abs=0.3)
     assert o["slag"] == pytest.approx(340.0, abs=0.1)
-    assert o["fuel_rate"] == pytest.approx(567.0, abs=0.3)
-    assert r["cost"]["total"] == pytest.approx(30139, abs=5)
-    assert r["raft"] == pytest.approx(2214, abs=2)
+    assert o["fuel_rate"] == pytest.approx(o["K"] + 70.0 + 190.0) and o["fuel_rate"] == pytest.approx(562.8, abs=0.3)
+    assert o["nut_wet"] == pytest.approx(70.0 / (1 - eng.case0["nut"]["moist_pct"] / 100))
+    assert o["fuel_charged"] == pytest.approx(o["K_wet"] + o["nut_wet"] + 190.0) and o["fuel_charged"] == pytest.approx(564.5, abs=0.3)
+    assert r["cost"]["nut"] == pytest.approx(o["nut_wet"] * eng.prices_fuel["nut"] / 1000)
+    assert r["cost"]["total"] == pytest.approx(30055, abs=5)
+    assert r["raft"] == pytest.approx(2215, abs=2)
     assert set(r["binding"]) >= {"slag cap", "basicity min"}
     assert r["warnings"] == []
 
 
+def test_case_report_on_its_fuel_basis(eng):
+    """The case report (16 Oct 2026) took PCI 190 as injected less its inherent moisture and nut coke 70 as charged less
+    0.45 % as the dry fuels. With those dry rates the engine returns its coke (305.7 dry, 307.0 wet) and blend; the cost
+    differs by the PCI the case report priced on 190 kg/tHM as injected."""
+    c = eng.case0
+    pci, nut = 190.0 * (1 - c["pci"]["moist_pct"] / 100), 70.0 * (1 - c["nut"]["moist_pct"] / 100)
+    r = eng.min_cost(P=P_PAGE, s=eng.cal_settings(pci_plant=pci, nut_plant=nut), fuel=True)
+    o = r["out"]
+    assert o["K"] == pytest.approx(305.7, abs=0.3) and o["K_wet"] == pytest.approx(307.0, abs=0.3)
+    assert o["nut_wet"] == pytest.approx(70.0)
+    sh = r["share_wet"]
+    assert (sh["sinter_sp_02"], sh["lloyds_pellet"]) == (pytest.approx(58.0, abs=0.1), pytest.approx(10.0, abs=0.1))
+    assert sh["geomin_clo"] == pytest.approx(13.4, abs=0.2) and sh["lloyds_clo"] == pytest.approx(18.6, abs=0.2)
+    assert r["cost"]["total"] + (190.0 - pci) * eng.prices_fuel["pci"] / 1000 == pytest.approx(30139, abs=5)
+
+
 def test_case2b_extended_yard_flags_extrapolation(ext):
     r = ext.min_cost(P=P_PAGE, fuel=True)
-    assert r["cost"]["total"] == pytest.approx(29306, abs=5)
+    assert r["cost"]["total"] == pytest.approx(29223, abs=5)
     assert r["share_wet"]["gomti_clo"] == pytest.approx(22.0, abs=0.2)
     assert any("Gomti" in w for w in r["warnings"])
 
 
 def test_calibration_reproduced():
-    """At the calibration burden the engine returns the calibration coke and blast (305.5 kg/tHM, 1,191 Nm3/tHM)."""
+    """At the calibration burden the engine returns the calibration coke and blast (304.4 kg/tHM dry, 1,158 Nm3/tHM;
+    shipped Jul-Oct 2026 calibration on the dry fuel basis of 25 Nov 2026)."""
     e = Engine(materials=UAT)
     c = e.cal
-    assert c["coke_model_cal"] == pytest.approx(305.5, abs=0.1)
-    assert c["hb_per_t_model_cal"] == pytest.approx(1191.4, abs=0.5)
+    assert c["coke_model_cal"] == pytest.approx(304.4, abs=0.1)
+    assert c["hb_per_t_model_cal"] == pytest.approx(1158.1, abs=0.5)
+    assert c["case"]["coke"]["moist_pct"] == pytest.approx(2.37, abs=0.01) and c["n_shifts"] == 173
 
 
 # ---------------------------------------------------------------------------------------------- bands
@@ -139,9 +166,10 @@ def test_band_01_ideal_shaft_not_reported(eng):
 
 
 def test_band_01_large_lower_zone_loss_not_reported():
+    """A lower-zone loss 80 GJ/h above the calibration's needs a dry fuel rate above 600 kg/tHM (BAND-01)."""
     e = Engine(materials=UAT)
     e.cal = copy.deepcopy(e.cal)
-    e.cal["Q_LZ_GJh"] += 60.0
+    e.cal["Q_LZ_GJh"] += 80.0
     r = e.min_cost(P=P_PAGE, fuel=True)
     assert not r["feasible"]
     assert r["viol"]["fuel rate max"] > 0
@@ -168,7 +196,7 @@ def test_process_settings_respect_raft_max(eng):
 def test_case3_max_production(eng):
     r = eng.max_production(Limits(process=True))
     assert r["P_tday"] == pytest.approx(2412, abs=3)
-    assert r["cost"]["total"] == pytest.approx(30789, abs=10)
+    assert r["cost"]["total"] == pytest.approx(30707, abs=10)
     assert "charging" in r["binding"]
     assert r["share_wet"]["lloyds_pellet"] == pytest.approx(19.8, abs=0.3)
     assert any("Pellet" in w for w in r["warnings"])
@@ -177,7 +205,7 @@ def test_case3_max_production(eng):
 @slow
 def test_case5b_blast_limited_max_production(eng):
     r = eng.max_production(Limits(process=True, V_max=105000.0))
-    assert r["P_tday"] == pytest.approx(2257, abs=3)
+    assert r["P_tday"] == pytest.approx(2254, abs=3)
     assert r["O2_nm3h"] == pytest.approx(6490, abs=15)
     assert "blast volume" in r["binding"]
 
@@ -188,7 +216,7 @@ def test_case4_min_total_cost(eng):
     LV = list(np.linspace(Settings().O2_per_air, eng.hy.o2_per_air_from_tag(L.enrich_max), 9))
     r = eng.min_total_cost(L, P_lo=84.0, step=1.0, o2_levels=LV, curves=False)
     assert r["P_tday"] == pytest.approx(2290, abs=3)
-    assert r["cost"]["total"] == pytest.approx(29935, abs=10)
+    assert r["cost"]["total"] == pytest.approx(29851, abs=10)
     assert r["settings"]["HBT"] == pytest.approx(1230.0)
 
 
@@ -196,4 +224,5 @@ def test_summary_is_flat(eng):
     r = eng.min_cost(P=P_PAGE, fuel=True)
     s = summary(r, eng)
     assert all(not isinstance(v, (dict, list)) for v in s.values())
-    assert s["fuel_rate"] == pytest.approx(567.0, abs=0.3)
+    assert s["fuel_rate"] == pytest.approx(562.8, abs=0.3)   # dry, the plant's basis (BAND-01)
+    assert s["fuel_charged"] == pytest.approx(564.5, abs=0.3) and s["nut_wet"] == pytest.approx(70.3, abs=0.1)

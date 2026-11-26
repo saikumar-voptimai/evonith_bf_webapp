@@ -112,9 +112,9 @@ class ForgeInputs(BaseModel):
     coke_fc_pct: float = Field(..., description="Coke fixed carbon, dry mass %")
     coke_ash_pct: float = Field(..., description="Coke ash, dry mass %")
     coke_vm_pct: float = Field(..., description="Coke volatile matter, dry mass %")
-    coke_moisture_pct: float = Field(..., description="Coke moisture as charged, mass %")
-    pci_kg_thm: float = Field(..., description="PCI as injected, kg/tHM")
-    nut_coke_kg_thm: float = Field(..., description="Nut coke as charged, kg/tHM")
+    coke_moisture_pct: float = Field(..., description="Coke total moisture as charged, mass %")
+    pci_kg_thm: float = Field(..., description="PCI as injected, dry (the plant's coal rate), kg/tHM")
+    nut_coke_kg_thm: float = Field(..., description="Nut coke, dry (the plant's nut-coke rate), kg/tHM")
     eta_co_pct: float = Field(..., description="ηCO the oxygen-balance model holds, %")
     hm_si_pct: float = Field(..., description="Hot-metal Si, mass %")
     hmt_c: float = Field(..., description="Hot-metal temperature, °C")
@@ -131,7 +131,9 @@ class ForgeModelResult(BaseModel):
     coke_kg_thm: float = Field(..., description="Coke rate, kg/tHM dry")
     coke_wet_kg_thm: float = Field(..., description="Coke rate as charged, kg/tHM")
     d_coke_kg_thm: float = Field(..., description="Coke rate minus the calibration point's (same model), kg/tHM dry")
-    fuel_rate_kg_thm: float = Field(..., description="Coke as charged + nut coke + PCI, kg/tHM")
+    fuel_rate_kg_thm: float = Field(
+        ..., description="Fuel rate, dry: coke + nut coke + PCI (plant basis, BAND-01), kg/tHM"
+    )
     eta_co_pct: float = Field(..., description="Top-gas CO utilisation, % (an input of the oxygen-balance model)")
     top_gas_c: float = Field(..., description="Top-gas temperature, °C (an input of the oxygen-balance model)")
     blast_air_nm3_thm: float = Field(..., description="Blast air, Nm³/tHM")
@@ -169,8 +171,8 @@ class ForgeCaseResult(BaseModel):
 class StrataSettingsUsed(BaseModel):
     hmt_c: float = Field(..., description="Hot-metal temperature target, °C")
     hm_si_pct: float = Field(..., description="Hot-metal Si target, mass %")
-    pci_kg_thm: float = Field(..., description="PCI as injected, kg/tHM")
-    nut_coke_kg_thm: float = Field(..., description="Nut coke as charged, kg/tHM")
+    pci_kg_thm: float = Field(..., description="PCI as injected, dry (the plant's coal rate), kg/tHM")
+    nut_coke_kg_thm: float = Field(..., description="Nut coke, dry (the plant's nut-coke rate), kg/tHM")
     blast_moisture_g_nm3: float = Field(..., description="Blast moisture, g/Nm³")
     hbt_c: float = Field(..., description="Hot-blast temperature, °C")
     o2_per_air: float = Field(..., description="Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air")
@@ -202,7 +204,9 @@ class StrataCaseResult(BaseModel):
     coke_kg_thm: float | None = Field(None, description="Coke rate, kg/tHM dry")
     coke_wet_kg_thm: float | None = Field(None, description="Coke rate as charged, kg/tHM")
     coke_sd_kg_thm: float | None = Field(None, description="1 sigma of the coke rate (STRATA-ω), kg/tHM dry")
-    fuel_rate_kg_thm: float | None = Field(None, description="Coke as charged + nut coke + PCI, kg/tHM")
+    fuel_rate_kg_thm: float | None = Field(
+        None, description="Fuel rate, dry: coke + nut coke + PCI (plant basis, BAND-01), kg/tHM"
+    )
     eta_co_pct: float | None = Field(None, description="Top-gas CO utilisation, %")
     top_gas_c: float | None = Field(None, description="Top-gas temperature, °C")
     shaft_efficiency: float | None = Field(None, description="Shaft efficiency, dimensionless")
@@ -414,7 +418,8 @@ def _two_zone_out(r: Mapping[str, Any], case: Mapping[str, Any], inputs: Mapping
         coke_kg_thm=k,
         coke_wet_kg_thm=wet,
         d_coke_kg_thm=k - k0,
-        fuel_rate_kg_thm=wet + inputs["nut_coke_kg_thm"] + inputs["pci_kg_thm"],
+        # dry, the plant's fuel-rate basis (BAND-01): coke + nut coke + PCI (user decision 25 Nov 2026)
+        fuel_rate_kg_thm=k + inputs["nut_coke_kg_thm"] + inputs["pci_kg_thm"],
         eta_co_pct=100 * float(r["eta"]),
         top_gas_c=float(r["T_top"]),
         blast_air_nm3_thm=float(r["V"]),
@@ -440,7 +445,7 @@ def _fixed_eta_out(r: Mapping[str, Any], inputs: Mapping[str, float], k0: float)
         coke_kg_thm=float(s["coke_dry_kgthm"]),
         coke_wet_kg_thm=wet,
         d_coke_kg_thm=float(s["coke_dry_kgthm"]) - k0,
-        fuel_rate_kg_thm=wet + inputs["nut_coke_kg_thm"] + inputs["pci_kg_thm"],
+        fuel_rate_kg_thm=float(s["coke_dry_kgthm"]) + inputs["nut_coke_kg_thm"] + inputs["pci_kg_thm"],
         eta_co_pct=float(s["eta_CO_pct"]),
         top_gas_c=float(r["case"]["T_top"]),
         blast_air_nm3_thm=float(s["blast_air_nm3thm"]),
@@ -470,8 +475,8 @@ def forge_inputs(case: Mapping[str, Any], omega: float, eta_pct: float) -> dict[
         coke_ash_pct=float(coke["ash"]),
         coke_vm_pct=float(coke["VM"]),
         coke_moisture_pct=float(coke["moist_pct"]),
-        pci_kg_thm=float(case["pci_kg"]) / (1 - float(case["pci"]["moist_pct"]) / 100),
-        nut_coke_kg_thm=float(case["nut_kg"]) / (1 - float(case["nut"]["moist_pct"]) / 100),
+        pci_kg_thm=float(case["pci_kg"]),
+        nut_coke_kg_thm=float(case["nut_kg"]),
         eta_co_pct=float(eta_pct),
         hm_si_pct=float(case["hm"]["Si"]),
         hmt_c=float(case["HMT"]),

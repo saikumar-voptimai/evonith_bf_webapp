@@ -63,7 +63,7 @@ def test_without_a_store_the_engine_loads_the_repository_file() -> None:
     try:
         reg = load_register()
         assert reg is load_register(overlay=False) and reg.overlay_version is None and reg.label == FILE["version"]
-        assert len(reg.facts()) == len(FILE["facts"]) == 116
+        assert len(reg.facts()) == len(FILE["facts"]) == 117
         view = facts.register_view()
         assert view["in_force_version"] == 0 and view["version_status"] == "file" and "No twin store" in view["reason"]
     finally:
@@ -71,12 +71,12 @@ def test_without_a_store_the_engine_loads_the_repository_file() -> None:
 
 
 def test_the_engine_loads_the_latest_approved_version(store) -> None:
-    assert load_register().label == "1.8"  # empty store: the file
+    assert load_register().label == "1.9"  # empty store: the file
     propose(store, {"BAND-01": {"band": [510, 600]}, "COKE-01": {"value": -9.0}})
     assert load_register().overlay_version is None  # pending: not in force
     facts.review(store, BOB, 1, approve=True, at=T0 + H)
     reg = load_register()
-    assert reg.label == "1.8 + overlay 1" and reg.band("BAND-01") == (510.0, 600.0) and reg.value("COKE-01") == -9.0
+    assert reg.label == "1.9 + overlay 1" and reg.band("BAND-01") == (510.0, 600.0) and reg.value("COKE-01") == -9.0
     assert Limits.from_register().fuel_min == 510.0  # the engine's default limits read the overlay
     propose(store, {"BAND-02": {"band": [1430, 1520]}}, at=T0 + 2 * H)
     facts.review(store, ALICE, 2, approve=False, at=T0 + 3 * H)  # rejected: version 1 stays in force
@@ -84,16 +84,16 @@ def test_the_engine_loads_the_latest_approved_version(store) -> None:
     propose(store, {"BAND-02": {"band": [1445, 1515]}}, at=T0 + 4 * H)
     facts.review(store, ALICE, 3, approve=True, at=T0 + 5 * H)  # values only: the author may approve
     eng = Engine()
-    assert eng.facts.label == "1.8 + overlay 3" and eng.band_hmt == (1445.0, 1515.0)
+    assert eng.facts.label == "1.9 + overlay 3" and eng.band_hmt == (1445.0, 1515.0)
     assert eng.facts.band("BAND-01") == (510.0, 600.0)  # cumulative: version 3 keeps version 1's change
     assert load_register(overlay=False).band("BAND-01") == (520.0, 600.0)  # the file is unchanged
 
 
 def test_an_overlay_on_another_file_version_or_an_unreadable_store_leaves_the_file(store) -> None:
-    store.facts.propose(base_version="1.7", overlay={"COKE-01": {"value": -1.0}}, actor=ALICE, at=T0)
+    store.facts.propose(base_version="1.8", overlay={"COKE-01": {"value": -1.0}}, actor=ALICE, at=T0)
     store.facts.review(1, approve=True, actor=BOB, at=T0 + H)
     facts.approved_overlay.clear()
-    assert load_register().overlay_version is None  # made against v1.7, the file is v1.8
+    assert load_register().overlay_version is None  # made against v1.8, the file is v1.9
     assert facts.register_view(store)["in_force_version"] == 0
     with store.engine.begin() as connection:
         connection.exec_driver_sql("DROP TABLE facts_version")
@@ -142,7 +142,8 @@ def test_a_proposal_is_validated_against_the_schema_and_the_register(store) -> N
 def test_the_overlay_is_cumulative_and_a_field_set_back_to_the_file_leaves_it(store) -> None:
     propose(store, {"COKE-01": {"value": -9.0, "status": "Disputed"}, "BAND-03": {"band": [0.25, 0.8]}})
     facts.review(store, BOB, 1, approve=True, at=T0 + H)
-    v2 = propose(store, {"COKE-01": {"value": -8.7}}, at=T0 + 2 * H)  # back to the file's value
+    file_value = FILE_FACTS["COKE-01"]["value"]
+    v2 = propose(store, {"COKE-01": {"value": file_value}}, at=T0 + 2 * H)  # back to the file's value
     assert v2["parent_version"] == 1 and v2["facts"] == ["BAND-03", "COKE-01"] and not v2["second_review"]
     with store.sessions() as session:
         overlay = session.scalars(select(FactsVersion.overlay).where(FactsVersion.version == 2)).one()
@@ -150,7 +151,8 @@ def test_the_overlay_is_cumulative_and_a_field_set_back_to_the_file_leaves_it(st
     view = facts.register_view(store, 2)
     coke = next(f for f in view["facts"] if f["id"] == "COKE-01")
     assert view["version_status"] == "pending" and coke["changed"] == ["status"] and coke["file"] == {"status": "Model"}
-    assert coke["value"] == -8.7 and coke["band"] == [-9.9, -8.7] and coke["band_kind"] == "range"
+    assert coke["value"] == FILE_FACTS["COKE-01"]["value"] == -8.79 and coke["band"] == [-9.9, -8.7]
+    assert coke["band_kind"] == "range"
 
 
 def test_a_version_must_be_made_from_the_version_in_force(store) -> None:
@@ -221,18 +223,17 @@ def test_the_export_is_schema_valid_and_loads_as_the_next_register_version(store
     assert list(Draft202012Validator(schema).iter_errors(doc)) == []
     assert register.register_problems(doc) == []
     reg = FactRegister(doc)
-    assert reg.version == "1.9" and doc["date"] == "2026-10-29" and reg.revision_log[0]["version"] == "1.9"
-    assert (
-        "COKE-01 value -8.7 -> -9" in reg.revision_log[0]["change"] and "Monthly refit" in reg.revision_log[0]["change"]
-    )
+    assert reg.version == "1.10" and doc["date"] == "2026-10-29" and reg.revision_log[0]["version"] == "1.10"
+    change = reg.revision_log[0]["change"]
+    assert "COKE-01 value -8.79 -> -9" in change and "Monthly refit" in change
     assert (
         reg.value("COKE-01") == -9.0 and reg.band("BAND-02") == (1445.0, 1515.0) and reg["COKE-02"].status == "Disputed"
     )
     assert doc["trials"] == FILE["trials"] and doc["trial_rules"] == FILE["trial_rules"]  # the trial list is kept
-    stamped = {f["id"] for f in doc["facts"] if f["version"] == "1.9"}
+    stamped = {f["id"] for f in doc["facts"] if f["version"] == "1.10"}
     assert stamped == {"COKE-01", "BAND-02", "COKE-02"} and reg["COKE-01"].date == "2026-10-29"
     assert [f for f in doc["facts"] if f["id"] not in stamped] == [f for f in FILE["facts"] if f["id"] not in stamped]
-    assert facts.next_version("1.9") == "1.10"
+    assert facts.next_version("1.9") == "1.10" and facts.next_version("1.10") == "1.11"
 
 
 # ------------------------------------------------------------------------------------------------- PostgreSQL
@@ -264,7 +265,7 @@ def test_on_postgresql_versions_and_their_audit_rows_commit_together(pg_store) -
         assert approved["in_force"] and load_register().band("BAND-01") == (515.0, 600.0)
         rows = pg_store.audit.query(object_type="facts_version", object_id=str(first["version"]))
         assert sorted(r.action for r in rows) == ["facts.propose", "facts.review"]
-        assert facts.export(pg_store)["version"] == "1.9"
+        assert facts.export(pg_store)["version"] == "1.10"
         with pg_store.sessions() as session:
             assert session.scalar(select(func.count()).select_from(FactsVersion)) == 1
     finally:

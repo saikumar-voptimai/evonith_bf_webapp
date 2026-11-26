@@ -777,7 +777,7 @@ Table whitelist enforced: unknown columns raise `ValueError`. `non_averaged_colu
 `DatasetService` feeds the interactive date-range selector in the Data Explorer:
 
 - **Step 1 (`fetch` / `fetch_step1`)** — historical static: queries `offline_feed.historical_static_ml_dataset` for the pre-cutoff range
-- **Step 2 (`fetch_rm_data` / `fetch_step2`)** — post-cutoff: fetches `charge_data` or `dpr_data` + `raw_material_strength_analysis` + weighted chemistry (ore/sinter/fuel/flux via `v_charge/dpr_material_quantities` and `merge_asof` to match latest lab sample before each charge)
+- **Step 2 (`fetch_rm_data` / `fetch_step2`)** — post-cutoff: fetches `charge_data` or `dpr_data` + `raw_material_strength_analysis` + weighted chemistry (ore/sinter/fuel/flux via `v_charge/dpr_material_quantities` and `merge_asof` to match latest lab sample before each charge). Fuel moisture (fix of 25 Nov 2026): `coke_moist_pct` / `nutcoke_moist_pct` = the total moisture `fuel_chemistry.tm` (latest sample with a TM before each charge), `coke_im_pct` / `nutcoke_im_pct` = the inherent moisture `fuel_chemistry.moisture`; from 7 Dec 2025 both columns had carried the inherent moisture, so the published dataset needs a rebuild
 - **Step 3 (`fetch_hotmetal_hourly`)** — `hot_metal_slag_analysis` interpolated onto a regular hourly grid
 - **Step 4 (`fetch_distribution_data`)** — `ops_config.burden_history` via ORM, pivoted to daily rows with derived `total_coke_portions`, `weighted_coke_angle`, etc.
 
@@ -845,6 +845,16 @@ run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI th
 (`services.optimiser.live_pci_kg_thm`, `BF_LIVE_PCI=0` in tests; else the regime median, then the calibration), nut coke
 70 kg/tHM; page 11 has an *Override PCI* toggle, the SPA field overrides when filled.
 
+- **Fuel basis** (user decision 25 Nov 2026; DATA-17): the balance, the calibrations, TRACE, FORGE and STRATA work on dry
+  fuels. Coke and nut coke = charge record (wet, as charged) × (1 − TM/100) (`build_shifts.dry_fuels`,
+  `coke_energy.yml → charge_moisture`: a `COKE_MOIST%` / `NUTCOKE_MOIST%` reading is the TM when ≥ 1.0 % and not equal
+  to the hour's `COKE_IM%` / `NUTCOKE_IM%`, else the default TM 2.5 / 6.5 %; `COKE_TM_USED%`, `COKE_TM_DEFAULT_H` per
+  shift); PCI as recorded (`pci: as_recorded`; `less_im` restores the IM deduction). The PCI and nut-coke inputs of a
+  plan are the plant's dry rates (nut coke charged wet at dry / (1 − TM), PCI without correction); `fuel_rate` (BAND-01)
+  is dry, `fuel_charged` the fuel as charged; costs and charging on the as-charged masses (prices per tonne as charged).
+  The plant's tags `coke_rate`, `nut_coke_rate`, `coal_rate_actual_value` are dry and `fuel_rate` is their sum: the dry
+  charge record is +0.44 % above the tag (median per shift; the wet record was +2.83 %).
+
 - **Modes:** Step 1 cheapest production level (`Engine.min_total_cost` + frontier), Step 2 fixed production
   (`min_cost(fuel=True)` next to `fuel=False`, the page-9 objective), maximum production (`max_production`).
 - **Model check** (top of the page): latest shift's burnt coke next to the energy- and oxygen-balance predictions at
@@ -855,7 +865,8 @@ run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI th
 - **Layout and commentary:** results follow page 9 (overview strip, Cost / Fuel / Slag / Charging panels with the plant
   bands from `utils/slag_bands.py`, blend table beside a donut; user decision 11 Nov 2026: fuel figures as charged
   (wet coke, dry alongside) and blend shares / kg with two decimals on page 11 and the SPA, so the parts add up as
-  shown; the run list's `coke_kg_thm` is wet). *Generate commentary* sends the optimiser notes
+  shown; the run list's `coke_kg_thm` is wet; since 25 Nov 2026 the fuel panel shows coke, nut coke and PCI as
+  charged, their total and the dry fuel rate against BAND-01). *Generate commentary* sends the optimiser notes
   (`src/assets/burden_engine/optimiser_notes.md`), the fact register as a table and the run to the LLM; context is
   built in `utils/burden_engine/commentary.py` (pure, tested), the panel is `ui/burden_optimiser/commentary.py`.
 - **Engine:** `src/utils/burden_engine/` — pure numerical (no Streamlit). Sequential LP (HiGHS) re-linearising the
@@ -865,15 +876,19 @@ run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI th
   `assets/burden_engine/omega_model.json` (**STRATA 1.5** — Stratified Transport & Reduction Analytics, formerly OMEGA:
   STRATA-Flow ring counter-current model of the thermal reserve zone; RI and RDI from the Evonith laboratory tests
   (set T26, GAS-21; Gomti 65 % without test), rate law [ln(1−RI)/ln(1−RI_sinter)]^β (11.25/d)^n with β 0, n 1.0
-  calibrated on the plant data; plant-data scales for pellet (1.42 ± 0.45) and lump ore (0.92 ± 0.46), an
-  other-operation channel (coke layers, fuels, O₂, blast; 0.80 ± 0.28) and a nut-coke term (0.0010 ± 0.0003 per
-  kg/tHM) from an out-of-sample-tested AR(1) posterior, GAS-13..26; **no production channel** since 1.4
+  calibrated on the plant data; plant-data scales for pellet (1.40 ± 0.45) and lump ore (0.93 ± 0.46), an
+  other-operation channel (coke layers, fuels, O₂, blast; 0.68 ± 0.29) and a nut-coke term (0.00058 ± 0.00035 per
+  kg/tHM dry) from an out-of-sample-tested AR(1) posterior on the dry fuel basis (25 Nov 2026; 1.42 / 0.92 / 0.80 /
+  0.0010 on the earlier basis, `channel_scales.v15_earlier_basis`), GAS-13..26; **no production channel** since 1.4
   (`operating_scales.production_channel: false`, scale 0: it failed the strict 2023–24 test, GAS-16 retired, GAS-25);
   **no moisture term** since 1.5 (`moisture.coef` 0: the day's Open-Meteo moisture acts through the balance, GAS-19
   retired); gas-capacity channel retired), solved inside the balance via `rist.solve_2z(omega_fn=)`. Validation (Open-
-  Meteo daily moisture): 2026 expanding test RMSE 5.99 vs 6.39 kg/tHM for Fixed-ω (coke skill +0.120; STRATA 1.4 on the
-  RH-scaled record 6.44 vs 6.94); strict 2023–24 test with frozen parameters, 411 days, RMSE 8.00 vs 8.23
-  (`validation.strict_2023_24` in the asset; on the smoothed day-of-year moisture 1.4 gave 7.40 vs 7.95).
+  Meteo daily moisture, dry fuel basis): 2026 expanding test RMSE 6.42 vs 6.77 kg/tHM for Fixed-ω (coke skill +0.100;
+  5.99 vs 6.39, +0.120 on the earlier fuel basis; STRATA 1.4 on the RH-scaled record 6.44 vs 6.94); strict 2023–24 test
+  with frozen parameters, 411 days, RMSE 8.00 vs 8.23 (`validation.strict_2023_24` in the asset, not repeated on the dry
+  basis: that data set carried the TM; on the smoothed day-of-year moisture 1.4 gave 7.40 vs 7.95). The network takes
+  the dry coke and nut coke (`run_case`: coke dry); its response to the basis is −0.00346 against −0.00351 ω per +10 kg
+  coke.
   **No surrogate:** the ring quantities
   come from the STRATA-Flow network itself (`src/utils/strata_flow/`, vendored bf2_momentum v0.4.1, ~1.1 s per solve)
   through `utils/burden_engine/strata_network.py`: a solve at the calibration plus its Jacobian (16 solves, cached in
@@ -943,8 +958,9 @@ run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI th
   *Save as operator inputs* for supervisor / admin → `ui.bmo.operator_inputs.save_dust_preferences`) and the SPA yard
   panel's *Operator inputs in force* (dust row editor → `PUT /api/operator-inputs` `dust_editor`): both write the
   `dust_editor` section that `slag_basis` lays over `setting_bmo.yml`, so page 9, page 11, the API and the worker read
-  one dust. The 16 Oct case report tests run without the basis; through the API (reference yard, basis on) Step 2 at
-  2,270 t/d is sinter 62.5 / Geomin 14.1 / Lloyds CLO 13.4 / pellet 10 %, quartz 2.45 kg, coke 302.2, Rs 30,092/tHM.
+  one dust. The 16 Oct case report tests run without the basis; through the API (reference yard, basis on, dry fuel
+  basis) Step 2 at 2,270 t/d is sinter 62.5 / Geomin 14.1 / Lloyds CLO 13.4 / pellet 10 %, quartz 2.49 kg, coke 299.4 dry,
+  fuel rate 559.4 dry, Rs 30,009/tHM.
 - **Sinter RI / RDI:** from the latest raw-material strength data (calibration `sinter_strength`, pipeline columns
   SINTER_HOT_STRENGTH_RI / _RDI), not from the laboratory report.
 - **Blast moisture:** Open-Meteo daily mean RH at Wardha (`utils/coke_energy/weather.py`, DATA-11, STRATA 1.5):
@@ -957,15 +973,21 @@ run; page defaults (`scenarios.fuel_defaults`, user decision 7 Nov 2026): PCI th
   weather record, the STRATA 1.4 basis), `psychrometric` and `table` remain selectable in
   `config/coke_energy.yml → blast_moisture.source`. Used everywhere blast moisture enters (user decision 25 Oct 2026):
   the Coke Energy pipeline (`run_shifts.case_from_shift`, each shift's day); a calibration (its window's Open-Meteo
-  mean; the shipped `cal_2z_jul_oct_2026.json` is re-solved at 18.45 g/Nm³ instead of 15); every plan (the plan day's
+  mean; the shipped `cal_2z_jul_oct_2026.json`: 18.51 g/Nm³, recomputed on 25 Nov 2026 on the dry fuel basis from the
+  173 stable shifts of 1 Jul – 7 Oct 2026, ω 0.792, zone losses 32.5 / 15.3 GJ/h, coke 304.4 kg/tHM dry, `fuel_basis` in
+  the file; before: 80 shifts at 18.45 g/Nm³, ω 0.801, 44.5 / 21.5 GJ/h); every plan (the plan day's
   value, fetched live: `weather.plan_blast_moisture`, the engine `Settings()` default, page 11 default; today's value is
   fetched again every 6 h); the Blend Mix Optimiser energy balance and RAFT (`energy_balance.blast_moisture_g_per_nm3:
   null` → the day's value unless the operator enters one). `Engine.cal_settings()` = the calibration point (engine
   calls without settings). `COKE_ENERGY_TODAY=YYYY-MM-DD` fixes the plan day (tests: 2026-10-15). The 16 Oct case report
-  (15 g/Nm³) is reproduced by the tests on `tests/fixtures/cal_2z_jul_oct_2026_case_report_15g.json`. The asset's
+  (15 g/Nm³) is reproduced by the tests on `tests/fixtures/cal_2z_jul_oct_2026_case_report_15g.json` with the fuels on
+  its basis (PCI 190 less its IM, nut coke 70 less 0.45 %); with PCI 190 and nut coke 70 dry the same case gives coke
+  302.8 kg/tHM, Rs 30,055/tHM. The asset's
   `moisture.source` must match (tested).
-- **Fact register:** `src/config/facts_register.json` v1.8, 116 facts (schema in `config/schemas/`). Every coefficient outside the
-  balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
+- **Fact register:** `src/config/facts_register.json` v1.9, 117 facts (schema in `config/schemas/`). Every coefficient outside the
+  balance, the plausibility bands (dry fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
+  v1.9 (25 Nov 2026): dry fuel basis (DATA-17 added; BAND-01, ASM-01/03/08, DATA-01/06/12, COKE-01..06/08/14, GAS-14/20/23
+  restated; MOD / VAL regenerated).
   Change values there, not in code; retired facts are refused by `FactRegister.active()`. The register also holds the
   **trial list** (`trials`, `trial_rules`; user decision 13 Nov 2026, from slides 36 and 46 of the client deck of 27 Oct
   2026): T1, T2, T3, T5, T6, T7, T8, TR-2, TR-3, TR-1b in rank order (money at stake × uncertainty), each with the
@@ -1034,15 +1056,16 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   administrator; writes audited (`facts.propose`, `facts.review`). `utils.burden_engine.facts.load_register()` = the file
   with the latest approved overlay made against its version (`services.facts.approved_overlay`, memo 60 s), else the
   file; `load_register(path)` / `overlay=False` read the file only; retired facts refused (`RetiredFactError`). The
-  export is the next file version (v1.8 -> v1.9, changed facts stamped with the approval day IST, revision-log entry).
+  export is the next file version (v1.9 -> v1.10, changed facts stamped with the approval day IST, revision-log entry).
 - Burnt vs charged (SV-4.4, `/admin/burnt-vs-charged`): `services/burnt_vs_charged.py` (windows 1 shift - 1 month via
   `transit.window_pairs` + `concordance` = `window_agreement`, `decompose_window_sd`, `lag_scan`, `closure` + per month;
   leak-water check `utils/coke_energy/leak_check.py`: recent 3 d vs 14 d step of charged - raw burnt, top-gas H2, RAFT,
   model `strata_flow.plant_effects.leak_for_gap`, thresholds `coke_energy.yml -> twin.burnt_vs_charged.leak_check`),
   bases all / stable; 8 s for both on 1,325 shifts, so `twin.trace` builds it after the TRACE view (`trace.refresh`) into
   `burnt_vs_charged.json` beside it; `GET /api/admin/burnt-vs-charged?basis=` (`api/routers/burnt_vs_charged.py`, admin).
-  Charge-record check (20 Nov 2026): the pipeline leaves out a shift whose charge record (coke + nut coke + PCI as
-  charged) lies outside −6 to +12 % of the plant's fuel-rate tag (`ACT. FUEL RATE`; `pipeline.exclusion_reasons`,
+  Charge-record check (20 Nov 2026): the pipeline leaves out a shift whose charge record (coke + nut coke + PCI, dry
+  since 25 Nov 2026) lies outside −9 to +10 % of the plant's fuel-rate tag (−6 to +12 % on the wet record;
+  `ACT. FUEL RATE`; `pipeline.exclusion_reasons`,
   `coke_energy.yml → charge_record_check`, `PipelineSettings.fuel_rate_band_pct`, None = the web model): coke counted
   at half in Nov 2025, PCI read high on 6-16 Dec 2025 and 16-21 Oct 2026. The twin window fails with the reason; the
   analysis lists them (`excluded`, page panel *Shifts left out*). All-shift CCC 0.32 / 0.29 / 0.25 → 0.81 / 0.90 / 0.96

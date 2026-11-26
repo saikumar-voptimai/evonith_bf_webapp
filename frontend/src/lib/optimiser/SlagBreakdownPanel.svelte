@@ -176,7 +176,7 @@ for a plan on the Blend Mix Optimiser's slag basis; a plan on the calibration's 
 		</div>
 		<div class="wide">
 			<DataTable
-				caption="Fuels and ash: the calibration's analyses of coke, nut coke and PCI (alkalis, S and P from the Blend Mix Optimiser's fuel-ash inputs); PCI and nut coke are the fixed inputs, coke the plan's"
+				caption="Fuels and ash: the calibration's analyses of coke, nut coke and PCI (alkalis, S and P from the Blend Mix Optimiser's fuel-ash inputs); PCI and nut coke are the fixed inputs, coke the plan's; coke and nut coke as charged at their total moisture, PCI as injected (dry, no moisture correction)"
 				rows={plan.slag.fuel_ash ?? []}
 				columns={fuelAshColumns}
 				rowKey={(r) => r.fuel}

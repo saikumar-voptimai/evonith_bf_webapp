@@ -46,6 +46,7 @@ burden_optimiser:
       limestone: 2369
       dolomite: 1196
     fuel:
+      # Rs per tonne as charged (coke and nut coke wet, PCI as injected): the costs are the wet masses x these prices
       coke_price: 31960
       nut_price: 26292
       pci_price: 21168
@@ -61,6 +62,10 @@ burden_optimiser:
 
   thermal:
     # Client basis (ASM-08). PCI and nut coke are fixed inputs; HMT and Si are band-checked (BAND-02/03).
+    # Dry basis (user decision 25 Nov 2026): pci_kg_thm and nut_kg_thm are the plant's coal and nut-coke rates, both
+    # dry (the plant's fuel_rate tag = coke_rate + nut_coke_rate + coal_rate_actual_value). PCI takes no moisture
+    # correction; nut coke is charged wet at dry / (1 - TM), TM of the calibration window (coke_energy.yml ->
+    # charge_moisture), and the charging rows and the nut-coke cost use the wet mass.
     # hm_Si is the thermal Si of the coke balance only. The slag balance holds the Blend Mix Optimiser's Si / S / C
     # (setting_bmo.yml -> slag_balance, operator-editable on page 9), with its dust rows and minor-oxide rules, so
     # both pages report one slag for one blend (user decision 11 Nov 2026).

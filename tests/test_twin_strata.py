@@ -93,10 +93,11 @@ def test_pellet_for_sinter_raises_omega_through_the_blend_channel(world, anchor)
 
 def test_nut_coke_enters_by_its_data_term_and_the_coke_layers(world, anchor) -> None:
     row = _anchor_row(world, anchor).copy()
-    row["NUTCOKE_CALC_MT"] += 10.0 * row.PRODUCTIONTONNESPERHR / 1000  # +10 kg/tHM as charged
+    # +10 kg/tHM dry (the window's nut coke enters on the dry basis, NUT_DRY; 25 Nov 2026)
+    row["NUT_DRY"] += 10.0 * row.PRODUCTIONTONNESPERHR / 1000
     sw = strata_window.evaluate_window(anchor, row, humidity=anchor.state.humidity)
     t, m = sw.terms, anchor.model
-    assert t.d_nut == pytest.approx(10 * m.a_nut, rel=1e-9)  # GAS-23: 0.000995 per kg/tHM
+    assert t.d_nut == pytest.approx(10 * m.a_nut, rel=1e-9)  # GAS-23: 0.00058 per kg/tHM dry
     assert t.d_blend == pytest.approx(0.0, abs=1e-12) and t.d_disc == pytest.approx(0.0, abs=1e-12)
     assert -0.004 < t.d_rest < 0.0  # network coke-layer mass, scaled by lam_other
     assert sw.sigma == pytest.approx(

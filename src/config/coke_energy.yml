@@ -62,17 +62,36 @@ coke_energy:
   bad_shifts: ["2026-10-07_C"]
   max_ore_moisture_pct: 15.0
 
-  # Charge-record check (20 Nov 2026): a shift (or twin window) whose charge record disagrees with the plant's own fuel
-  # rate is a data error and is not balanced. Charge record = coke + nut coke + PCI as charged (hourly dataset *_CALC_MT)
-  # per tonne of hot metal; plant fuel rate = the ACT. FUEL RATE tag of the hourly dataset, mean over the shift. On
-  # normal shifts the record runs 3.0 % above the tag (robust SD 2.2 %, Sep 2025 - Nov 2026); the band is that +-4 SD.
-  # It catches coke counted at half in Nov 2025 (-21 to -33 %), PCI read 40-70 kg/tHM high on 6-16 Dec 2025 (+10 to
-  # +18 %) and PCI read about 420 kg/tHM on 16-21 Oct 2026 (+43 %; TRACE 30-60 kg/tHM). None of those shifts was
-  # stable, so no calibration changes; over every balanced shift TRACE against charged coke went from CCC 0.32 / 0.29 /
-  # 0.25 (shift / day / week) to 0.81 / 0.90 / 0.96 and the raw mass closure from 104.2 % to 100.7 %
-  # (docs/burnt_vs_charged_coke.md, update of 20 Nov 2026). A shift without the tag is not checked; null turns it off.
+  # Dry basis of the fuels (user decision 25 Nov 2026; utils/coke_energy/build_shifts.py, ChargeMoisture). The charge
+  # record holds coke and nut coke as charged, wet: dry = wet x (1 - TM / 100), TM = total moisture of the raw-material
+  # analysis (fuel_chemistry.tm via COKE_MOIST% / NUTCOKE_MOIST% of the hourly dataset). The plant's coke-rate,
+  # nut-coke-rate and coal-rate tags are dry, and fuel_rate is their sum. 1 Sep - 11 Nov 2026, daily medians: coke wet
+  # 305.3, dry 297.7, tag 297.6; nut coke wet 75.3, dry 71.1, tag 70.0 kg/tHM. A reading below min_tm_pct, or equal to
+  # the hour's COKE_IM% / NUTCOKE_IM%, is the inherent moisture of the lab sample (0.30 - 0.53 %, carried by the hourly
+  # dataset from 7 Dec 2025 until the fix of 25 Nov 2026), not a TM: the default TM of the material replaces it. The
+  # charge-weighted TM per hour was 1.40 - 9.19 % (coke) and 3.50 - 13.80 % (nut coke), Aug 2025 - Nov 2026.
+  # PCI: as_recorded (the plant's coal rate is dry; user decision 25 Nov 2026) | less_im (recorded x (1 - PCI_IM% / 100),
+  # the rule before).
+  charge_moisture:
+    coke_tm_default_pct: 2.5          # coke_1 2.2 %, coke_2 3.7 %, charge-weighted, Sep - Nov 2026
+    nut_coke_tm_default_pct: 6.5      # nut coke, Sep - Nov 2026 mean (3.6 - 13.8 %)
+    min_tm_pct: 1.0                   # coke_1 TM >= 1.7 %, inherent moisture <= 0.55 %
+    max_tm_pct: 15.0
+    pci: as_recorded
+
+  # Charge-record check (20 Nov 2026; dry basis 25 Nov 2026): a shift (or twin window) whose charge record disagrees with
+  # the plant's own fuel rate is a data error and is not balanced. Charge record = coke + nut coke + PCI per tonne of hot
+  # metal on the plant's dry basis (COKE_DRY + NUT_DRY + PCI_DRY: coke and nut coke less their TM, PCI as recorded);
+  # plant fuel rate = the ACT. FUEL RATE tag of the hourly dataset (dry), mean over the shift. On normal shifts the dry
+  # record runs 0.4 % above the tag (robust SD 2.4 %, Sep 2025 - Nov 2026; the wet record ran 2.9 % above); the band is
+  # that +-4 SD (was [-6, 12] around the wet record's +3 %; the same shifts are caught). It catches coke counted at half
+  # in Nov 2025 (-21 to -33 %), PCI read 40-70 kg/tHM high on 6-16 Dec 2025 and PCI read about 420 kg/tHM on 16-21 Oct
+  # 2026 (+43 %; TRACE 30-60 kg/tHM). None of those shifts was stable, so no calibration changes; over every balanced
+  # shift TRACE against charged coke went from CCC 0.32 / 0.29 / 0.25 (shift / day / week) to 0.81 / 0.90 / 0.96 and the
+  # raw mass closure from 104.2 % to 100.7 % (docs/burnt_vs_charged_coke.md, update of 20 Nov 2026). A shift without the
+  # tag is not checked; null turns it off.
   charge_record_check:
-    fuel_rate_band_pct: [-6.0, 12.0]
+    fuel_rate_band_pct: [-9.0, 10.0]
 
   # DPR carry-forward (21 Nov 2026): the plant enters the DPR a day or more late (on 21 Nov the last one was 17 Nov), and
   # a shift or twin window needs its day's dust-catcher and GCP dust. Days after the last DPR, up to this many, use the
@@ -254,7 +273,7 @@ coke_energy:
         min_window_charges: 40
         max_windows: 72
         min_windows: 12              # fewer stored windows: default_factor
-        default_factor: 1.70         # 16 Oct-12 Nov 2026: median 1.697, weekly 1.689-1.716
+        default_factor: 1.66         # dry basis (25 Nov 2026): 16 Oct-12 Nov 2026 1.657 per shift (1.697 before)
         read_days: 4                 # per-charge record read per request (memoised 5 min)
     # Data age on the Live Twin (SV-1.9, services.twin_views.source_freshness): the evaluation records the newest
     # time of each source (snapshot flags.sources); a source is stale from this age, h. InfluxDB on the page follows

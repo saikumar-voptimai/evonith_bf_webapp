@@ -73,8 +73,12 @@ def case_from_shift(r):
     flux = dict(name='flux', dry_kg=np.nan_to_num(r['FLUX_CALC_MT']) * k, moist_pct=0.0, LOI_type='CO2',
                 comp=dict(Fe=np.nan_to_num(r.get('FLUX_FE2O3%')) * 0.6994, SiO2=np.nan_to_num(r.get('FLUX_SIO2%')), CaO=np.nan_to_num(r.get('FLUX_CAO%')),
                           MgO=np.nan_to_num(r.get('FLUX_MGO%')), Al2O3=np.nan_to_num(r.get('FLUX_AL2O3%')), LOI=np.nan_to_num(r.get('FLUX_LOI%'))))
-    coke = dict(FC=r['COKE_FC%'], ash=r['COKE_ASH%'], VM=r['COKE_VM%'], moist_pct=r['COKE_MOIST%'], ash_comp=ash(r, 'COKE'))
-    nut = dict(FC=r['NUTCOKE_FC%'], ash=r['NUTCOKE_ASH%'], VM=r['NUTCOKE_VM%'], moist_pct=r['NUTCOKE_MOIST%'], ash_comp=ash(r, 'NUTCOKE'))
+    # moisture of coke and nut coke = the TM that made the dry mass (build_shifts.dry_fuels); PCI: its inherent
+    # moisture, water carried by the dry coal as recorded
+    coke = dict(FC=r['COKE_FC%'], ash=r['COKE_ASH%'], VM=r['COKE_VM%'], moist_pct=r.get('COKE_TM_USED%', r['COKE_MOIST%']),
+                ash_comp=ash(r, 'COKE'))
+    nut = dict(FC=r['NUTCOKE_FC%'], ash=r['NUTCOKE_ASH%'], VM=r['NUTCOKE_VM%'],
+               moist_pct=r.get('NUTCOKE_TM_USED%', r['NUTCOKE_MOIST%']), ash_comp=ash(r, 'NUTCOKE'))
     pci = dict(FC=r['PCI_FC%'], ash=r['PCI_ASH%'], VM=r['PCI_VM%'], moist_pct=r['PCI_IM%'], ash_comp=ash(r, 'PCI'))
     # normalise proximate to dry basis
     for fu in (coke, nut, pci):
@@ -116,6 +120,8 @@ def shift_balance(r, p=None):
     out = dict(skey=r.name, sdate=r['sdate'], shift=r['shift'], prod_th=prod, hm_t=r['PRODUCTIONTONNESPERHR'],
                coke_kgthm_dry=K, coke_kgthm_calc=r['COKE_CALC_MT'] * 1000 / r['PRODUCTIONTONNESPERHR'],
                nut_kgthm_dry=case['nut_kg'], pci_kgthm_dry=case['pci_kg'],
+               coke_tm_pct=case['coke']['moist_pct'], nut_tm_pct=case['nut']['moist_pct'],
+               coke_tm_default_h=r.get('COKE_TM_DEFAULT_H', np.nan), nut_tm_default_h=r.get('NUT_TM_DEFAULT_H', np.nan),
                fuel_kgthm_dry=K + case['nut_kg'] + case['pci_kg'],
                sinter_kgthm=case['burden'][0]['dry_kg'], ore_kgthm=case['burden'][1]['dry_kg'], pellet_kgthm=case['burden'][2]['dry_kg'],
                flux_kgthm=case['burden'][3]['dry_kg'],

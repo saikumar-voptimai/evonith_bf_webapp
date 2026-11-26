@@ -89,7 +89,7 @@ export const FORGE_LEVERS: Lever<ForgeLeverKey>[] = [
 	},
 	{
 		key: 'nut_coke_kg_thm',
-		label: 'Nut coke as charged',
+		label: 'Nut coke, dry',
 		unit: 'kg/tHM',
 		digits: 1,
 		step: 1,
@@ -196,7 +196,7 @@ export const STRATA_SETTINGS: Lever<StrataSettingKey>[] = [
 	},
 	{
 		key: 'nut_coke_kg_thm',
-		label: 'Nut coke as charged',
+		label: 'Nut coke, dry',
 		unit: 'kg/tHM',
 		digits: 1,
 		step: 1,
@@ -385,7 +385,7 @@ export const FORGE_OUTPUTS: OutputRow<{
 	},
 	{
 		key: 'tz_fuel',
-		label: 'Fuel rate, two-zone',
+		label: 'Fuel rate (dry), two-zone',
 		unit: 'kg/tHM',
 		digits: 1,
 		value: (r) => r.two_zone?.fuel_rate_kg_thm,
@@ -479,7 +479,7 @@ export const STRATA_OUTPUTS: OutputRow<StrataCaseResult>[] = [
 	{ key: 'sd', label: 'Coke, 1σ (STRATA-ω)', unit: 'kg/tHM', digits: 1, value: (r) => r.coke_sd_kg_thm },
 	{
 		key: 'fuel_rate',
-		label: 'Fuel rate',
+		label: 'Fuel rate, dry',
 		unit: 'kg/tHM',
 		digits: 1,
 		value: (r) => r.fuel_rate_kg_thm,

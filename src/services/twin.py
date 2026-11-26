@@ -292,6 +292,7 @@ def due_windows(
     backfill_hours: int,
     provisional_dates: Collection[date] | None = None,
     provisional_hours: int = 0,
+    redo: bool = False,
 ) -> list[pd.Timestamp]:
     """``window_end`` and the windows before it to evaluate again (IST, oldest first):
 
@@ -300,11 +301,16 @@ def due_windows(
       stops early, before the balances, so the retry is cheap);
     * in the last ``max(backfill_hours, provisional_hours)``, when ``provisional_dates`` is given: the windows evaluated
       on a DPR carried forward (``provisional_dpr``) whose date is no longer provisional, i.e. the day's DPR has been
-      entered since. Each is evaluated once more, then its flag is gone."""
+      entered since. Each is evaluated once more, then its flag is gone.
+
+    ``redo``: every window of the last ``backfill_hours`` again, stored or not (a change of the model or of the data
+    basis, such as the dry fuel basis of 25 Nov 2026, makes the stored snapshots stale)."""
     hours = max(int(backfill_hours), int(provisional_hours) if provisional_dates is not None else 0)
     ends = [window_end - HOUR * k for k in range(hours, 0, -1)]
     if not ends:
         return [window_end]
+    if redo:
+        return [*ends[-int(backfill_hours) :], window_end] if int(backfill_hours) > 0 else [window_end]
     rows = store.snapshots.series(to_utc(ends[0]), to_utc(window_end))
     stored = {ist_naive(_aware_utc(r.window_end)): r for r in rows}
     recent = set(ends[-int(backfill_hours) :]) if int(backfill_hours) > 0 else set()

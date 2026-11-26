@@ -44,6 +44,10 @@ REL = 1e-6
 @pytest.fixture(scope="module")
 def world(tmp_path_factory):
     fd, m10, hm, dpr = synthetic_frames(start="2026-05-01", days=18)
+    # one shift with the blast meter 30 % high: outside the stable band of the meter against the reconciled blast
+    # (whatif.STABLE_BOUNDS), so the record holds non-stable shifts on the dry fuel basis too
+    c_shift = (m10["ts"] >= pd.Timestamp("2026-05-07 22:00")) & (m10["ts"] < pd.Timestamp("2026-05-08 06:00"))
+    m10.loc[c_shift, "hot_blast_vol_nm3h"] *= 1.3
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         result = run_pipeline(fd, m10, hm, dpr, SETTINGS)

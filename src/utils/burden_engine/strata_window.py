@@ -86,9 +86,10 @@ def omega_state(
 ) -> tuple[OmegaState, list[str]]:
     """The omega state of a row of shift inputs (``build_shift_inputs``: a window, or the mean of the anchor's shifts).
 
-    Per tonne of hot metal (the row's production): wet charge of sinter, pellet and each ore as charged, dry coke
-    (``COKE_DRY``), nut coke and PCI as charged; production in t/h; hot blast incl. O2 per tonne (meter basis) and the
-    O2 fraction of the hot blast from the 10-min means. Returns the state and the unmapped ore types."""
+    Per tonne of hot metal (the row's production): wet charge of sinter, pellet and each ore as charged, dry coke,
+    nut coke and PCI (``COKE_DRY``, ``NUT_DRY``, ``PCI_DRY``: the plant's dry basis, user decision 25 Nov 2026);
+    production in t/h; hot blast incl. O2 per tonne (meter basis) and the O2 fraction of the hot blast from the 10-min
+    means. Returns the state and the unmapped ore types."""
     hm = _num(row.get("PRODUCTIONTONNESPERHR"))
     hours = _num(row.get("n_hours"))
     if not hm > 0 or not hours > 0:
@@ -112,8 +113,8 @@ def omega_state(
         fe_frac=fe,
         cls=cls,
         coke=coke,
-        nut=_pos(row.get("NUTCOKE_CALC_MT")) * k,
-        pci=_pos(row.get("PCI_CALC_MT")) * k,
+        nut=_pos(row.get("NUT_DRY", row.get("NUTCOKE_CALC_MT"))) * k,
+        pci=_pos(row.get("PCI_DRY", row.get("PCI_CALC_MT"))) * k,
         prod=prod,
         blast_t=hbv / prod,
         o2=o2 / hbv,

@@ -30,6 +30,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from utils.coke_energy.build_shifts import ChargeMoisture, total_moisture
+
 HMT_COL = "hmt_gt_1480c"
 MIN_VALID_HMT = 1350.0  # as the pipeline's tap filter
 DHMT = 10.0  # degC step of the slope
@@ -92,7 +94,15 @@ def k_arr(record: pd.DataFrame, at: Any, ferrous_kg_thm: float) -> float | None:
     row = h.loc[hour]
     if isinstance(row, pd.DataFrame):
         row = row.iloc[-1]
-    moisture = min(max(_num(row.get("COKE_MOIST%"), 0.0), 0.0), 15.0)  # as the pipeline's COKE_DRY
+    # the pipeline's COKE_DRY: wet coke less its total moisture (build_shifts.total_moisture: the default TM for a
+    # reading below 1 % or equal to the hour's inherent moisture)
+    moisture = float(
+        total_moisture(
+            pd.Series([_num(row.get("COKE_MOIST%"))]),
+            ChargeMoisture().coke_tm_pct,
+            im=pd.Series([_num(row.get("COKE_IM%"))]),
+        ).iloc[0]
+    )
     coke = _num(row.get("COKE_CALC_MT")) * (1 - moisture / 100)
     fer = sum(_num(row.get(c), 0.0) for c in ("SINTER_CALC_MT", "ORE_CALC_MT", "TOTAL_PELLET_CALC_MT"))
     if not (math.isfinite(coke) and coke > 0 and fer > 0 and ferrous_kg_thm > 0):

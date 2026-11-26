@@ -162,12 +162,19 @@ class CostSplit(BaseModel):
 
 
 class FuelSplit(BaseModel):
+    """Fuels of a plan as charged (coke and nut coke wet, PCI as injected; they add up to ``fuel_charged_kg_thm``) and
+    dry (they add up to ``fuel_rate_kg_thm``, the plant's fuel-rate basis; user decision 25 Nov 2026)."""
+
     coke_dry_kg_thm: float = Field(..., description="Coke rate, dry, kg/tHM")
-    coke_wet_kg_thm: float = Field(..., description="Coke rate as charged, kg/tHM")
+    coke_wet_kg_thm: float = Field(..., description="Coke rate as charged (wet), kg/tHM")
     coke_sigma_kg_thm: float | None = Field(None, description="1 sigma of the dry coke rate (STRATA-ω), kg/tHM")
-    nut_coke_kg_thm: float = Field(..., description="Nut coke as charged (fixed input), kg/tHM")
-    pci_kg_thm: float = Field(..., description="PCI as injected (fixed input), kg/tHM")
-    fuel_rate_kg_thm: float = Field(..., description="Coke wet + nut coke + PCI (BAND-01 520-600), kg/tHM")
+    nut_coke_kg_thm: float = Field(..., description="Nut coke as charged (wet), kg/tHM")
+    nut_coke_dry_kg_thm: float | None = Field(None, description="Nut coke, dry: the fixed input (plant rate), kg/tHM")
+    pci_kg_thm: float = Field(..., description="PCI as injected, dry (fixed input; no moisture correction), kg/tHM")
+    fuel_charged_kg_thm: float | None = Field(None, description="Coke wet + nut coke wet + PCI, as charged, kg/tHM")
+    fuel_rate_kg_thm: float = Field(
+        ..., description="Fuel rate, dry: coke + nut coke + PCI (the plant's fuel-rate basis; BAND-01 520-600), kg/tHM"
+    )
 
 
 class SlagView(BaseModel):
@@ -330,7 +337,7 @@ class FrontierPoint(BaseModel):
     fuel_rs_thm: float | None = Field(None, description="Fuel, Rs/tHM")
     coke_dry_kg_thm: float | None = Field(None, description="Coke rate, dry, kg/tHM")
     coke_wet_kg_thm: float | None = Field(None, description="Coke rate as charged, kg/tHM")
-    fuel_rate_kg_thm: float | None = Field(None, description="Fuel rate, kg/tHM")
+    fuel_rate_kg_thm: float | None = Field(None, description="Fuel rate, dry (plant basis), kg/tHM")
     slag_kg_thm: float | None = Field(None, description="Slag rate, kg/tHM")
     hbt_c: float | None = Field(None, description="Hot-blast temperature, °C")
     enrichment_tag_pct: float | None = Field(None, description="Plant enrichment tag, %")
@@ -364,8 +371,8 @@ class RunSettings(BaseModel):
 
     hmt_c: float | None = Field(None, description="Hot-metal temperature target (BAND-02), °C")
     hm_si_pct: float | None = Field(None, description="Hot-metal Si target (BAND-03), %")
-    pci_kg_thm: float | None = Field(None, description="PCI as injected (fixed input), kg/tHM")
-    nut_coke_kg_thm: float | None = Field(None, description="Nut coke as charged (fixed input), kg/tHM")
+    pci_kg_thm: float | None = Field(None, description="PCI as injected, dry (fixed input), kg/tHM")
+    nut_coke_kg_thm: float | None = Field(None, description="Nut coke, dry (fixed input; charged wet), kg/tHM")
     blast_moisture_g_nm3: float | None = Field(None, description="Blast moisture (DATA-11), g/Nm³")
     hbt_c: float | None = Field(None, description="Hot-blast temperature, °C")
     o2_per_air: float | None = Field(None, description="Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air")
@@ -855,7 +862,9 @@ def plan_view(
             coke_wet_kg_thm=f["coke_wet"],
             coke_sigma_kg_thm=_num(om.get("sigma_K")) if blend_mode else None,
             nut_coke_kg_thm=f["nut"],
+            nut_coke_dry_kg_thm=_num(f.get("nut_dry")),
             pci_kg_thm=f["pci"],
+            fuel_charged_kg_thm=_num(f.get("charged")),
             fuel_rate_kg_thm=f["total"],
         ),
         slag=SlagView(

@@ -95,7 +95,7 @@ export const THERMAL_FIELDS: FieldSpec[] = [
 	},
 	{
 		key: 'nut_coke_kg_thm',
-		label: 'Nut coke, as charged',
+		label: 'Nut coke, dry',
 		unit: 'kg/tHM',
 		digits: 0,
 		step: 1,
@@ -594,11 +594,19 @@ export function bandOf(
 	return { lo, hi, inside: !isNumber(value) || (lo <= value && value <= hi), label };
 }
 
-/** Fuel panel: coke as charged (wet; dry in the note), nut coke and PCI (fixed inputs), total fuel against BAND-01.
- * Two decimals throughout (user decision 11 Nov 2026), so the three fuels add up to the total as shown. */
+/** Fuel panel: coke and nut coke as charged (wet; dry in the notes), PCI as injected, the total as charged, and the
+ * fuel rate on the plant's dry basis against BAND-01 (user decision 25 Nov 2026: the plant's coke, nut-coke and coal
+ * rates are dry and its fuel rate is their sum). Two decimals throughout (user decision 11 Nov 2026), so the three
+ * fuels add up to the total as charged as shown. */
 export function fuelCells(plan: PlanView, today: PlanView | null | undefined, ref: Reference | null): Cell[] {
 	const f = plan.fuel;
 	const band = ref?.bands.find((b) => b.key === 'fuel_rate');
+	const charged = isNumber(f.fuel_charged_kg_thm) ? f.fuel_charged_kg_thm : f.fuel_rate_kg_thm;
+	const todayCharged = today
+		? isNumber(today.fuel.fuel_charged_kg_thm)
+			? today.fuel.fuel_charged_kg_thm
+			: today.fuel.fuel_rate_kg_thm
+		: undefined;
 	return [
 		{
 			key: 'coke_wet',
@@ -611,29 +619,40 @@ export function fuelCells(plan: PlanView, today: PlanView | null | undefined, re
 		},
 		{
 			key: 'nut',
-			label: 'Nut coke',
+			label: 'Nut coke, as charged',
 			value: f.nut_coke_kg_thm,
 			unit: 'kg/tHM',
 			digits: 2,
-			note: 'Fixed input, as charged'
+			note: isNumber(f.nut_coke_dry_kg_thm)
+				? `${formatQuantity(f.nut_coke_dry_kg_thm, 2, 'kg/tHM')} dry: fixed input`
+				: 'Fixed input'
 		},
 		{
 			key: 'pci',
-			label: 'PCI',
+			label: 'PCI, as injected',
 			value: f.pci_kg_thm,
 			unit: 'kg/tHM',
 			digits: 2,
-			note: 'Fixed input, as injected'
+			note: 'Fixed input, dry (no moisture correction)'
+		},
+		{
+			key: 'fuel_charged',
+			label: 'Total fuel, as charged',
+			value: charged,
+			unit: 'kg/tHM',
+			digits: 2,
+			delta: vsToday(delta(charged, todayCharged), COST_TOL),
+			note: 'Coke + nut coke + PCI, as charged',
+			strong: true
 		},
 		{
 			key: 'fuel_rate',
-			label: 'Total fuel',
+			label: 'Fuel rate, dry',
 			value: f.fuel_rate_kg_thm,
 			unit: 'kg/tHM',
 			digits: 2,
 			delta: vsToday(delta(f.fuel_rate_kg_thm, today?.fuel.fuel_rate_kg_thm), COST_TOL),
-			note: 'Coke wet + nut coke + PCI',
-			strong: true,
+			note: "Coke + nut coke + PCI, dry: the plant's fuel-rate basis",
 			...(band
 				? {
 						band: bandOf(

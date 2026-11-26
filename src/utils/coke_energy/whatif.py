@@ -2,7 +2,7 @@
 Energy- and mass-balance driven what-if for coke rate (BF-02).
 
 Workflow
-  1. baseline_case(...)   : average the stable shifts of the chosen regime (e.g. PCI ~190, nut coke ~70, blend 1)
+  1. baseline_case(...)   : average the stable shifts of the chosen regime (e.g. PCI ~190, nut coke ~70 dry, blend 1)
   2. calibrate            : find the heat-loss term Q_loss that makes the model reproduce the ACTUAL baseline coke rate
                             at the actual eta_CO (this absorbs every unmodelled loss / measurement bias)
   3. scenario             : change coke chemistry (blend 2), PCI, nut coke, eta_CO, HM Si, HMT, HBT, O2 ...
@@ -30,14 +30,15 @@ def stable_mask(R):
 
 
 def baseline_case(S, R, start=None, end=None, pci=None, nut=None, tol_pci=10, tol_nut=6):
-    """Average input row over stable shifts of a regime. pci / nut given on plant basis (kg/tHM as charged)."""
+    """Average input row over stable shifts of a regime. pci / nut given on the plant's basis (dry kg/tHM; PCI as
+    recorded; user decision 25 Nov 2026)."""
     m = stable_mask(R)
     idx = R.index[m]
     sel = S.loc[idx].copy()
     if start: sel = sel[pd.to_datetime(sel.sdate) >= start]
     if end: sel = sel[pd.to_datetime(sel.sdate) <= end]
-    pci_rate = sel.PCI_CALC_MT / sel.PRODUCTIONTONNESPERHR * 1000
-    nut_rate = sel.NUTCOKE_CALC_MT / sel.PRODUCTIONTONNESPERHR * 1000
+    pci_rate = sel['PCI_DRY' if 'PCI_DRY' in sel else 'PCI_CALC_MT'] / sel.PRODUCTIONTONNESPERHR * 1000
+    nut_rate = sel['NUT_DRY' if 'NUT_DRY' in sel else 'NUTCOKE_CALC_MT'] / sel.PRODUCTIONTONNESPERHR * 1000
     if pci is not None: sel = sel[(pci_rate - pci).abs() <= tol_pci]
     if nut is not None: sel = sel[(nut_rate.loc[sel.index] - nut).abs() <= tol_nut]
     num = sel.select_dtypes('number')
@@ -64,8 +65,8 @@ def set_coke(case, coke):
 
 
 def run_scenario(base_case, base_K, base_eta, Q_loss_GJh_base, scn, p=None, hold_B2=True):
-    """scn keys (all optional): coke{...}, nut{...} (same chemistry dict), pci_kg_plant, nut_kg_plant, eta_CO (%), hm_Si,
-    HMT, HBT, O2_per_air, humidity_g, T_top, prod_th, eta_H2."""
+    """scn keys (all optional): coke{...}, nut{...} (same chemistry dict), pci_kg_plant, nut_kg_plant (both dry kg/tHM, the
+    plant's coal and nut-coke rates), eta_CO (%), hm_Si, HMT, HBT, O2_per_air, humidity_g, T_top, prod_th, eta_H2."""
     p = {**DEFAULTS, **(p or {})}
     c = copy.deepcopy(base_case)
     if 'coke' in scn: c = set_coke(c, scn['coke'])
@@ -73,8 +74,9 @@ def run_scenario(base_case, base_K, base_eta, Q_loss_GJh_base, scn, p=None, hold
         for k, v in scn['nut'].items():
             if k == 'ash_comp': c['nut']['ash_comp'].update(v)
             else: c['nut'][k] = v
-    if 'pci_kg_plant' in scn: c['pci_kg'] = scn['pci_kg_plant'] * (1 - c['pci']['moist_pct'] / 100)
-    if 'nut_kg_plant' in scn: c['nut_kg'] = scn['nut_kg_plant'] * (1 - c['nut']['moist_pct'] / 100)
+    # dry basis (user decision 25 Nov 2026): the plant's coal and nut-coke rates are dry; PCI takes no moisture correction
+    if 'pci_kg_plant' in scn: c['pci_kg'] = scn['pci_kg_plant']
+    if 'nut_kg_plant' in scn: c['nut_kg'] = scn['nut_kg_plant']
     if 'hm_Si' in scn: c['hm']['Si'] = scn['hm_Si']
     for k in ['HMT', 'HBT', 'O2_per_air', 'humidity_g', 'T_top', 'eta_H2']:
         if k in scn: c[k] = scn[k]

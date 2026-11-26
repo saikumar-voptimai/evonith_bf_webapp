@@ -77,7 +77,7 @@ def select_shifts(S: pd.DataFrame, R: pd.DataFrame, *, start=None, end=None, pci
                   nut: float | None = None, tol_pci: float = 10.0, tol_nut: float = 6.0,
                   exclude: Iterable[str] = ()) -> pd.Index:
     """Stable shifts (``whatif.stable_mask``) with start <= date < end, optionally within a PCI / nut-coke regime
-    (kg/tHM as charged, as ``whatif.baseline_case``)."""
+    (dry kg/tHM, the plant's basis; user decision 25 Nov 2026)."""
     keys = R.index[stable_mask(R)].intersection(S.index).difference(pd.Index(list(exclude)))
     sel = S.loc[keys]
     d = pd.to_datetime(sel["sdate"])
@@ -86,11 +86,12 @@ def select_shifts(S: pd.DataFrame, R: pd.DataFrame, *, start=None, end=None, pci
     if end is not None:
         sel = sel[pd.to_datetime(sel["sdate"]) < pd.Timestamp(end)]
     if pci is not None or nut is not None:
-        prod = sel["PRODUCTIONTONNESPERHR"]
+        pci_col = "PCI_DRY" if "PCI_DRY" in sel else "PCI_CALC_MT"
+        nut_col = "NUT_DRY" if "NUT_DRY" in sel else "NUTCOKE_CALC_MT"
         if pci is not None:
-            sel = sel[((sel["PCI_CALC_MT"] / prod * 1000) - pci).abs() <= tol_pci]
+            sel = sel[((sel[pci_col] / sel["PRODUCTIONTONNESPERHR"] * 1000) - pci).abs() <= tol_pci]
         if nut is not None:
-            sel = sel[((sel["NUTCOKE_CALC_MT"] / sel["PRODUCTIONTONNESPERHR"] * 1000) - nut).abs() <= tol_nut]
+            sel = sel[((sel[nut_col] / sel["PRODUCTIONTONNESPERHR"] * 1000) - nut).abs() <= tol_nut]
     return sel.index
 
 

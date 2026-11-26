@@ -27,128 +27,130 @@
       "violations": [],
       "production_t_d": 2270.0,
       "production_t_h": 94.583333333,
-      "burden_fe_wet_pct": 55.384959283,
-      "ferrous_kg_thm": 1734.756458836,
+      "burden_fe_wet_pct": 55.384030998,
+      "ferrous_kg_thm": 1734.796253183,
       "blend": [
         {
           "id": "sinter_sp_02",
           "name": "SINTER (SP-02)",
           "kind": "sinter",
-          "share_wet_pct": 62.535088692,
-          "wet_kg_thm": 1084.831490116,
-          "dry_kg_thm": 1084.831490116,
-          "t_d": 2462.567482562,
+          "share_wet_pct": 62.532767505,
+          "wet_kg_thm": 1084.816107682,
+          "dry_kg_thm": 1084.816107682,
+          "t_d": 2462.532564438,
           "price_rs_t": 8724.0,
-          "fe_kg_thm": 590.799229517,
-          "slag_kg_thm": 233.076045651,
-          "kg_per_charge": 15883.465717816,
-          "cost_rs_thm": 9464.069919769
+          "fe_kg_thm": 590.790852244,
+          "slag_kg_thm": 233.072740735,
+          "kg_per_charge": 15879.713409855,
+          "cost_rs_thm": 9463.935723417
         },
         {
           "id": "geomin_clo",
           "name": "GEOMIN CLO",
           "kind": "ore",
-          "share_wet_pct": 14.06858041,
-          "wet_kg_thm": 244.055607332,
-          "dry_kg_thm": 233.561216217,
-          "t_d": 554.006228644,
+          "share_wet_pct": 14.077818992,
+          "wet_kg_thm": 244.221476406,
+          "dry_kg_thm": 233.71995292,
+          "t_d": 554.382751441,
           "price_rs_t": 4284.0,
-          "fe_kg_thm": 119.606698825,
-          "slag_kg_thm": 44.220145066,
-          "kg_per_charge": 3573.318904937,
-          "cost_rs_thm": 1045.534221811
+          "fe_kg_thm": 119.68798789,
+          "slag_kg_thm": 44.250198686,
+          "kg_per_charge": 3574.953419656,
+          "cost_rs_thm": 1046.244804922
         },
         {
           "id": "lloyds_clo",
           "name": "LLOYDS CLO",
           "kind": "ore",
-          "share_wet_pct": 13.396330898,
-          "wet_kg_thm": 232.393715505,
-          "dry_kg_thm": 221.703604591,
-          "t_d": 527.533734196,
+          "share_wet_pct": 13.389413503,
+          "wet_kg_thm": 232.279043777,
+          "dry_kg_thm": 221.594207763,
+          "t_d": 527.273429374,
           "price_rs_t": 8802.0,
-          "fe_kg_thm": 140.826129636,
-          "slag_kg_thm": 12.708050615,
-          "kg_per_charge": 3402.572332097,
-          "cost_rs_thm": 2045.529483872
+          "fe_kg_thm": 140.756640771,
+          "slag_kg_thm": 12.701779989,
+          "kg_per_charge": 3400.138161829,
+          "cost_rs_thm": 2044.520143326
         },
         {
           "id": "lloyds_pellet",
           "name": "LLOYDS PELLET",
           "kind": "pellet",
           "share_wet_pct": 10.0,
-          "wet_kg_thm": 173.475645884,
-          "dry_kg_thm": 171.740889425,
-          "t_d": 393.789716156,
+          "wet_kg_thm": 173.479625318,
+          "dry_kg_thm": 171.744829065,
+          "t_d": 393.798749473,
           "price_rs_t": 10350.0,
-          "fe_kg_thm": 109.562100409,
-          "slag_kg_thm": 13.420691804,
-          "kg_per_charge": 2539.928550539,
-          "cost_rs_thm": 1795.472934895
+          "fe_kg_thm": 109.564613702,
+          "slag_kg_thm": 13.420999667,
+          "kg_per_charge": 2539.422776815,
+          "cost_rs_thm": 1795.514122045
         }
       ],
       "flux": [
         {
           "id": "quartz",
           "name": "Quartz",
-          "wet_kg_thm": 2.446184367,
-          "t_d": 5.552838513,
+          "wet_kg_thm": 2.488230693,
+          "t_d": 5.648283674,
           "price_rs_t": 1796.0,
-          "slag_kg_thm": 2.359827209,
-          "kg_per_charge": 35.815595217,
-          "cost_rs_thm": 4.393347123
+          "slag_kg_thm": 2.400389183,
+          "kg_per_charge": 36.4231228,
+          "cost_rs_thm": 4.468862325
         }
       ],
       "cost": {
-        "ore_rs_thm": 14350.606560347,
-        "flux_rs_thm": 4.393347123,
-        "fuel_rs_thm": 15736.947905303,
-        "coke_rs_thm": 9708.967905303,
-        "nut_coke_rs_thm": 1825.18,
+        "ore_rs_thm": 14350.21479371,
+        "flux_rs_thm": 4.468862325,
+        "fuel_rs_thm": 15654.702146032,
+        "coke_rs_thm": 9618.389882744,
+        "nut_coke_rs_thm": 1833.512263288,
         "pci_rs_thm": 4202.8,
-        "gross_rs_thm": 30091.947812773,
+        "gross_rs_thm": 30009.385802067,
         "slag_credit_rs_thm": 0.0,
-        "total_rs_thm": 30091.947812773,
+        "total_rs_thm": 30009.385802067,
         "total_sigma_rs_thm": null,
-        "total_lakh_rs_d": 683.08721535
+        "total_lakh_rs_d": 681.213057707
       },
       "fuel": {
-        "coke_dry_kg_thm": 302.169378573,
-        "coke_wet_kg_thm": 303.48111732,
+        "coke_dry_kg_thm": 299.350345175,
+        "coke_wet_kg_thm": 300.649846297,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 70.319562142,
+        "nut_coke_dry_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 563.48111732
+        "fuel_charged_kg_thm": 560.969408439,
+        "fuel_rate_kg_thm": 559.350345175
       },
       "slag": {
         "rate_kg_thm": 340.0,
         "t_d": 771.8,
         "al2o3_pct": 20.0,
-        "mgo_pct": 6.937623783,
+        "mgo_pct": 6.937940675,
         "cao_sio2": 1.05,
-        "t_basicity": 1.249280662,
-        "ib4": 0.793449709,
-        "mgo_al2o3": 0.346881189,
+        "t_basicity": 1.249285082,
+        "ib4": 0.793459318,
+        "mgo_al2o3": 0.346897034,
         "basis": "Slag on the Blend Mix Optimiser's basis: hot-metal Si 0.60 %, S 0.030 %, C 4.2 % held for the slag side (the coke balance keeps Si 0.38 %); top-gas dust BF Gas Dust 36.2 kg/tHM deducted; TiO\u2082 left out of the slag; alkalis 80 % to slag; FeO from 0.1 % of the Fe charged.",
-        "dust_kg_thm": 36.199691106,
+        "dust_kg_thm": 36.207731521,
         "components": [
           {
             "key": "CaO",
             "label": "CaO",
-            "kg_thm": 124.28359414,
-            "pct": 36.553998276
+            "kg_thm": 124.286514339,
+            "pct": 36.554857159
           },
           {
             "key": "SiO2",
             "label": "SiO\u2082",
-            "kg_thm": 118.365327752,
-            "pct": 34.813331692
+            "kg_thm": 118.368108894,
+            "pct": 34.814149675
           },
           {
             "key": "MgO",
             "label": "MgO",
-            "kg_thm": 23.587920861,
-            "pct": 6.937623783
+            "kg_thm": 23.588998294,
+            "pct": 6.937940675
           },
           {
             "key": "Al2O3",
@@ -165,8 +167,8 @@
           {
             "key": "MnO",
             "label": "MnO",
-            "kg_thm": 0.721298658,
-            "pct": 0.212146664
+            "kg_thm": 0.721521649,
+            "pct": 0.21221225
           },
           {
             "key": "TiO2",
@@ -177,14 +179,14 @@
           {
             "key": "S",
             "label": "S",
-            "kg_thm": 2.754008373,
-            "pct": 0.810002463
+            "kg_thm": 2.747665776,
+            "pct": 0.808136993
           },
           {
             "key": "alk",
             "label": "Na\u2082O + K\u2082O",
-            "kg_thm": 1.064348293,
-            "pct": 0.313043616
+            "kg_thm": 1.063689125,
+            "pct": 0.312849743
           },
           {
             "key": "CaF2",
@@ -202,57 +204,57 @@
         "balance": [
           {
             "component": "SiO\u2082",
-            "ore_kg_thm": 95.513547127,
-            "flux_kg_thm": 2.343243058,
-            "fuel_ash_kg_thm": 35.009090467,
-            "dust_kg_thm": -1.6289861,
-            "hot_metal_gas_kg_thm": -12.8715668,
-            "slag_kg_thm": 118.365327752
+            "ore_kg_thm": 95.525079741,
+            "flux_kg_thm": 2.383519974,
+            "fuel_ash_kg_thm": 34.960422216,
+            "dust_kg_thm": -1.629347918,
+            "hot_metal_gas_kg_thm": -12.871565118,
+            "slag_kg_thm": 118.368108894
           },
           {
             "component": "Al\u2082O\u2083",
-            "ore_kg_thm": 52.611895647,
-            "flux_kg_thm": 0.016584152,
-            "fuel_ash_kg_thm": 17.130825189,
-            "dust_kg_thm": -1.759304988,
+            "ore_kg_thm": 52.62160512,
+            "flux_kg_thm": 0.016869209,
+            "fuel_ash_kg_thm": 17.121221423,
+            "dust_kg_thm": -1.759695752,
             "hot_metal_gas_kg_thm": 0.0,
             "slag_kg_thm": 68.0
           },
           {
             "component": "CaO",
-            "ore_kg_thm": 124.158566658,
+            "ore_kg_thm": 124.15699603,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 2.163070091,
-            "dust_kg_thm": -2.038042609,
+            "fuel_ash_kg_thm": 2.168013594,
+            "dust_kg_thm": -2.038495285,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 124.28359414
+            "slag_kg_thm": 124.286514339
           },
           {
             "component": "MgO",
-            "ore_kg_thm": 24.065378066,
+            "ore_kg_thm": 24.065116688,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.814871768,
-            "dust_kg_thm": -1.292328972,
+            "fuel_ash_kg_thm": 0.816497621,
+            "dust_kg_thm": -1.292616015,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 23.587920861
+            "slag_kg_thm": 23.588998294
           },
           {
             "component": "Na\u2082O + K\u2082O",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 1.330435367,
+            "fuel_ash_kg_thm": 1.329611406,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -0.266087073,
-            "slag_kg_thm": 1.064348293
+            "hot_metal_gas_kg_thm": -0.265922281,
+            "slag_kg_thm": 1.063689125
           },
           {
             "component": "S",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 3.430361818,
-            "dust_kg_thm": -0.036199691,
-            "hot_metal_gas_kg_thm": -0.640153755,
-            "slag_kg_thm": 2.754008373
+            "fuel_ash_kg_thm": 3.423322485,
+            "dust_kg_thm": -0.036207732,
+            "hot_metal_gas_kg_thm": -0.639448978,
+            "slag_kg_thm": 2.747665776
           },
           {
             "component": "CaF\u2082",
@@ -265,56 +267,56 @@
           },
           {
             "component": "Fe \u2192 FeO",
-            "ore_kg_thm": 960.794158387,
-            "flux_kg_thm": 0.01876448,
-            "fuel_ash_kg_thm": 2.926580447,
-            "dust_kg_thm": -12.126896521,
-            "hot_metal_gas_kg_thm": -950.660994186,
+            "ore_kg_thm": 960.800094607,
+            "flux_kg_thm": 0.019087014,
+            "fuel_ash_kg_thm": 2.923015298,
+            "dust_kg_thm": -12.129590059,
+            "hot_metal_gas_kg_thm": -950.660994253,
             "slag_kg_thm": 1.223501923
           },
           {
             "component": "Mn \u2192 MnO",
-            "ore_kg_thm": 2.176849878,
+            "ore_kg_thm": 2.176954595,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.017819476,
+            "fuel_ash_kg_thm": 0.017886823,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -2.112019478,
-            "slag_kg_thm": 0.721298658
+            "hot_metal_gas_kg_thm": -2.112018621,
+            "slag_kg_thm": 0.721521649
           },
           {
             "component": "Ti \u2192 TiO\u2082",
-            "ore_kg_thm": 2.556044397,
+            "ore_kg_thm": 2.556787969,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.550204719,
+            "fuel_ash_kg_thm": 0.548849316,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -5.182770841,
+            "hot_metal_gas_kg_thm": -5.181750001,
             "slag_kg_thm": 0.0
           }
         ],
         "rollup": [
           {
             "source": "Ore (slag-forming oxides)",
-            "kg_thm": 303.424933137
+            "kg_thm": 303.445719078
           },
           {
             "source": "Flux",
-            "kg_thm": 2.359827209
+            "kg_thm": 2.400389183
           },
           {
             "source": "Fuel ash",
-            "kg_thm": 57.389317277
+            "kg_thm": 57.334616126
           },
           {
             "source": "Top-gas dust",
-            "kg_thm": -6.718662669
+            "kg_thm": -6.72015497
           },
           {
             "source": "To hot metal and gas",
-            "kg_thm": -20.432925249
+            "kg_thm": -20.431737116
           },
           {
             "source": "FeO, S and CaF\u2082 of the slag",
-            "kg_thm": 3.977510296
+            "kg_thm": 3.971167699
           },
           {
             "source": "Slag",
@@ -325,57 +327,57 @@
           {
             "removal": "SiO\u2082 reduced to hot-metal Si",
             "rule": "theoretical pig iron 1,002 kg x Si 0.60 % x 2.14",
-            "kg_thm": 12.8715668
+            "kg_thm": 12.871565118
           },
           {
             "removal": "Fe to the hot metal",
             "rule": "99.9 % of the Fe charged less the dust's; the rest FeO",
-            "kg_thm": 950.660994186
+            "kg_thm": 950.660994253
           },
           {
             "removal": "MnO reduced to hot-metal Mn",
             "rule": "the hot metal's Mn, the rest MnO",
-            "kg_thm": 2.112019478
+            "kg_thm": 2.112018621
           },
           {
             "removal": "TiO\u2082 reduced to hot-metal Ti",
             "rule": "the hot metal's Ti; the rest left out (workbook basis)",
-            "kg_thm": 0.851478392
+            "kg_thm": 0.851478046
           },
           {
             "removal": "S to the hot metal",
             "rule": "theoretical pig iron x S 0.030 %",
-            "kg_thm": 0.300737542
+            "kg_thm": 0.300737503
           },
           {
             "removal": "S to the gas",
             "rule": "10 % of the S charged less the dust's",
-            "kg_thm": 0.339416213
+            "kg_thm": 0.338711475
           },
           {
             "removal": "Alkalis to the gas",
             "rule": "20 % of Na\u2082O + K\u2082O charged less the dust's",
-            "kg_thm": 0.266087073
+            "kg_thm": 0.265922281
           },
           {
             "removal": "P and Zn to the hot metal",
             "rule": "all",
-            "kg_thm": 1.232452592
+            "kg_thm": 1.232328738
           },
           {
             "removal": "TiO\u2082 left out of the slag",
             "rule": "workbook basis",
-            "kg_thm": 4.331292449
+            "kg_thm": 4.330271955
           }
         ],
         "fuel_ash": [
           {
             "fuel": "Coke",
-            "wet_kg_thm": 303.48111732,
-            "dry_kg_thm": 302.169378573,
+            "wet_kg_thm": 300.649846297,
+            "dry_kg_thm": 299.350345175,
             "moisture_pct": 0.432230762,
             "ash_pct": 12.45421936,
-            "ash_kg_thm": 37.632837247,
+            "ash_kg_thm": 37.281748644,
             "sio2_pct": 57.183051746,
             "al2o3_pct": 26.548411029,
             "cao_pct": 2.756405455,
@@ -386,15 +388,15 @@
             "alkali_pct": 2.077858081,
             "s_pct": 0.72,
             "p_pct": 0.032,
-            "slag_kg_thm": 34.340142137
+            "slag_kg_thm": 34.019772124
           },
           {
             "fuel": "Nut coke",
-            "wet_kg_thm": 70.0,
-            "dry_kg_thm": 69.681890085,
+            "wet_kg_thm": 70.319562142,
+            "dry_kg_thm": 70.0,
             "moisture_pct": 0.454442736,
             "ash_pct": 12.466804509,
-            "ash_kg_thm": 8.687105015,
+            "ash_kg_thm": 8.726763156,
             "sio2_pct": 56.864510145,
             "al2o3_pct": 26.725451087,
             "cao_pct": 2.64929058,
@@ -405,15 +407,15 @@
             "alkali_pct": 2.0,
             "s_pct": 0.78,
             "p_pct": 0.032,
-            "slag_kg_thm": 7.893965434
+            "slag_kg_thm": 7.930002756
           },
           {
             "fuel": "PCI",
             "wet_kg_thm": 190.0,
-            "dry_kg_thm": 187.164092108,
-            "moisture_pct": 1.492583101,
+            "dry_kg_thm": 190.0,
+            "moisture_pct": 0.0,
             "ash_pct": 9.142232102,
-            "ash_kg_thm": 17.110975712,
+            "ash_kg_thm": 17.370240993,
             "sio2_pct": 49.965625,
             "al2o3_pct": 28.15875,
             "cao_pct": 5.234125,
@@ -424,7 +426,7 @@
             "alkali_pct": 2.190034762,
             "s_pct": 0.38,
             "p_pct": 0.021,
-            "slag_kg_thm": 15.155209706
+            "slag_kg_thm": 15.384841246
           }
         ],
         "dust": [
@@ -432,29 +434,29 @@
             "id": "bf_gas_dust",
             "stream": "BF Gas Dust",
             "kg_per_charge": 530.0,
-            "kg_thm": 36.199691106,
-            "dry_kg_thm": 36.199691106,
+            "kg_thm": 36.207731521,
+            "dry_kg_thm": 36.207731521,
             "moisture_pct": 0.0,
             "sio2_pct": 4.5,
             "al2o3_pct": 4.86,
             "cao_pct": 5.63,
             "mgo_pct": 3.57,
             "fe_pct": 33.5,
-            "fe_kg_thm": 12.126896521,
-            "slag_kg_thm": 6.718662669,
+            "fe_kg_thm": 12.129590059,
+            "slag_kg_thm": 6.72015497,
             "source": "BF-2 Burden (2).xlsx/BURDEN (plant burden sheet; constant)"
           }
         ]
       },
       "charging": {
-        "coke_t_d": 688.902136317,
-        "nut_coke_t_d": 158.9,
+        "coke_t_d": 682.475151095,
+        "nut_coke_t_d": 159.625406062,
         "pci_t_d": 431.3,
-        "ferrous_t_d": 3937.897161558,
-        "flux_kg_thm": 2.446184367,
-        "charges_per_h": 6.459986773,
-        "hm_per_charge_t": 14.641412848,
-        "charging_t_h": 170.931250003,
+        "ferrous_t_d": 3937.987494726,
+        "flux_kg_thm": 2.488230693,
+        "charges_per_h": 6.461421618,
+        "hm_per_charge_t": 14.638161526,
+        "charging_t_h": 170.969216019,
         "charging_cap_t_h": 171.99
       },
       "process": {
@@ -462,16 +464,16 @@
         "hm_si_pct": 0.3836,
         "hbt_c": 1188.4,
         "blast_moisture_g_nm3": 15.0,
-        "blast_nm3h": 112810.053194918,
-        "o2_nm3h": 5539.730763702,
+        "blast_nm3h": 112925.656371487,
+        "o2_nm3h": 5545.407655571,
         "enrichment_tag_pct": 4.158921765,
-        "raft_c": 2211.650356306,
-        "eta_co_pct": 42.261848675,
-        "top_gas_c": 197.09732237,
-        "hot_blast_pressure_needed_bar_g": 2.82670491,
+        "raft_c": 2212.176392613,
+        "eta_co_pct": 42.244207579,
+        "top_gas_c": 199.16648698,
+        "hot_blast_pressure_needed_bar_g": 2.830447116,
         "top_pressure_bar_g": 1.42,
-        "dp_needed_bar": 1.40670491,
-        "blast_ceiling_nm3h": 110803.301345541
+        "dp_needed_bar": 1.410447116,
+        "blast_ceiling_nm3h": 110716.569139791
       },
       "shaft_efficiency": {
         "mode": "fixed",
@@ -537,7 +539,7 @@
       ],
       "warnings": [],
       "limited_by": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "ore_flux_plan": {
       "label": "Ore + flux objective (page 9)",
@@ -545,152 +547,154 @@
       "violations": [],
       "production_t_d": 2270.0,
       "production_t_h": 94.583333333,
-      "burden_fe_wet_pct": 55.71355154,
-      "ferrous_kg_thm": 1724.599856886,
+      "burden_fe_wet_pct": 55.716527313,
+      "ferrous_kg_thm": 1724.510954042,
       "blend": [
         {
           "id": "sinter_sp_02",
           "name": "SINTER (SP-02)",
           "kind": "sinter",
           "share_wet_pct": 58.0,
-          "wet_kg_thm": 1000.267916994,
-          "dry_kg_thm": 1000.267916994,
-          "t_d": 2270.608171576,
+          "wet_kg_thm": 1000.216353345,
+          "dry_kg_thm": 1000.216353345,
+          "t_d": 2270.491122092,
           "price_rs_t": 8724.0,
-          "fe_kg_thm": 544.745907595,
-          "slag_kg_thm": 214.907561966,
-          "kg_per_charge": 14555.180587024,
-          "cost_rs_thm": 8726.337307853
+          "fe_kg_thm": 544.717826031,
+          "slag_kg_thm": 214.896483516,
+          "kg_per_charge": 14554.430269823,
+          "cost_rs_thm": 8725.887466579
         },
         {
           "id": "geomin_clo",
           "name": "GEOMIN CLO",
           "kind": "ore",
-          "share_wet_pct": 16.515149523,
-          "wet_kg_thm": 284.820245035,
-          "dry_kg_thm": 272.572974498,
-          "t_d": 646.541956229,
+          "share_wet_pct": 16.651816522,
+          "wet_kg_thm": 287.162399967,
+          "dry_kg_thm": 274.814416768,
+          "t_d": 651.858647924,
           "price_rs_t": 4284.0,
-          "fe_kg_thm": 139.584620241,
-          "slag_kg_thm": 51.606241262,
-          "kg_per_charge": 4144.499719417,
-          "cost_rs_thm": 1220.169929729
+          "fe_kg_thm": 140.732462827,
+          "slag_kg_thm": 52.030613527,
+          "kg_per_charge": 4178.581076437,
+          "cost_rs_thm": 1230.203721457
         },
         {
           "id": "lloyds_pellet",
           "name": "LLOYDS PELLET",
           "kind": "pellet",
           "share_wet_pct": 10.0,
-          "wet_kg_thm": 172.459985689,
-          "dry_kg_thm": 170.735385832,
-          "t_d": 391.484167513,
+          "wet_kg_thm": 172.451095404,
+          "dry_kg_thm": 170.72658445,
+          "t_d": 391.463986568,
           "price_rs_t": 10350.0,
-          "fe_kg_thm": 108.920639391,
-          "slag_kg_thm": 13.342116726,
-          "kg_per_charge": 2509.513894314,
-          "cost_rs_thm": 1784.960851877
+          "fe_kg_thm": 108.91502455,
+          "slag_kg_thm": 13.341428942,
+          "kg_per_charge": 2509.38452928,
+          "cost_rs_thm": 1784.868837434
         },
         {
           "id": "nmdc_rom",
           "name": "NMDC ROM",
           "kind": "ore",
-          "share_wet_pct": 8.362016414,
-          "wet_kg_thm": 144.211323109,
-          "dry_kg_thm": 141.903941939,
-          "t_d": 327.359703457,
+          "share_wet_pct": 8.833387578,
+          "wet_kg_thm": 152.332736388,
+          "dry_kg_thm": 149.895412606,
+          "t_d": 345.795311602,
           "price_rs_t": 10241.0,
-          "fe_kg_thm": 93.145747489,
-          "slag_kg_thm": 5.88901359,
-          "kg_per_charge": 2098.459637547,
-          "cost_rs_thm": 1476.868159959
+          "fe_kg_thm": 98.391348835,
+          "slag_kg_thm": 6.220659623,
+          "kg_per_charge": 2216.63661283,
+          "cost_rs_thm": 1560.039553353
         },
         {
           "id": "lloyds_clo",
           "name": "LLOYDS CLO",
           "kind": "ore",
-          "share_wet_pct": 7.122834063,
-          "wet_kg_thm": 122.84038606,
-          "dry_kg_thm": 117.189728301,
-          "t_d": 278.847676355,
+          "share_wet_pct": 6.514795901,
+          "wet_kg_thm": 112.348368939,
+          "dry_kg_thm": 107.180343967,
+          "t_d": 255.030797491,
           "price_rs_t": 8802.0,
-          "fe_kg_thm": 74.438915417,
-          "slag_kg_thm": 6.717315226,
-          "kg_per_charge": 1787.485104842,
-          "cost_rs_thm": 1081.241078097
+          "fe_kg_thm": 68.080954488,
+          "slag_kg_thm": 6.143577316,
+          "kg_per_charge": 1634.812804428,
+          "cost_rs_thm": 988.890343398
         }
       ],
       "flux": [
         {
           "id": "limestone",
           "name": "Limestone",
-          "wet_kg_thm": 3.767204101,
-          "t_d": 8.551553309,
+          "wet_kg_thm": 4.582603625,
+          "t_d": 10.402510228,
           "price_rs_t": 1500.0,
-          "slag_kg_thm": 2.170081347,
-          "kg_per_charge": 54.817649415,
-          "cost_rs_thm": 5.650806151
+          "slag_kg_thm": 2.639788655,
+          "kg_per_charge": 66.682757872,
+          "cost_rs_thm": 6.873905437
         },
         {
           "id": "dolomite",
           "name": "Dolomite",
-          "wet_kg_thm": 20.029414784,
-          "t_d": 45.466771561,
+          "wet_kg_thm": 18.983355962,
+          "t_d": 43.092218033,
           "price_rs_t": 1183.0,
-          "slag_kg_thm": 10.879289099,
-          "kg_per_charge": 291.453663851,
-          "cost_rs_thm": 23.69479769
+          "slag_kg_thm": 10.311105931,
+          "kg_per_charge": 276.232166881,
+          "cost_rs_thm": 22.457310103
         }
       ],
       "cost": {
-        "ore_rs_thm": 14289.577327515,
-        "flux_rs_thm": 29.345603841,
-        "fuel_rs_thm": 15855.737408567,
-        "coke_rs_thm": 9827.757408567,
-        "nut_coke_rs_thm": 1825.18,
+        "ore_rs_thm": 14289.88992222,
+        "flux_rs_thm": 29.33121554,
+        "fuel_rs_thm": 15772.243546431,
+        "coke_rs_thm": 9735.931283143,
+        "nut_coke_rs_thm": 1833.512263288,
         "pci_rs_thm": 4202.8,
-        "gross_rs_thm": 30174.660339923,
+        "gross_rs_thm": 30091.464684191,
         "slag_credit_rs_thm": 0.0,
-        "total_rs_thm": 30174.660339923,
+        "total_rs_thm": 30091.464684191,
         "total_sigma_rs_thm": null,
-        "total_lakh_rs_d": 684.964789716
+        "total_lakh_rs_d": 683.076248331
       },
       "fuel": {
-        "coke_dry_kg_thm": 305.866429664,
-        "coke_wet_kg_thm": 307.194217572,
+        "coke_dry_kg_thm": 303.008551924,
+        "coke_wet_kg_thm": 304.323933582,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 70.319562142,
+        "nut_coke_dry_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 567.194217572
+        "fuel_charged_kg_thm": 564.643495724,
+        "fuel_rate_kg_thm": 563.008551924
       },
       "slag": {
         "rate_kg_thm": 340.0,
         "t_d": 771.8,
         "al2o3_pct": 20.0,
-        "mgo_pct": 7.777454419,
+        "mgo_pct": 7.718340983,
         "cao_sio2": 1.05,
-        "t_basicity": 1.275959139,
-        "ib4": 0.80702666,
-        "mgo_al2o3": 0.388872721,
+        "t_basicity": 1.27404808,
+        "ib4": 0.806073744,
+        "mgo_al2o3": 0.385917049,
         "basis": "Slag on the Blend Mix Optimiser's basis: hot-metal Si 0.60 %, S 0.030 %, C 4.2 % held for the slag side (the coke balance keeps Si 0.38 %); top-gas dust BF Gas Dust 36.4 kg/tHM deducted; TiO\u2082 left out of the slag; alkalis 80 % to slag; FeO from 0.1 % of the Fe charged.",
         "dust_kg_thm": 36.423912382,
         "components": [
           {
             "key": "CaO",
             "label": "CaO",
-            "kg_thm": 122.878465619,
-            "pct": 36.140725182
+            "kg_thm": 122.984661436,
+            "pct": 36.171959246
           },
           {
             "key": "SiO2",
             "label": "SiO\u2082",
-            "kg_thm": 117.027110113,
-            "pct": 34.419738269
+            "kg_thm": 117.128248987,
+            "pct": 34.449484996
           },
           {
             "key": "MgO",
             "label": "MgO",
-            "kg_thm": 26.443345025,
-            "pct": 7.777454419
+            "kg_thm": 26.242359343,
+            "pct": 7.718340983
           },
           {
             "key": "Al2O3",
@@ -701,14 +705,14 @@
           {
             "key": "FeO",
             "label": "FeO",
-            "kg_thm": 1.223501922,
+            "kg_thm": 1.223501923,
             "pct": 0.359853507
           },
           {
             "key": "MnO",
             "label": "MnO",
-            "kg_thm": 0.577799369,
-            "pct": 0.169940991
+            "kg_thm": 0.578776419,
+            "pct": 0.170228359
           },
           {
             "key": "TiO2",
@@ -719,14 +723,14 @@
           {
             "key": "S",
             "label": "S",
-            "kg_thm": 2.777775846,
-            "pct": 0.816992896
+            "kg_thm": 2.771189372,
+            "pct": 0.815055698
           },
           {
             "key": "alk",
             "label": "Na\u2082O + K\u2082O",
-            "kg_thm": 1.072002106,
-            "pct": 0.315294737
+            "kg_thm": 1.07126252,
+            "pct": 0.315077212
           },
           {
             "key": "CaF2",
@@ -744,57 +748,57 @@
         "balance": [
           {
             "component": "SiO\u2082",
-            "ore_kg_thm": 95.793612436,
-            "flux_kg_thm": 0.471227165,
-            "fuel_ash_kg_thm": 35.272383454,
+            "ore_kg_thm": 95.941273483,
+            "flux_kg_thm": 0.476112348,
+            "fuel_ash_kg_thm": 35.220948824,
             "dust_kg_thm": -1.639076057,
-            "hot_metal_gas_kg_thm": -12.871036886,
-            "slag_kg_thm": 117.027110113
+            "hot_metal_gas_kg_thm": -12.871009612,
+            "slag_kg_thm": 117.128248987
           },
           {
             "component": "Al\u2082O\u2083",
-            "ore_kg_thm": 52.45099851,
-            "flux_kg_thm": 0.066139243,
-            "fuel_ash_kg_thm": 17.253064388,
+            "ore_kg_thm": 52.457764908,
+            "flux_kg_thm": 0.070260959,
+            "fuel_ash_kg_thm": 17.242176274,
             "dust_kg_thm": -1.770202142,
             "hot_metal_gas_kg_thm": 0.0,
             "slag_kg_thm": 68.0
           },
           {
             "component": "CaO",
-            "ore_kg_thm": 114.79018807,
-            "flux_kg_thm": 7.963182164,
-            "fuel_ash_kg_thm": 2.175761653,
+            "ore_kg_thm": 114.789873549,
+            "flux_kg_thm": 8.064882347,
+            "fuel_ash_kg_thm": 2.180571807,
             "dust_kg_thm": -2.050666267,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 122.878465619
+            "slag_kg_thm": 122.984661436
           },
           {
             "component": "MgO",
-            "ore_kg_thm": 22.375091857,
-            "flux_kg_thm": 4.548821874,
-            "fuel_ash_kg_thm": 0.819764967,
+            "ore_kg_thm": 22.381714676,
+            "flux_kg_thm": 4.339638931,
+            "fuel_ash_kg_thm": 0.821339409,
             "dust_kg_thm": -1.300333672,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 26.443345025
+            "slag_kg_thm": 26.242359343
           },
           {
             "component": "Na\u2082O + K\u2082O",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 1.340002633,
+            "fuel_ash_kg_thm": 1.33907815,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -0.268000527,
-            "slag_kg_thm": 1.072002106
+            "hot_metal_gas_kg_thm": -0.26781563,
+            "slag_kg_thm": 1.07126252
           },
           {
             "component": "S",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 3.456980586,
+            "fuel_ash_kg_thm": 3.449661574,
             "dust_kg_thm": -0.036423912,
-            "hot_metal_gas_kg_thm": -0.642780828,
-            "slag_kg_thm": 2.777775846
+            "hot_metal_gas_kg_thm": -0.64204829,
+            "slag_kg_thm": 2.771189372
           },
           {
             "component": "CaF\u2082",
@@ -807,44 +811,44 @@
           },
           {
             "component": "Fe \u2192 FeO",
-            "ore_kg_thm": 960.835830132,
-            "flux_kg_thm": 0.030584363,
-            "fuel_ash_kg_thm": 2.948202539,
+            "ore_kg_thm": 960.837616731,
+            "flux_kg_thm": 0.032590164,
+            "fuel_ash_kg_thm": 2.94441021,
             "dust_kg_thm": -12.202010648,
-            "hot_metal_gas_kg_thm": -950.66099378,
-            "slag_kg_thm": 1.223501922
+            "hot_metal_gas_kg_thm": -950.660993851,
+            "slag_kg_thm": 1.223501923
           },
           {
             "component": "Mn \u2192 MnO",
-            "ore_kg_thm": 2.065501611,
+            "ore_kg_thm": 2.066193395,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.017911564,
+            "fuel_ash_kg_thm": 0.017977943,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -2.11188704,
-            "slag_kg_thm": 0.577799369
+            "hot_metal_gas_kg_thm": -2.111888778,
+            "slag_kg_thm": 0.578776419
           },
           {
             "component": "Ti \u2192 TiO\u2082",
-            "ore_kg_thm": 2.628317345,
+            "ore_kg_thm": 2.633642592,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.554609587,
+            "fuel_ash_kg_thm": 0.553207902,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -5.310707633,
+            "hot_metal_gas_kg_thm": -5.31725409,
             "slag_kg_thm": 0.0
           }
         ],
         "rollup": [
           {
             "source": "Ore (slag-forming oxides)",
-            "kg_thm": 292.46224877
+            "kg_thm": 292.632762924
           },
           {
             "source": "Flux",
-            "kg_thm": 13.049370446
+            "kg_thm": 12.950894586
           },
           {
             "source": "Fuel ash",
-            "kg_thm": 57.80946991
+            "kg_thm": 57.750354281
           },
           {
             "source": "Top-gas dust",
@@ -852,11 +856,11 @@
           },
           {
             "source": "To hot metal and gas",
-            "kg_thm": -20.562088756
+            "kg_thm": -20.568424946
           },
           {
             "source": "FeO, S and CaF\u2082 of the slag",
-            "kg_thm": 4.001277768
+            "kg_thm": 3.994691294
           },
           {
             "source": "Slag",
@@ -867,57 +871,57 @@
           {
             "removal": "SiO\u2082 reduced to hot-metal Si",
             "rule": "theoretical pig iron 1,002 kg x Si 0.60 % x 2.14",
-            "kg_thm": 12.871036886
+            "kg_thm": 12.871009612
           },
           {
             "removal": "Fe to the hot metal",
             "rule": "99.9 % of the Fe charged less the dust's; the rest FeO",
-            "kg_thm": 950.66099378
+            "kg_thm": 950.660993851
           },
           {
             "removal": "MnO reduced to hot-metal Mn",
             "rule": "the hot metal's Mn, the rest MnO",
-            "kg_thm": 2.11188704
+            "kg_thm": 2.111888778
           },
           {
             "removal": "TiO\u2082 reduced to hot-metal Ti",
             "rule": "the hot metal's Ti; the rest left out (workbook basis)",
-            "kg_thm": 0.851424998
+            "kg_thm": 0.851425699
           },
           {
             "removal": "S to the hot metal",
             "rule": "theoretical pig iron x S 0.030 %",
-            "kg_thm": 0.300725161
+            "kg_thm": 0.300724524
           },
           {
             "removal": "S to the gas",
             "rule": "10 % of the S charged less the dust's",
-            "kg_thm": 0.342055667
+            "kg_thm": 0.341323766
           },
           {
             "removal": "Alkalis to the gas",
             "rule": "20 % of Na\u2082O + K\u2082O charged less the dust's",
-            "kg_thm": 0.268000527
+            "kg_thm": 0.26781563
           },
           {
             "removal": "P and Zn to the hot metal",
             "rule": "all",
-            "kg_thm": 1.19331036
+            "kg_thm": 1.191287033
           },
           {
             "removal": "TiO\u2082 left out of the slag",
             "rule": "workbook basis",
-            "kg_thm": 4.459282635
+            "kg_thm": 4.465828391
           }
         ],
         "fuel_ash": [
           {
             "fuel": "Coke",
-            "wet_kg_thm": 307.194217572,
-            "dry_kg_thm": 305.866429664,
+            "wet_kg_thm": 304.323933582,
+            "dry_kg_thm": 303.008551924,
             "moisture_pct": 0.432230762,
             "ash_pct": 12.45421936,
-            "ash_kg_thm": 38.0932761,
+            "ash_kg_thm": 37.737349737,
             "sio2_pct": 57.183051746,
             "al2o3_pct": 26.548411029,
             "cao_pct": 2.756405455,
@@ -928,15 +932,15 @@
             "alkali_pct": 2.077858081,
             "s_pct": 0.72,
             "p_pct": 0.032,
-            "slag_kg_thm": 34.760294769
+            "slag_kg_thm": 34.435510278
           },
           {
             "fuel": "Nut coke",
-            "wet_kg_thm": 70.0,
-            "dry_kg_thm": 69.681890085,
+            "wet_kg_thm": 70.319562142,
+            "dry_kg_thm": 70.0,
             "moisture_pct": 0.454442736,
             "ash_pct": 12.466804509,
-            "ash_kg_thm": 8.687105015,
+            "ash_kg_thm": 8.726763156,
             "sio2_pct": 56.864510145,
             "al2o3_pct": 26.725451087,
             "cao_pct": 2.64929058,
@@ -947,15 +951,15 @@
             "alkali_pct": 2.0,
             "s_pct": 0.78,
             "p_pct": 0.032,
-            "slag_kg_thm": 7.893965434
+            "slag_kg_thm": 7.930002756
           },
           {
             "fuel": "PCI",
             "wet_kg_thm": 190.0,
-            "dry_kg_thm": 187.164092108,
-            "moisture_pct": 1.492583101,
+            "dry_kg_thm": 190.0,
+            "moisture_pct": 0.0,
             "ash_pct": 9.142232102,
-            "ash_kg_thm": 17.110975712,
+            "ash_kg_thm": 17.370240993,
             "sio2_pct": 49.965625,
             "al2o3_pct": 28.15875,
             "cao_pct": 5.234125,
@@ -966,7 +970,7 @@
             "alkali_pct": 2.190034762,
             "s_pct": 0.38,
             "p_pct": 0.021,
-            "slag_kg_thm": 15.155209706
+            "slag_kg_thm": 15.384841246
           }
         ],
         "dust": [
@@ -989,11 +993,11 @@
         ]
       },
       "charging": {
-        "coke_t_d": 697.330873889,
-        "nut_coke_t_d": 158.9,
+        "coke_t_d": 690.81532923,
+        "nut_coke_t_d": 159.625406062,
         "pci_t_d": 431.3,
-        "ferrous_t_d": 3914.841675131,
-        "flux_kg_thm": 23.796618885,
+        "ferrous_t_d": 3914.639865676,
+        "flux_kg_thm": 23.565959587,
         "charges_per_h": 6.5,
         "hm_per_charge_t": 14.551282051,
         "charging_t_h": 171.99,
@@ -1004,16 +1008,16 @@
         "hm_si_pct": 0.3836,
         "hbt_c": 1188.4,
         "blast_moisture_g_nm3": 15.0,
-        "blast_nm3h": 113814.901353129,
-        "o2_nm3h": 5589.075552551,
+        "blast_nm3h": 113921.438956118,
+        "o2_nm3h": 5594.30726391,
         "enrichment_tag_pct": 4.158921765,
-        "raft_c": 2216.187054511,
-        "eta_co_pct": 42.409561482,
-        "top_gas_c": 194.711680101,
-        "hot_blast_pressure_needed_bar_g": 2.843002515,
+        "raft_c": 2216.663359041,
+        "eta_co_pct": 42.391639052,
+        "top_gas_c": 197.012019594,
+        "hot_blast_pressure_needed_bar_g": 2.846618945,
         "top_pressure_bar_g": 1.42,
-        "dp_needed_bar": 1.423002515,
-        "blast_ceiling_nm3h": 110917.150201811
+        "dp_needed_bar": 1.426618945,
+        "blast_ceiling_nm3h": 110829.133016605
       },
       "shaft_efficiency": {
         "mode": "fixed",
@@ -1091,7 +1095,7 @@
       ],
       "warnings": [],
       "limited_by": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, charging rate, slag rate cap",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "today_plan": {
       "label": "Today's charged blend, modelled (from 15 Oct 06:00 to 16 Oct 06:00 IST)",
@@ -1100,148 +1104,150 @@
       "production_t_d": 2270.0,
       "production_t_h": 94.583333333,
       "burden_fe_wet_pct": 55.9442289,
-      "ferrous_kg_thm": 1717.216659494,
+      "ferrous_kg_thm": 1717.227032243,
       "blend": [
         {
           "id": "sinter_sp_02",
           "name": "SINTER (SP-02)",
           "kind": "sinter",
           "share_wet_pct": 61.95,
-          "wet_kg_thm": 1063.815720556,
-          "dry_kg_thm": 1063.815720556,
-          "t_d": 2414.861685663,
+          "wet_kg_thm": 1063.822146475,
+          "dry_kg_thm": 1063.822146475,
+          "t_d": 2414.876272497,
           "price_rs_t": 8724.0,
-          "fe_kg_thm": 579.354041415,
-          "slag_kg_thm": 228.560807562,
-          "kg_per_charge": 15749.944930513,
-          "cost_rs_thm": 9280.728346134
+          "fe_kg_thm": 579.35754097,
+          "slag_kg_thm": 228.56218817,
+          "kg_per_charge": 15747.133016917,
+          "cost_rs_thm": 9280.784405845
         },
         {
           "id": "geomin_clo",
           "name": "GEOMIN CLO",
           "kind": "ore",
           "share_wet_pct": 12.05,
-          "wet_kg_thm": 206.924607469,
-          "dry_kg_thm": 198.026849348,
-          "t_d": 469.718858955,
+          "wet_kg_thm": 206.925857385,
+          "dry_kg_thm": 198.028045518,
+          "t_d": 469.721696265,
           "price_rs_t": 4284.0,
-          "fe_kg_thm": 101.409549551,
-          "slag_kg_thm": 37.492423387,
-          "kg_per_charge": 3063.548610374,
-          "cost_rs_thm": 886.465018397
+          "fe_kg_thm": 101.41016211,
+          "slag_kg_thm": 37.492649858,
+          "kg_per_charge": 3063.001660272,
+          "cost_rs_thm": 886.470373039
         },
         {
           "id": "lloyds_pellet",
           "name": "LLOYDS PELLET",
           "kind": "pellet",
           "share_wet_pct": 11.95,
-          "wet_kg_thm": 205.20739081,
-          "dry_kg_thm": 203.155316901,
-          "t_d": 465.820777138,
+          "wet_kg_thm": 205.208630353,
+          "dry_kg_thm": 203.15654405,
+          "t_d": 465.823590901,
           "price_rs_t": 10350.0,
-          "fe_kg_thm": 129.602934417,
-          "slag_kg_thm": 15.875572239,
-          "kg_per_charge": 3038.124970454,
-          "cost_rs_thm": 2123.896494878
+          "fe_kg_thm": 129.603717276,
+          "slag_kg_thm": 15.875668135,
+          "kg_per_charge": 3037.582559357,
+          "cost_rs_thm": 2123.909324154
         },
         {
           "id": "lloyds_clo",
           "name": "LLOYDS CLO",
           "kind": "ore",
           "share_wet_pct": 8.05,
-          "wet_kg_thm": 138.235941089,
-          "dry_kg_thm": 131.877087799,
-          "t_d": 313.795586273,
+          "wet_kg_thm": 138.236776096,
+          "dry_kg_thm": 131.877884395,
+          "t_d": 313.797481737,
           "price_rs_t": 8802.0,
-          "fe_kg_thm": 83.76832617,
-          "slag_kg_thm": 7.559194673,
-          "kg_per_charge": 2046.603013569,
-          "cost_rs_thm": 1216.752753468
+          "fe_kg_thm": 83.768832168,
+          "slag_kg_thm": 7.559240334,
+          "kg_per_charge": 2046.237623667,
+          "cost_rs_thm": 1216.760103193
         },
         {
           "id": "nmdc_rom",
           "name": "NMDC ROM",
           "kind": "ore",
           "share_wet_pct": 6.0,
-          "wet_kg_thm": 103.03299957,
-          "dry_kg_thm": 101.384471577,
-          "t_d": 233.884909023,
+          "wet_kg_thm": 103.033621935,
+          "dry_kg_thm": 101.385083984,
+          "t_d": 233.886321792,
           "price_rs_t": 10241.0,
-          "fe_kg_thm": 66.548767143,
-          "slag_kg_thm": 4.20745557,
-          "kg_per_charge": 1525.418395207,
-          "cost_rs_thm": 1055.160948593
+          "fe_kg_thm": 66.549169127,
+          "slag_kg_thm": 4.207480985,
+          "kg_per_charge": 1525.146054907,
+          "cost_rs_thm": 1055.167322232
         }
       ],
       "flux": [],
       "cost": {
-        "ore_rs_thm": 14563.00356147,
+        "ore_rs_thm": 14563.091528463,
         "flux_rs_thm": 0.0,
-        "fuel_rs_thm": 15710.533487975,
-        "coke_rs_thm": 9682.553487975,
-        "nut_coke_rs_thm": 1825.18,
+        "fuel_rs_thm": 15628.157129706,
+        "coke_rs_thm": 9591.844866418,
+        "nut_coke_rs_thm": 1833.512263288,
         "pci_rs_thm": 4202.8,
-        "gross_rs_thm": 30273.537049445,
+        "gross_rs_thm": 30191.248658169,
         "slag_credit_rs_thm": 0.0,
-        "total_rs_thm": 30273.537049445,
+        "total_rs_thm": 30191.248658169,
         "total_sigma_rs_thm": null,
-        "total_lakh_rs_d": 687.209291022
+        "total_lakh_rs_d": 685.34134454
       },
       "fuel": {
-        "coke_dry_kg_thm": 301.347290361,
-        "coke_wet_kg_thm": 302.655460364,
+        "coke_dry_kg_thm": 298.524192368,
+        "coke_wet_kg_thm": 299.820107102,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 70.319562142,
+        "nut_coke_dry_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 562.655460364
+        "fuel_charged_kg_thm": 560.139669244,
+        "fuel_rate_kg_thm": 558.524192368
       },
       "slag": {
-        "rate_kg_thm": 328.271796146,
-        "t_d": 745.176977251,
-        "al2o3_pct": 19.554188068,
-        "mgo_pct": 7.073312949,
-        "cao_sio2": 1.083043513,
-        "t_basicity": 1.288688251,
-        "ib4": 0.821602741,
-        "mgo_al2o3": 0.361728798,
+        "rate_kg_thm": 328.213230793,
+        "t_d": 745.044033899,
+        "al2o3_pct": 19.554702236,
+        "mgo_pct": 7.075040518,
+        "cao_sio2": 1.083557702,
+        "t_basicity": 1.289304699,
+        "ib4": 0.821912564,
+        "mgo_al2o3": 0.361807632,
         "basis": "Slag on the Blend Mix Optimiser's basis: hot-metal Si 0.60 %, S 0.030 %, C 4.2 % held for the slag side (the coke balance keeps Si 0.38 %); top-gas dust BF Gas Dust 35.8 kg/tHM deducted; TiO\u2082 left out of the slag; alkalis 80 % to slag; FeO from 0.1 % of the Fe charged.",
-        "dust_kg_thm": 35.799356125,
+        "dust_kg_thm": 35.80596498,
         "components": [
           {
             "key": "CaO",
             "label": "CaO",
-            "kg_thm": 122.288255491,
-            "pct": 37.25213586
+            "kg_thm": 122.293550763,
+            "pct": 37.260396379
           },
           {
             "key": "SiO2",
             "label": "SiO\u2082",
-            "kg_thm": 112.911673474,
-            "pct": 34.395788734
+            "kg_thm": 112.862979524,
+            "pct": 34.38709014
           },
           {
             "key": "MgO",
             "label": "MgO",
-            "kg_thm": 23.219691464,
-            "pct": 7.073312949
+            "kg_thm": 23.221219063,
+            "pct": 7.075040518
           },
           {
             "key": "Al2O3",
             "label": "Al\u2082O\u2083",
-            "kg_thm": 64.190884392,
-            "pct": 19.554188068
+            "kg_thm": 64.181119982,
+            "pct": 19.554702236
           },
           {
             "key": "FeO",
             "label": "FeO",
             "kg_thm": 1.223501923,
-            "pct": 0.372710034
+            "pct": 0.372776539
           },
           {
             "key": "MnO",
             "label": "MnO",
-            "kg_thm": 0.626082894,
-            "pct": 0.190720891
+            "kg_thm": 0.626188235,
+            "pct": 0.190787018
           },
           {
             "key": "TiO2",
@@ -1252,14 +1258,14 @@
           {
             "key": "S",
             "label": "S",
-            "kg_thm": 2.749060141,
-            "pct": 0.837434155
+            "kg_thm": 2.742692519,
+            "pct": 0.835643497
           },
           {
             "key": "alk",
             "label": "Na\u2082O + K\u2082O",
-            "kg_thm": 1.062646367,
-            "pct": 0.32370931
+            "kg_thm": 1.061978784,
+            "pct": 0.323563673
           },
           {
             "key": "CaF2",
@@ -1270,64 +1276,64 @@
           {
             "key": "Slag",
             "label": "Slag",
-            "kg_thm": 328.271796146,
+            "kg_thm": 328.213230793,
             "pct": 100.0
           }
         ],
         "balance": [
           {
             "component": "SiO\u2082",
-            "ore_kg_thm": 92.442871506,
+            "ore_kg_thm": 92.443429902,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 34.950543789,
-            "dust_kg_thm": -1.610971026,
-            "hot_metal_gas_kg_thm": -12.870770795,
-            "slag_kg_thm": 112.911673474
+            "fuel_ash_kg_thm": 34.901586069,
+            "dust_kg_thm": -1.611268424,
+            "hot_metal_gas_kg_thm": -12.870768023,
+            "slag_kg_thm": 112.862979524
           },
           {
             "component": "Al\u2082O\u2083",
-            "ore_kg_thm": 48.827089414,
+            "ore_kg_thm": 48.827384351,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 17.103643686,
-            "dust_kg_thm": -1.739848708,
+            "fuel_ash_kg_thm": 17.093905529,
+            "dust_kg_thm": -1.740169898,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 64.190884392
+            "slag_kg_thm": 64.181119982
           },
           {
             "component": "CaO",
-            "ore_kg_thm": 122.143511286,
+            "ore_kg_thm": 122.144249087,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 2.160247954,
-            "dust_kg_thm": -2.01550375,
+            "fuel_ash_kg_thm": 2.165177504,
+            "dust_kg_thm": -2.015875828,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 122.288255491
+            "slag_kg_thm": 122.293550763
           },
           {
             "component": "MgO",
-            "ore_kg_thm": 23.683944777,
+            "ore_kg_thm": 23.684087839,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.8137837,
-            "dust_kg_thm": -1.278037014,
+            "fuel_ash_kg_thm": 0.815404174,
+            "dust_kg_thm": -1.27827295,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 23.219691464
+            "slag_kg_thm": 23.221219063
           },
           {
             "component": "Na\u2082O + K\u2082O",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 1.328307958,
+            "fuel_ash_kg_thm": 1.32747348,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -0.265661592,
-            "slag_kg_thm": 1.062646367
+            "hot_metal_gas_kg_thm": -0.265494696,
+            "slag_kg_thm": 1.061978784
           },
           {
             "component": "S",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 3.424442783,
-            "dust_kg_thm": -0.035799356,
-            "hot_metal_gas_kg_thm": -0.639583287,
-            "slag_kg_thm": 2.749060141
+            "fuel_ash_kg_thm": 3.417374185,
+            "dust_kg_thm": -0.035805965,
+            "hot_metal_gas_kg_thm": -0.638875701,
+            "slag_kg_thm": 2.742692519
           },
           {
             "component": "CaF\u2082",
@@ -1340,36 +1346,36 @@
           },
           {
             "component": "Fe \u2192 FeO",
-            "ore_kg_thm": 960.683618696,
+            "ore_kg_thm": 960.689421651,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 2.921772489,
-            "dust_kg_thm": -11.992784302,
-            "hot_metal_gas_kg_thm": -950.660994276,
+            "fuel_ash_kg_thm": 2.918183568,
+            "dust_kg_thm": -11.994998268,
+            "hot_metal_gas_kg_thm": -950.660994343,
             "slag_kg_thm": 1.223501923
           },
           {
             "component": "Mn \u2192 MnO",
-            "ore_kg_thm": 2.102704334,
+            "ore_kg_thm": 2.102717035,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.017798999,
+            "fuel_ash_kg_thm": 0.017866245,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -2.111486909,
-            "slag_kg_thm": 0.626082894
+            "hot_metal_gas_kg_thm": -2.111484779,
+            "slag_kg_thm": 0.626188235
           },
           {
             "component": "Ti \u2192 TiO\u2082",
-            "ore_kg_thm": 2.327233207,
+            "ore_kg_thm": 2.327247265,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.549225239,
+            "fuel_ash_kg_thm": 0.547864992,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -4.799365538,
+            "hot_metal_gas_kg_thm": -4.797119424,
             "slag_kg_thm": 0.0
           }
         ],
         "rollup": [
           {
             "source": "Ore (slag-forming oxides)",
-            "kg_thm": 293.695453431
+            "kg_thm": 293.697227482
           },
           {
             "source": "Flux",
@@ -1377,80 +1383,80 @@
           },
           {
             "source": "Fuel ash",
-            "kg_thm": 57.295890781
+            "kg_thm": 57.240727709
           },
           {
             "source": "Top-gas dust",
-            "kg_thm": -6.644360497
+            "kg_thm": -6.6455871
           },
           {
             "source": "To hot metal and gas",
-            "kg_thm": -20.047749633
+            "kg_thm": -20.04533174
           },
           {
             "source": "FeO, S and CaF\u2082 of the slag",
-            "kg_thm": 3.972562064
+            "kg_thm": 3.966194442
           },
           {
             "source": "Slag",
-            "kg_thm": 328.271796146
+            "kg_thm": 328.213230793
           }
         ],
         "removals": [
           {
             "removal": "SiO\u2082 reduced to hot-metal Si",
             "rule": "theoretical pig iron 1,002 kg x Si 0.60 % x 2.14",
-            "kg_thm": 12.870770795
+            "kg_thm": 12.870768023
           },
           {
             "removal": "Fe to the hot metal",
             "rule": "99.9 % of the Fe charged less the dust's; the rest FeO",
-            "kg_thm": 950.660994276
+            "kg_thm": 950.660994343
           },
           {
             "removal": "MnO reduced to hot-metal Mn",
             "rule": "the hot metal's Mn, the rest MnO",
-            "kg_thm": 2.111486909
+            "kg_thm": 2.111484779
           },
           {
             "removal": "TiO\u2082 reduced to hot-metal Ti",
             "rule": "the hot metal's Ti; the rest left out (workbook basis)",
-            "kg_thm": 0.851263682
+            "kg_thm": 0.851262823
           },
           {
             "removal": "S to the hot metal",
             "rule": "theoretical pig iron x S 0.030 %",
-            "kg_thm": 0.300718944
+            "kg_thm": 0.300718879
           },
           {
             "removal": "S to the gas",
             "rule": "10 % of the S charged less the dust's",
-            "kg_thm": 0.338864343
+            "kg_thm": 0.338156822
           },
           {
             "removal": "Alkalis to the gas",
             "rule": "20 % of Na\u2082O + K\u2082O charged less the dust's",
-            "kg_thm": 0.265661592
+            "kg_thm": 0.265494696
           },
           {
             "removal": "P and Zn to the hot metal",
             "rule": "all",
-            "kg_thm": 1.173993849
+            "kg_thm": 1.173790478
           },
           {
             "removal": "TiO\u2082 left out of the slag",
             "rule": "workbook basis",
-            "kg_thm": 3.948101856
+            "kg_thm": 3.945856601
           }
         ],
         "fuel_ash": [
           {
             "fuel": "Coke",
-            "wet_kg_thm": 302.655460364,
-            "dry_kg_thm": 301.347290361,
+            "wet_kg_thm": 299.820107102,
+            "dry_kg_thm": 298.524192368,
             "moisture_pct": 0.432230762,
             "ash_pct": 12.45421936,
-            "ash_kg_thm": 37.530452578,
+            "ash_kg_thm": 37.178857761,
             "sio2_pct": 57.183051746,
             "al2o3_pct": 26.548411029,
             "cao_pct": 2.756405455,
@@ -1461,15 +1467,15 @@
             "alkali_pct": 2.077858081,
             "s_pct": 0.72,
             "p_pct": 0.032,
-            "slag_kg_thm": 34.246715641
+            "slag_kg_thm": 33.925883707
           },
           {
             "fuel": "Nut coke",
-            "wet_kg_thm": 70.0,
-            "dry_kg_thm": 69.681890085,
+            "wet_kg_thm": 70.319562142,
+            "dry_kg_thm": 70.0,
             "moisture_pct": 0.454442736,
             "ash_pct": 12.466804509,
-            "ash_kg_thm": 8.687105015,
+            "ash_kg_thm": 8.726763156,
             "sio2_pct": 56.864510145,
             "al2o3_pct": 26.725451087,
             "cao_pct": 2.64929058,
@@ -1480,15 +1486,15 @@
             "alkali_pct": 2.0,
             "s_pct": 0.78,
             "p_pct": 0.032,
-            "slag_kg_thm": 7.893965434
+            "slag_kg_thm": 7.930002756
           },
           {
             "fuel": "PCI",
             "wet_kg_thm": 190.0,
-            "dry_kg_thm": 187.164092108,
-            "moisture_pct": 1.492583101,
+            "dry_kg_thm": 190.0,
+            "moisture_pct": 0.0,
             "ash_pct": 9.142232102,
-            "ash_kg_thm": 17.110975712,
+            "ash_kg_thm": 17.370240993,
             "sio2_pct": 49.965625,
             "al2o3_pct": 28.15875,
             "cao_pct": 5.234125,
@@ -1499,7 +1505,7 @@
             "alkali_pct": 2.190034762,
             "s_pct": 0.38,
             "p_pct": 0.021,
-            "slag_kg_thm": 15.155209706
+            "slag_kg_thm": 15.384841246
           }
         ],
         "dust": [
@@ -1507,29 +1513,29 @@
             "id": "bf_gas_dust",
             "stream": "BF Gas Dust",
             "kg_per_charge": 530.0,
-            "kg_thm": 35.799356125,
-            "dry_kg_thm": 35.799356125,
+            "kg_thm": 35.80596498,
+            "dry_kg_thm": 35.80596498,
             "moisture_pct": 0.0,
             "sio2_pct": 4.5,
             "al2o3_pct": 4.86,
             "cao_pct": 5.63,
             "mgo_pct": 3.57,
             "fe_pct": 33.5,
-            "fe_kg_thm": 11.992784302,
-            "slag_kg_thm": 6.644360497,
+            "fe_kg_thm": 11.994998268,
+            "slag_kg_thm": 6.6455871,
             "source": "BF-2 Burden (2).xlsx/BURDEN (plant burden sheet; constant)"
           }
         ]
       },
       "charging": {
-        "coke_t_d": 687.027895027,
-        "nut_coke_t_d": 158.9,
+        "coke_t_d": 680.591643122,
+        "nut_coke_t_d": 159.625406062,
         "pci_t_d": 431.3,
-        "ferrous_t_d": 3898.081817051,
+        "ferrous_t_d": 3898.105363192,
         "flux_kg_thm": 0.0,
-        "charges_per_h": 6.388545315,
-        "hm_per_charge_t": 14.805143998,
-        "charging_t_h": 169.040909044,
+        "charges_per_h": 6.389724693,
+        "hm_per_charge_t": 14.802411351,
+        "charging_t_h": 169.072115386,
         "charging_cap_t_h": 2619.54
       },
       "process": {
@@ -1537,16 +1543,16 @@
         "hm_si_pct": 0.3836,
         "hbt_c": 1188.4,
         "blast_moisture_g_nm3": 15.0,
-        "blast_nm3h": 112535.162588571,
-        "o2_nm3h": 5526.231789936,
+        "blast_nm3h": 112649.366181014,
+        "o2_nm3h": 5531.83995283,
         "enrichment_tag_pct": 4.158921765,
-        "raft_c": 2210.395164107,
-        "eta_co_pct": 42.318092406,
-        "top_gas_c": 208.493559439,
-        "hot_blast_pressure_needed_bar_g": 2.813891379,
+        "raft_c": 2210.917378875,
+        "eta_co_pct": 42.300420369,
+        "top_gas_c": 210.583049318,
+        "hot_blast_pressure_needed_bar_g": 2.817586234,
         "top_pressure_bar_g": 1.42,
-        "dp_needed_bar": 1.393891379,
-        "blast_ceiling_nm3h": 111222.927698589
+        "dp_needed_bar": 1.397586234,
+        "blast_ceiling_nm3h": 111135.741548492
       },
       "shaft_efficiency": {
         "mode": "fixed",
@@ -1612,16 +1618,16 @@
       ],
       "warnings": [],
       "limited_by": "",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
-    "saving_rs_thm": 181.589236672,
-    "saving_lakh_rs_d": 4.122075672,
+    "saving_rs_thm": 181.862856102,
+    "saving_lakh_rs_d": 4.128286834,
     "highest_output_plan": null,
     "frontier": [],
     "value_of_limits": [
       {
         "change": "Hot blast +40 \u00b0C",
-        "saving_rs_thm": 178.544109135,
+        "saving_rs_thm": 178.727073912,
         "binds_after": "Al2O3 max, basicity min, slag cap",
         "binds_after_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
       },
@@ -1633,19 +1639,13 @@
       },
       {
         "change": "LLOYDS PELLET floor \u22122 pt",
-        "saving_rs_thm": 38.854441786,
+        "saving_rs_thm": 38.855333085,
         "binds_after": "Al2O3 max, basicity min, slag cap",
         "binds_after_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
       },
       {
         "change": "CaO/SiO\u2082 floor \u22120.01",
-        "saving_rs_thm": 2.764415496,
-        "binds_after": "Al2O3 max, basicity min, slag cap",
-        "binds_after_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
-      },
-      {
-        "change": "Charges per hour +0.1",
-        "saving_rs_thm": -0.0,
+        "saving_rs_thm": 2.764480449,
         "binds_after": "Al2O3 max, basicity min, slag cap",
         "binds_after_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
       },
@@ -1656,13 +1656,19 @@
         "binds_after_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
       },
       {
-        "change": "SINTER (SP-02) floor \u22122 pt",
+        "change": "Charges per hour +0.1",
         "saving_rs_thm": -0.0,
         "binds_after": "Al2O3 max, basicity min, slag cap",
         "binds_after_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
       },
       {
         "change": "SINTER (SP-02) cap +5 pt",
+        "saving_rs_thm": -0.0,
+        "binds_after": "Al2O3 max, basicity min, slag cap",
+        "binds_after_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
+      },
+      {
+        "change": "SINTER (SP-02) floor \u22122 pt",
         "saving_rs_thm": -0.0,
         "binds_after": "Al2O3 max, basicity min, slag cap",
         "binds_after_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
@@ -1697,7 +1703,7 @@
     "solves": null,
     "lead": {
       "kind": "saving",
-      "text": "**Charge** SINTER (SP-02) 62.54 %, GEOMIN CLO 14.07 %, LLOYDS CLO 13.40 %, LLOYDS PELLET 10.00 % with quartz 2.45 kg/tHM: Rs 30,092/tHM, coke 303.48 kg/tHM as charged. **Rs 182/tHM less than today's blend** (Rs 4.1 lakh/day at this output; coke +0.83 kg/tHM)."
+      "text": "**Charge** SINTER (SP-02) 62.53 %, GEOMIN CLO 14.08 %, LLOYDS CLO 13.39 %, LLOYDS PELLET 10.00 % with quartz 2.49 kg/tHM: Rs 30,009/tHM, coke 300.65 kg/tHM as charged. **Rs 182/tHM less than today's blend** (Rs 4.1 lakh/day at this output; coke +0.83 kg/tHM)."
     },
     "case": {
       "settings": {
@@ -2025,128 +2031,130 @@
       "violations": [],
       "production_t_d": 2270.0,
       "production_t_h": 94.583333333,
-      "burden_fe_wet_pct": 55.384959283,
-      "ferrous_kg_thm": 1734.756458836,
+      "burden_fe_wet_pct": 55.384030998,
+      "ferrous_kg_thm": 1734.796253183,
       "blend": [
         {
           "id": "sinter_sp_02",
           "name": "SINTER (SP-02)",
           "kind": "sinter",
-          "share_wet_pct": 62.535088692,
-          "wet_kg_thm": 1084.831490116,
-          "dry_kg_thm": 1084.831490116,
-          "t_d": 2462.567482562,
+          "share_wet_pct": 62.532767505,
+          "wet_kg_thm": 1084.816107682,
+          "dry_kg_thm": 1084.816107682,
+          "t_d": 2462.532564438,
           "price_rs_t": 8724.0,
-          "fe_kg_thm": 590.799229517,
-          "slag_kg_thm": 233.076045651,
-          "kg_per_charge": 15883.465717816,
-          "cost_rs_thm": 9464.069919769
+          "fe_kg_thm": 590.790852244,
+          "slag_kg_thm": 233.072740735,
+          "kg_per_charge": 15879.713409855,
+          "cost_rs_thm": 9463.935723417
         },
         {
           "id": "geomin_clo",
           "name": "GEOMIN CLO",
           "kind": "ore",
-          "share_wet_pct": 14.06858041,
-          "wet_kg_thm": 244.055607332,
-          "dry_kg_thm": 233.561216217,
-          "t_d": 554.006228644,
+          "share_wet_pct": 14.077818992,
+          "wet_kg_thm": 244.221476406,
+          "dry_kg_thm": 233.71995292,
+          "t_d": 554.382751441,
           "price_rs_t": 4284.0,
-          "fe_kg_thm": 119.606698825,
-          "slag_kg_thm": 44.220145066,
-          "kg_per_charge": 3573.318904937,
-          "cost_rs_thm": 1045.534221811
+          "fe_kg_thm": 119.68798789,
+          "slag_kg_thm": 44.250198686,
+          "kg_per_charge": 3574.953419656,
+          "cost_rs_thm": 1046.244804922
         },
         {
           "id": "lloyds_clo",
           "name": "LLOYDS CLO",
           "kind": "ore",
-          "share_wet_pct": 13.396330898,
-          "wet_kg_thm": 232.393715505,
-          "dry_kg_thm": 221.703604591,
-          "t_d": 527.533734196,
+          "share_wet_pct": 13.389413503,
+          "wet_kg_thm": 232.279043777,
+          "dry_kg_thm": 221.594207763,
+          "t_d": 527.273429374,
           "price_rs_t": 8802.0,
-          "fe_kg_thm": 140.826129636,
-          "slag_kg_thm": 12.708050615,
-          "kg_per_charge": 3402.572332097,
-          "cost_rs_thm": 2045.529483872
+          "fe_kg_thm": 140.756640771,
+          "slag_kg_thm": 12.701779989,
+          "kg_per_charge": 3400.138161829,
+          "cost_rs_thm": 2044.520143326
         },
         {
           "id": "lloyds_pellet",
           "name": "LLOYDS PELLET",
           "kind": "pellet",
           "share_wet_pct": 10.0,
-          "wet_kg_thm": 173.475645884,
-          "dry_kg_thm": 171.740889425,
-          "t_d": 393.789716156,
+          "wet_kg_thm": 173.479625318,
+          "dry_kg_thm": 171.744829065,
+          "t_d": 393.798749473,
           "price_rs_t": 10350.0,
-          "fe_kg_thm": 109.562100409,
-          "slag_kg_thm": 13.420691804,
-          "kg_per_charge": 2539.928550539,
-          "cost_rs_thm": 1795.472934895
+          "fe_kg_thm": 109.564613702,
+          "slag_kg_thm": 13.420999667,
+          "kg_per_charge": 2539.422776815,
+          "cost_rs_thm": 1795.514122045
         }
       ],
       "flux": [
         {
           "id": "quartz",
           "name": "Quartz",
-          "wet_kg_thm": 2.446184367,
-          "t_d": 5.552838513,
+          "wet_kg_thm": 2.488230693,
+          "t_d": 5.648283674,
           "price_rs_t": 1796.0,
-          "slag_kg_thm": 2.359827209,
-          "kg_per_charge": 35.815595217,
-          "cost_rs_thm": 4.393347123
+          "slag_kg_thm": 2.400389183,
+          "kg_per_charge": 36.4231228,
+          "cost_rs_thm": 4.468862325
         }
       ],
       "cost": {
-        "ore_rs_thm": 14350.606560347,
-        "flux_rs_thm": 4.393347123,
-        "fuel_rs_thm": 15736.947905303,
-        "coke_rs_thm": 9708.967905303,
-        "nut_coke_rs_thm": 1825.18,
+        "ore_rs_thm": 14350.21479371,
+        "flux_rs_thm": 4.468862325,
+        "fuel_rs_thm": 15654.702146032,
+        "coke_rs_thm": 9618.389882744,
+        "nut_coke_rs_thm": 1833.512263288,
         "pci_rs_thm": 4202.8,
-        "gross_rs_thm": 30091.947812773,
+        "gross_rs_thm": 30009.385802067,
         "slag_credit_rs_thm": 0.0,
-        "total_rs_thm": 30091.947812773,
+        "total_rs_thm": 30009.385802067,
         "total_sigma_rs_thm": null,
-        "total_lakh_rs_d": 683.08721535
+        "total_lakh_rs_d": 681.213057707
       },
       "fuel": {
-        "coke_dry_kg_thm": 302.169378573,
-        "coke_wet_kg_thm": 303.48111732,
+        "coke_dry_kg_thm": 299.350345175,
+        "coke_wet_kg_thm": 300.649846297,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 70.319562142,
+        "nut_coke_dry_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 563.48111732
+        "fuel_charged_kg_thm": 560.969408439,
+        "fuel_rate_kg_thm": 559.350345175
       },
       "slag": {
         "rate_kg_thm": 340.0,
         "t_d": 771.8,
         "al2o3_pct": 20.0,
-        "mgo_pct": 6.937623783,
+        "mgo_pct": 6.937940675,
         "cao_sio2": 1.05,
-        "t_basicity": 1.249280662,
-        "ib4": 0.793449709,
-        "mgo_al2o3": 0.346881189,
+        "t_basicity": 1.249285082,
+        "ib4": 0.793459318,
+        "mgo_al2o3": 0.346897034,
         "basis": "Slag on the Blend Mix Optimiser's basis: hot-metal Si 0.60 %, S 0.030 %, C 4.2 % held for the slag side (the coke balance keeps Si 0.38 %); top-gas dust BF Gas Dust 36.2 kg/tHM deducted; TiO\u2082 left out of the slag; alkalis 80 % to slag; FeO from 0.1 % of the Fe charged.",
-        "dust_kg_thm": 36.199691106,
+        "dust_kg_thm": 36.207731521,
         "components": [
           {
             "key": "CaO",
             "label": "CaO",
-            "kg_thm": 124.28359414,
-            "pct": 36.553998276
+            "kg_thm": 124.286514339,
+            "pct": 36.554857159
           },
           {
             "key": "SiO2",
             "label": "SiO\u2082",
-            "kg_thm": 118.365327752,
-            "pct": 34.813331692
+            "kg_thm": 118.368108894,
+            "pct": 34.814149675
           },
           {
             "key": "MgO",
             "label": "MgO",
-            "kg_thm": 23.587920861,
-            "pct": 6.937623783
+            "kg_thm": 23.588998294,
+            "pct": 6.937940675
           },
           {
             "key": "Al2O3",
@@ -2163,8 +2171,8 @@
           {
             "key": "MnO",
             "label": "MnO",
-            "kg_thm": 0.721298658,
-            "pct": 0.212146664
+            "kg_thm": 0.721521649,
+            "pct": 0.21221225
           },
           {
             "key": "TiO2",
@@ -2175,14 +2183,14 @@
           {
             "key": "S",
             "label": "S",
-            "kg_thm": 2.754008373,
-            "pct": 0.810002463
+            "kg_thm": 2.747665776,
+            "pct": 0.808136993
           },
           {
             "key": "alk",
             "label": "Na\u2082O + K\u2082O",
-            "kg_thm": 1.064348293,
-            "pct": 0.313043616
+            "kg_thm": 1.063689125,
+            "pct": 0.312849743
           },
           {
             "key": "CaF2",
@@ -2200,57 +2208,57 @@
         "balance": [
           {
             "component": "SiO\u2082",
-            "ore_kg_thm": 95.513547127,
-            "flux_kg_thm": 2.343243058,
-            "fuel_ash_kg_thm": 35.009090467,
-            "dust_kg_thm": -1.6289861,
-            "hot_metal_gas_kg_thm": -12.8715668,
-            "slag_kg_thm": 118.365327752
+            "ore_kg_thm": 95.525079741,
+            "flux_kg_thm": 2.383519974,
+            "fuel_ash_kg_thm": 34.960422216,
+            "dust_kg_thm": -1.629347918,
+            "hot_metal_gas_kg_thm": -12.871565118,
+            "slag_kg_thm": 118.368108894
           },
           {
             "component": "Al\u2082O\u2083",
-            "ore_kg_thm": 52.611895647,
-            "flux_kg_thm": 0.016584152,
-            "fuel_ash_kg_thm": 17.130825189,
-            "dust_kg_thm": -1.759304988,
+            "ore_kg_thm": 52.62160512,
+            "flux_kg_thm": 0.016869209,
+            "fuel_ash_kg_thm": 17.121221423,
+            "dust_kg_thm": -1.759695752,
             "hot_metal_gas_kg_thm": 0.0,
             "slag_kg_thm": 68.0
           },
           {
             "component": "CaO",
-            "ore_kg_thm": 124.158566658,
+            "ore_kg_thm": 124.15699603,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 2.163070091,
-            "dust_kg_thm": -2.038042609,
+            "fuel_ash_kg_thm": 2.168013594,
+            "dust_kg_thm": -2.038495285,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 124.28359414
+            "slag_kg_thm": 124.286514339
           },
           {
             "component": "MgO",
-            "ore_kg_thm": 24.065378066,
+            "ore_kg_thm": 24.065116688,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.814871768,
-            "dust_kg_thm": -1.292328972,
+            "fuel_ash_kg_thm": 0.816497621,
+            "dust_kg_thm": -1.292616015,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 23.587920861
+            "slag_kg_thm": 23.588998294
           },
           {
             "component": "Na\u2082O + K\u2082O",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 1.330435367,
+            "fuel_ash_kg_thm": 1.329611406,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -0.266087073,
-            "slag_kg_thm": 1.064348293
+            "hot_metal_gas_kg_thm": -0.265922281,
+            "slag_kg_thm": 1.063689125
           },
           {
             "component": "S",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 3.430361818,
-            "dust_kg_thm": -0.036199691,
-            "hot_metal_gas_kg_thm": -0.640153755,
-            "slag_kg_thm": 2.754008373
+            "fuel_ash_kg_thm": 3.423322485,
+            "dust_kg_thm": -0.036207732,
+            "hot_metal_gas_kg_thm": -0.639448978,
+            "slag_kg_thm": 2.747665776
           },
           {
             "component": "CaF\u2082",
@@ -2263,56 +2271,56 @@
           },
           {
             "component": "Fe \u2192 FeO",
-            "ore_kg_thm": 960.794158387,
-            "flux_kg_thm": 0.01876448,
-            "fuel_ash_kg_thm": 2.926580447,
-            "dust_kg_thm": -12.126896521,
-            "hot_metal_gas_kg_thm": -950.660994186,
+            "ore_kg_thm": 960.800094607,
+            "flux_kg_thm": 0.019087014,
+            "fuel_ash_kg_thm": 2.923015298,
+            "dust_kg_thm": -12.129590059,
+            "hot_metal_gas_kg_thm": -950.660994253,
             "slag_kg_thm": 1.223501923
           },
           {
             "component": "Mn \u2192 MnO",
-            "ore_kg_thm": 2.176849878,
+            "ore_kg_thm": 2.176954595,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.017819476,
+            "fuel_ash_kg_thm": 0.017886823,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -2.112019478,
-            "slag_kg_thm": 0.721298658
+            "hot_metal_gas_kg_thm": -2.112018621,
+            "slag_kg_thm": 0.721521649
           },
           {
             "component": "Ti \u2192 TiO\u2082",
-            "ore_kg_thm": 2.556044397,
+            "ore_kg_thm": 2.556787969,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.550204719,
+            "fuel_ash_kg_thm": 0.548849316,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -5.182770841,
+            "hot_metal_gas_kg_thm": -5.181750001,
             "slag_kg_thm": 0.0
           }
         ],
         "rollup": [
           {
             "source": "Ore (slag-forming oxides)",
-            "kg_thm": 303.424933137
+            "kg_thm": 303.445719078
           },
           {
             "source": "Flux",
-            "kg_thm": 2.359827209
+            "kg_thm": 2.400389183
           },
           {
             "source": "Fuel ash",
-            "kg_thm": 57.389317277
+            "kg_thm": 57.334616126
           },
           {
             "source": "Top-gas dust",
-            "kg_thm": -6.718662669
+            "kg_thm": -6.72015497
           },
           {
             "source": "To hot metal and gas",
-            "kg_thm": -20.432925249
+            "kg_thm": -20.431737116
           },
           {
             "source": "FeO, S and CaF\u2082 of the slag",
-            "kg_thm": 3.977510296
+            "kg_thm": 3.971167699
           },
           {
             "source": "Slag",
@@ -2323,57 +2331,57 @@
           {
             "removal": "SiO\u2082 reduced to hot-metal Si",
             "rule": "theoretical pig iron 1,002 kg x Si 0.60 % x 2.14",
-            "kg_thm": 12.8715668
+            "kg_thm": 12.871565118
           },
           {
             "removal": "Fe to the hot metal",
             "rule": "99.9 % of the Fe charged less the dust's; the rest FeO",
-            "kg_thm": 950.660994186
+            "kg_thm": 950.660994253
           },
           {
             "removal": "MnO reduced to hot-metal Mn",
             "rule": "the hot metal's Mn, the rest MnO",
-            "kg_thm": 2.112019478
+            "kg_thm": 2.112018621
           },
           {
             "removal": "TiO\u2082 reduced to hot-metal Ti",
             "rule": "the hot metal's Ti; the rest left out (workbook basis)",
-            "kg_thm": 0.851478392
+            "kg_thm": 0.851478046
           },
           {
             "removal": "S to the hot metal",
             "rule": "theoretical pig iron x S 0.030 %",
-            "kg_thm": 0.300737542
+            "kg_thm": 0.300737503
           },
           {
             "removal": "S to the gas",
             "rule": "10 % of the S charged less the dust's",
-            "kg_thm": 0.339416213
+            "kg_thm": 0.338711475
           },
           {
             "removal": "Alkalis to the gas",
             "rule": "20 % of Na\u2082O + K\u2082O charged less the dust's",
-            "kg_thm": 0.266087073
+            "kg_thm": 0.265922281
           },
           {
             "removal": "P and Zn to the hot metal",
             "rule": "all",
-            "kg_thm": 1.232452592
+            "kg_thm": 1.232328738
           },
           {
             "removal": "TiO\u2082 left out of the slag",
             "rule": "workbook basis",
-            "kg_thm": 4.331292449
+            "kg_thm": 4.330271955
           }
         ],
         "fuel_ash": [
           {
             "fuel": "Coke",
-            "wet_kg_thm": 303.48111732,
-            "dry_kg_thm": 302.169378573,
+            "wet_kg_thm": 300.649846297,
+            "dry_kg_thm": 299.350345175,
             "moisture_pct": 0.432230762,
             "ash_pct": 12.45421936,
-            "ash_kg_thm": 37.632837247,
+            "ash_kg_thm": 37.281748644,
             "sio2_pct": 57.183051746,
             "al2o3_pct": 26.548411029,
             "cao_pct": 2.756405455,
@@ -2384,15 +2392,15 @@
             "alkali_pct": 2.077858081,
             "s_pct": 0.72,
             "p_pct": 0.032,
-            "slag_kg_thm": 34.340142137
+            "slag_kg_thm": 34.019772124
           },
           {
             "fuel": "Nut coke",
-            "wet_kg_thm": 70.0,
-            "dry_kg_thm": 69.681890085,
+            "wet_kg_thm": 70.319562142,
+            "dry_kg_thm": 70.0,
             "moisture_pct": 0.454442736,
             "ash_pct": 12.466804509,
-            "ash_kg_thm": 8.687105015,
+            "ash_kg_thm": 8.726763156,
             "sio2_pct": 56.864510145,
             "al2o3_pct": 26.725451087,
             "cao_pct": 2.64929058,
@@ -2403,15 +2411,15 @@
             "alkali_pct": 2.0,
             "s_pct": 0.78,
             "p_pct": 0.032,
-            "slag_kg_thm": 7.893965434
+            "slag_kg_thm": 7.930002756
           },
           {
             "fuel": "PCI",
             "wet_kg_thm": 190.0,
-            "dry_kg_thm": 187.164092108,
-            "moisture_pct": 1.492583101,
+            "dry_kg_thm": 190.0,
+            "moisture_pct": 0.0,
             "ash_pct": 9.142232102,
-            "ash_kg_thm": 17.110975712,
+            "ash_kg_thm": 17.370240993,
             "sio2_pct": 49.965625,
             "al2o3_pct": 28.15875,
             "cao_pct": 5.234125,
@@ -2422,7 +2430,7 @@
             "alkali_pct": 2.190034762,
             "s_pct": 0.38,
             "p_pct": 0.021,
-            "slag_kg_thm": 15.155209706
+            "slag_kg_thm": 15.384841246
           }
         ],
         "dust": [
@@ -2430,29 +2438,29 @@
             "id": "bf_gas_dust",
             "stream": "BF Gas Dust",
             "kg_per_charge": 530.0,
-            "kg_thm": 36.199691106,
-            "dry_kg_thm": 36.199691106,
+            "kg_thm": 36.207731521,
+            "dry_kg_thm": 36.207731521,
             "moisture_pct": 0.0,
             "sio2_pct": 4.5,
             "al2o3_pct": 4.86,
             "cao_pct": 5.63,
             "mgo_pct": 3.57,
             "fe_pct": 33.5,
-            "fe_kg_thm": 12.126896521,
-            "slag_kg_thm": 6.718662669,
+            "fe_kg_thm": 12.129590059,
+            "slag_kg_thm": 6.72015497,
             "source": "BF-2 Burden (2).xlsx/BURDEN (plant burden sheet; constant)"
           }
         ]
       },
       "charging": {
-        "coke_t_d": 688.902136317,
-        "nut_coke_t_d": 158.9,
+        "coke_t_d": 682.475151095,
+        "nut_coke_t_d": 159.625406062,
         "pci_t_d": 431.3,
-        "ferrous_t_d": 3937.897161558,
-        "flux_kg_thm": 2.446184367,
-        "charges_per_h": 6.459986773,
-        "hm_per_charge_t": 14.641412848,
-        "charging_t_h": 170.931250003,
+        "ferrous_t_d": 3937.987494726,
+        "flux_kg_thm": 2.488230693,
+        "charges_per_h": 6.461421618,
+        "hm_per_charge_t": 14.638161526,
+        "charging_t_h": 170.969216019,
         "charging_cap_t_h": 171.99
       },
       "process": {
@@ -2460,16 +2468,16 @@
         "hm_si_pct": 0.3836,
         "hbt_c": 1188.4,
         "blast_moisture_g_nm3": 15.0,
-        "blast_nm3h": 112810.053194918,
-        "o2_nm3h": 5539.730763702,
+        "blast_nm3h": 112925.656371487,
+        "o2_nm3h": 5545.407655571,
         "enrichment_tag_pct": 4.158921765,
-        "raft_c": 2211.650356306,
-        "eta_co_pct": 42.261848675,
-        "top_gas_c": 197.09732237,
-        "hot_blast_pressure_needed_bar_g": 2.82670491,
+        "raft_c": 2212.176392613,
+        "eta_co_pct": 42.244207579,
+        "top_gas_c": 199.16648698,
+        "hot_blast_pressure_needed_bar_g": 2.830447116,
         "top_pressure_bar_g": 1.42,
-        "dp_needed_bar": 1.40670491,
-        "blast_ceiling_nm3h": 110803.301345541
+        "dp_needed_bar": 1.410447116,
+        "blast_ceiling_nm3h": 110716.569139791
       },
       "shaft_efficiency": {
         "mode": "fixed",
@@ -2535,7 +2543,7 @@
       ],
       "warnings": [],
       "limited_by": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "ore_flux_plan": null,
     "today_plan": null,
@@ -2547,149 +2555,151 @@
       "violations": [],
       "production_t_d": 2340.0,
       "production_t_h": 97.5,
-      "burden_fe_wet_pct": 56.702622326,
-      "ferrous_kg_thm": 1694.0,
+      "burden_fe_wet_pct": 56.713534319,
+      "ferrous_kg_thm": 1693.680437858,
       "blend": [
         {
           "id": "sinter_sp_02",
           "name": "SINTER (SP-02)",
           "kind": "sinter",
           "share_wet_pct": 58.0,
-          "wet_kg_thm": 982.52,
-          "dry_kg_thm": 982.52,
-          "t_d": 2299.0968,
+          "wet_kg_thm": 982.334653958,
+          "dry_kg_thm": 982.334653958,
+          "t_d": 2298.663090261,
           "price_rs_t": 8724.0,
-          "fe_kg_thm": 535.080392,
-          "slag_kg_thm": 211.094422,
-          "kg_per_charge": 14737.8,
-          "cost_rs_thm": 8571.50448
+          "fe_kg_thm": 534.979452545,
+          "slag_kg_thm": 211.054600403,
+          "kg_per_charge": 14735.019809365,
+          "cost_rs_thm": 8569.887521127
         },
         {
           "id": "nmdc_rom",
           "name": "NMDC ROM",
           "kind": "ore",
-          "share_wet_pct": 14.831095907,
-          "wet_kg_thm": 251.238764663,
-          "dry_kg_thm": 247.218944428,
-          "t_d": 587.898709311,
+          "share_wet_pct": 15.246595806,
+          "wet_kg_thm": 258.228610598,
+          "dry_kg_thm": 254.096952829,
+          "t_d": 604.2549488,
           "price_rs_t": 10241.0,
-          "fe_kg_thm": 162.274515123,
-          "slag_kg_thm": 10.259586194,
-          "kg_per_charge": 3768.581469945,
-          "cost_rs_thm": 2572.936188913
+          "fe_kg_thm": 166.789239837,
+          "slag_kg_thm": 10.545023542,
+          "kg_per_charge": 3873.429158977,
+          "cost_rs_thm": 2644.519201139
         },
         {
           "id": "geomin_clo",
           "name": "GEOMIN CLO",
           "kind": "ore",
-          "share_wet_pct": 10.209378192,
-          "wet_kg_thm": 172.946866576,
-          "dry_kg_thm": 165.510151313,
-          "t_d": 404.695667787,
+          "share_wet_pct": 10.258328842,
+          "wet_kg_thm": 173.743308843,
+          "dry_kg_thm": 166.272346563,
+          "t_d": 406.559342694,
           "price_rs_t": 4284.0,
-          "fe_kg_thm": 84.757748487,
-          "slag_kg_thm": 31.336036948,
-          "kg_per_charge": 2594.202998634,
-          "cost_rs_thm": 740.90437641
+          "fe_kg_thm": 85.148068675,
+          "slag_kg_thm": 31.480343375,
+          "kg_per_charge": 2606.149632652,
+          "cost_rs_thm": 744.316335085
         },
         {
           "id": "lloyds_pellet",
           "name": "LLOYDS PELLET",
           "kind": "pellet",
           "share_wet_pct": 10.0,
-          "wet_kg_thm": 169.4,
-          "dry_kg_thm": 167.706,
-          "t_d": 396.396,
+          "wet_kg_thm": 169.368043786,
+          "dry_kg_thm": 167.674363348,
+          "t_d": 396.321222459,
           "price_rs_t": 10350.0,
-          "fe_kg_thm": 106.9880427,
-          "slag_kg_thm": 13.10538537,
-          "kg_per_charge": 2541.0,
-          "cost_rs_thm": 1753.29
+          "fe_kg_thm": 106.967860098,
+          "slag_kg_thm": 13.102913124,
+          "kg_per_charge": 2540.520656787,
+          "cost_rs_thm": 1752.959253183
         },
         {
           "id": "lloyds_clo",
           "name": "LLOYDS CLO",
           "kind": "ore",
-          "share_wet_pct": 6.959525901,
-          "wet_kg_thm": 117.894368761,
-          "dry_kg_thm": 112.471227798,
-          "t_d": 275.872822902,
+          "share_wet_pct": 6.495075353,
+          "wet_kg_thm": 110.005820673,
+          "dry_kg_thm": 104.945552922,
+          "t_d": 257.413620374,
           "price_rs_t": 8802.0,
-          "fe_kg_thm": 71.441723898,
-          "slag_kg_thm": 6.446850777,
-          "kg_per_charge": 1768.415531422,
-          "cost_rs_thm": 1037.706233838
+          "fe_kg_thm": 66.661415216,
+          "slag_kg_thm": 6.015479093,
+          "kg_per_charge": 1650.08731009,
+          "cost_rs_thm": 968.271233561
         }
       ],
       "flux": [],
       "cost": {
-        "ore_rs_thm": 14676.341279162,
+        "ore_rs_thm": 14679.953544095,
         "flux_rs_thm": 0.0,
-        "fuel_rs_thm": 15630.353916413,
-        "coke_rs_thm": 9602.373916413,
-        "nut_coke_rs_thm": 1825.18,
+        "fuel_rs_thm": 15547.839250445,
+        "coke_rs_thm": 9511.526987157,
+        "nut_coke_rs_thm": 1833.512263288,
         "pci_rs_thm": 4202.8,
-        "gross_rs_thm": 30306.695195574,
+        "gross_rs_thm": 30227.792794541,
         "slag_credit_rs_thm": 0.0,
-        "total_rs_thm": 30306.695195574,
+        "total_rs_thm": 30227.792794541,
         "total_sigma_rs_thm": null,
-        "total_lakh_rs_d": 709.176667576
+        "total_lakh_rs_d": 707.330351392
       },
       "fuel": {
-        "coke_dry_kg_thm": 298.851884922,
-        "coke_wet_kg_thm": 300.149222193,
+        "coke_dry_kg_thm": 296.024482419,
+        "coke_wet_kg_thm": 297.309545735,
         "coke_sigma_kg_thm": null,
-        "nut_coke_kg_thm": 70.0,
+        "nut_coke_kg_thm": 70.319562142,
+        "nut_coke_dry_kg_thm": 70.0,
         "pci_kg_thm": 190.0,
-        "fuel_rate_kg_thm": 560.149222193
+        "fuel_charged_kg_thm": 557.629107877,
+        "fuel_rate_kg_thm": 556.024482419
       },
       "slag": {
-        "rate_kg_thm": 307.062960663,
-        "t_d": 718.527327952,
-        "al2o3_pct": 19.40352564,
-        "mgo_pct": 7.029202264,
+        "rate_kg_thm": 306.960956424,
+        "t_d": 718.288638031,
+        "al2o3_pct": 19.385718087,
+        "mgo_pct": 7.032766739,
         "cao_sio2": 1.05,
-        "t_basicity": 1.250700732,
-        "ib4": 0.804817609,
-        "mgo_al2o3": 0.362264178,
+        "t_basicity": 1.250757353,
+        "ib4": 0.805181975,
+        "mgo_al2o3": 0.362780822,
         "basis": "Slag on the Blend Mix Optimiser's basis: hot-metal Si 0.60 %, S 0.030 %, C 4.2 % held for the slag side (the coke balance keeps Si 0.38 %); top-gas dust BF Gas Dust 35.3 kg/tHM deducted; TiO\u2082 left out of the slag; alkalis 80 % to slag; FeO from 0.1 % of the Fe charged.",
         "dust_kg_thm": 35.334308165,
         "components": [
           {
             "key": "CaO",
             "label": "CaO",
-            "kg_thm": 112.920766295,
-            "pct": 36.774466725
+            "kg_thm": 112.908643612,
+            "pct": 36.782737755
           },
           {
             "key": "SiO2",
             "label": "SiO\u2082",
-            "kg_thm": 107.543586948,
-            "pct": 35.023301643
+            "kg_thm": 107.532041535,
+            "pct": 35.031178814
           },
           {
             "key": "MgO",
             "label": "MgO",
-            "kg_thm": 21.584076583,
-            "pct": 7.029202264
+            "kg_thm": 21.587848045,
+            "pct": 7.032766739
           },
           {
             "key": "Al2O3",
             "label": "Al\u2082O\u2083",
-            "kg_thm": 59.581040304,
-            "pct": 19.40352564
+            "kg_thm": 59.506585649,
+            "pct": 19.385718087
           },
           {
             "key": "FeO",
             "label": "FeO",
-            "kg_thm": 1.223501923,
-            "pct": 0.398453112
+            "kg_thm": 1.223501924,
+            "pct": 0.39858552
           },
           {
             "key": "MnO",
             "label": "MnO",
-            "kg_thm": 0.419175085,
-            "pct": 0.13651112
+            "kg_thm": 0.418587511,
+            "pct": 0.136365066
           },
           {
             "key": "TiO2",
@@ -2700,14 +2710,14 @@
           {
             "key": "S",
             "label": "S",
-            "kg_thm": 2.733333265,
-            "pct": 0.890154013
+            "kg_thm": 2.726944384,
+            "pct": 0.88836848
           },
           {
             "key": "alk",
             "label": "Na\u2082O + K\u2082O",
-            "kg_thm": 1.057480259,
-            "pct": 0.344385482
+            "kg_thm": 1.056803764,
+            "pct": 0.344279539
           },
           {
             "key": "CaF2",
@@ -2718,64 +2728,64 @@
           {
             "key": "Slag",
             "label": "Slag",
-            "kg_thm": 307.062960663,
+            "kg_thm": 306.960956424,
             "pct": 100.0
           }
         ],
         "balance": [
           {
             "component": "SiO\u2082",
-            "ore_kg_thm": 87.230511356,
+            "ore_kg_thm": 87.268198116,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 34.772828432,
+            "fuel_ash_kg_thm": 34.723564158,
             "dust_kg_thm": -1.590043867,
-            "hot_metal_gas_kg_thm": -12.869708973,
-            "slag_kg_thm": 107.543586948
+            "hot_metal_gas_kg_thm": -12.869676871,
+            "slag_kg_thm": 107.532041535
           },
           {
             "component": "Al\u2082O\u2083",
-            "ore_kg_thm": 44.277152013,
+            "ore_kg_thm": 44.21257784,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 17.021135667,
+            "fuel_ash_kg_thm": 17.011255185,
             "dust_kg_thm": -1.717247377,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 59.581040304
+            "slag_kg_thm": 59.506585649
           },
           {
             "component": "CaO",
-            "ore_kg_thm": 112.758406338,
+            "ore_kg_thm": 112.741368882,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 2.151681507,
+            "fuel_ash_kg_thm": 2.15659628,
             "dust_kg_thm": -1.98932155,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 112.920766295
+            "slag_kg_thm": 112.908643612
           },
           {
             "component": "MgO",
-            "ore_kg_thm": 22.035030457,
+            "ore_kg_thm": 22.037187141,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.810480928,
+            "fuel_ash_kg_thm": 0.812095705,
             "dust_kg_thm": -1.261434801,
             "hot_metal_gas_kg_thm": 0.0,
-            "slag_kg_thm": 21.584076583
+            "slag_kg_thm": 21.587848045
           },
           {
             "component": "Na\u2082O + K\u2082O",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 1.321850323,
+            "fuel_ash_kg_thm": 1.321004705,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -0.264370065,
-            "slag_kg_thm": 1.057480259
+            "hot_metal_gas_kg_thm": -0.264200941,
+            "slag_kg_thm": 1.056803764
           },
           {
             "component": "S",
             "ore_kg_thm": 0.0,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 3.406475864,
+            "fuel_ash_kg_thm": 3.399376273,
             "dust_kg_thm": -0.035334308,
-            "hot_metal_gas_kg_thm": -0.63780829,
-            "slag_kg_thm": 2.733333265
+            "hot_metal_gas_kg_thm": -0.637097581,
+            "slag_kg_thm": 2.726944384
           },
           {
             "component": "CaF\u2082",
@@ -2788,36 +2798,36 @@
           },
           {
             "component": "Fe \u2192 FeO",
-            "ore_kg_thm": 960.542422208,
+            "ore_kg_thm": 960.546036371,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 2.907178185,
+            "fuel_ash_kg_thm": 2.90356409,
             "dust_kg_thm": -11.836993235,
-            "hot_metal_gas_kg_thm": -950.66099455,
-            "slag_kg_thm": 1.223501923
+            "hot_metal_gas_kg_thm": -950.660994618,
+            "slag_kg_thm": 1.223501924
           },
           {
             "component": "Mn \u2192 MnO",
-            "ore_kg_thm": 1.941918482,
+            "ore_kg_thm": 1.941389368,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.017736843,
+            "fuel_ash_kg_thm": 0.017803981,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -2.110739938,
-            "slag_kg_thm": 0.419175085
+            "hot_metal_gas_kg_thm": -2.110731103,
+            "slag_kg_thm": 0.418587511
           },
           {
             "component": "Ti \u2192 TiO\u2082",
-            "ore_kg_thm": 2.057981755,
+            "ore_kg_thm": 2.057100504,
             "flux_kg_thm": 0.0,
-            "fuel_ash_kg_thm": 0.546252077,
+            "fuel_ash_kg_thm": 0.544886702,
             "dust_kg_thm": -0.0,
-            "hot_metal_gas_kg_thm": -4.345159279,
+            "hot_metal_gas_kg_thm": -4.341410788,
             "slag_kg_thm": 0.0
           }
         ],
         "rollup": [
           {
             "source": "Ore (slag-forming oxides)",
-            "kg_thm": 272.242281289
+            "kg_thm": 272.198359537
           },
           {
             "source": "Flux",
@@ -2825,7 +2835,7 @@
           },
           {
             "source": "Fuel ash",
-            "kg_thm": 57.012299579
+            "kg_thm": 56.956647319
           },
           {
             "source": "Top-gas dust",
@@ -2833,72 +2843,72 @@
           },
           {
             "source": "To hot metal and gas",
-            "kg_thm": -19.590407798
+            "kg_thm": -19.586449144
           },
           {
             "source": "FeO, S and CaF\u2082 of the slag",
-            "kg_thm": 3.956835189
+            "kg_thm": 3.950446307
           },
           {
             "source": "Slag",
-            "kg_thm": 307.062960663
+            "kg_thm": 306.960956424
           }
         ],
         "removals": [
           {
             "removal": "SiO\u2082 reduced to hot-metal Si",
             "rule": "theoretical pig iron 1,002 kg x Si 0.60 % x 2.14",
-            "kg_thm": 12.869708973
+            "kg_thm": 12.869676871
           },
           {
             "removal": "Fe to the hot metal",
             "rule": "99.9 % of the Fe charged less the dust's; the rest FeO",
-            "kg_thm": 950.66099455
+            "kg_thm": 950.660994618
           },
           {
             "removal": "MnO reduced to hot-metal Mn",
             "rule": "the hot metal's Mn, the rest MnO",
-            "kg_thm": 2.110739938
+            "kg_thm": 2.110731103
           },
           {
             "removal": "TiO\u2082 reduced to hot-metal Ti",
             "rule": "the hot metal's Ti; the rest left out (workbook basis)",
-            "kg_thm": 0.850962534
+            "kg_thm": 0.850958972
           },
           {
             "removal": "S to the hot metal",
             "rule": "theoretical pig iron x S 0.030 %",
-            "kg_thm": 0.300694135
+            "kg_thm": 0.300693385
           },
           {
             "removal": "S to the gas",
             "rule": "10 % of the S charged less the dust's",
-            "kg_thm": 0.337114156
+            "kg_thm": 0.336404197
           },
           {
             "removal": "Alkalis to the gas",
             "rule": "20 % of Na\u2082O + K\u2082O charged less the dust's",
-            "kg_thm": 0.264370065
+            "kg_thm": 0.264200941
           },
           {
             "removal": "P and Zn to the hot metal",
             "rule": "all",
-            "kg_thm": 1.096050519
+            "kg_thm": 1.093680017
           },
           {
             "removal": "TiO\u2082 left out of the slag",
             "rule": "workbook basis",
-            "kg_thm": 3.494196745
+            "kg_thm": 3.490451815
           }
         ],
         "fuel_ash": [
           {
             "fuel": "Coke",
-            "wet_kg_thm": 300.149222193,
-            "dry_kg_thm": 298.851884922,
+            "wet_kg_thm": 297.309545735,
+            "dry_kg_thm": 296.024482419,
             "moisture_pct": 0.432230762,
             "ash_pct": 12.45421936,
-            "ash_kg_thm": 37.219669311,
+            "ash_kg_thm": 36.867538401,
             "sio2_pct": 57.183051746,
             "al2o3_pct": 26.548411029,
             "cao_pct": 2.756405455,
@@ -2909,15 +2919,15 @@
             "alkali_pct": 2.077858081,
             "s_pct": 0.72,
             "p_pct": 0.032,
-            "slag_kg_thm": 33.963124439
+            "slag_kg_thm": 33.641803316
           },
           {
             "fuel": "Nut coke",
-            "wet_kg_thm": 70.0,
-            "dry_kg_thm": 69.681890085,
+            "wet_kg_thm": 70.319562142,
+            "dry_kg_thm": 70.0,
             "moisture_pct": 0.454442736,
             "ash_pct": 12.466804509,
-            "ash_kg_thm": 8.687105015,
+            "ash_kg_thm": 8.726763156,
             "sio2_pct": 56.864510145,
             "al2o3_pct": 26.725451087,
             "cao_pct": 2.64929058,
@@ -2928,15 +2938,15 @@
             "alkali_pct": 2.0,
             "s_pct": 0.78,
             "p_pct": 0.032,
-            "slag_kg_thm": 7.893965434
+            "slag_kg_thm": 7.930002756
           },
           {
             "fuel": "PCI",
             "wet_kg_thm": 190.0,
-            "dry_kg_thm": 187.164092108,
-            "moisture_pct": 1.492583101,
+            "dry_kg_thm": 190.0,
+            "moisture_pct": 0.0,
             "ash_pct": 9.142232102,
-            "ash_kg_thm": 17.110975712,
+            "ash_kg_thm": 17.370240993,
             "sio2_pct": 49.965625,
             "al2o3_pct": 28.15875,
             "cao_pct": 5.234125,
@@ -2947,7 +2957,7 @@
             "alkali_pct": 2.190034762,
             "s_pct": 0.38,
             "p_pct": 0.021,
-            "slag_kg_thm": 15.155209706
+            "slag_kg_thm": 15.384841246
           }
         ],
         "dust": [
@@ -2970,10 +2980,10 @@
         ]
       },
       "charging": {
-        "coke_t_d": 702.349179933,
-        "nut_coke_t_d": 163.8,
+        "coke_t_d": 695.70433702,
+        "nut_coke_t_d": 164.547775412,
         "pci_t_d": 444.6,
-        "ferrous_t_d": 3963.96,
+        "ferrous_t_d": 3963.212224588,
         "flux_kg_thm": 0.0,
         "charges_per_h": 6.5,
         "hm_per_charge_t": 15.0,
@@ -2985,16 +2995,16 @@
         "hm_si_pct": 0.3836,
         "hbt_c": 1188.4,
         "blast_moisture_g_nm3": 15.0,
-        "blast_nm3h": 115067.642851661,
-        "o2_nm3h": 5650.593568205,
+        "blast_nm3h": 115184.327022687,
+        "o2_nm3h": 5656.323544156,
         "enrichment_tag_pct": 4.158921765,
-        "raft_c": 2206.197188752,
-        "eta_co_pct": 42.525017223,
-        "top_gas_c": 215.859519619,
-        "hot_blast_pressure_needed_bar_g": 2.87015713,
+        "raft_c": 2206.72325655,
+        "eta_co_pct": 42.507318952,
+        "top_gas_c": 218.260605086,
+        "hot_blast_pressure_needed_bar_g": 2.873980339,
         "top_pressure_bar_g": 1.42,
-        "dp_needed_bar": 1.45015713,
-        "blast_ceiling_nm3h": 110701.240254097
+        "dp_needed_bar": 1.453980339,
+        "blast_ceiling_nm3h": 110614.330786405
       },
       "shaft_efficiency": {
         "mode": "fixed",
@@ -3060,63 +3070,63 @@
       ],
       "warnings": [],
       "limited_by": "CaO/SiO\u2082 floor, charging rate",
-      "facts_version": "1.8"
+      "facts_version": "1.9"
     },
     "frontier": [
       {
         "production_t_d": 2200.0,
-        "cost_rs_thm": 30130.733202884,
-        "ore_flux_rs_thm": 14356.597642111,
-        "fuel_rs_thm": 15774.135560772,
-        "coke_dry_kg_thm": 303.326759137,
-        "coke_wet_kg_thm": 304.643522155,
-        "fuel_rate_kg_thm": 564.643522155,
+        "cost_rs_thm": 30048.171192178,
+        "ore_flux_rs_thm": 14356.281390677,
+        "fuel_rs_thm": 15691.889801501,
+        "coke_dry_kg_thm": 300.507725738,
+        "coke_wet_kg_thm": 301.812251132,
+        "fuel_rate_kg_thm": 560.507725738,
         "slag_kg_thm": 340.0,
         "hbt_c": 1188.4,
         "enrichment_tag_pct": 4.158921765,
-        "blast_nm3h": 109760.743250685,
-        "o2_nm3h": 5389.989179263,
-        "hot_blast_pressure_needed_bar_g": 2.770358569,
-        "charges_per_h": 6.260138715,
+        "blast_nm3h": 109872.78157159,
+        "o2_nm3h": 5395.491012791,
+        "hot_blast_pressure_needed_bar_g": 2.77396365,
+        "charges_per_h": 6.261529314,
         "marginal_rs_per_t": null,
         "binding": "Al2O3 max, basicity min, slag cap",
         "binding_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
       },
       {
         "production_t_d": 2270.0,
-        "cost_rs_thm": 30091.947812773,
-        "ore_flux_rs_thm": 14354.99990747,
-        "fuel_rs_thm": 15736.947905303,
-        "coke_dry_kg_thm": 302.169378573,
-        "coke_wet_kg_thm": 303.48111732,
-        "fuel_rate_kg_thm": 563.48111732,
+        "cost_rs_thm": 30009.385802067,
+        "ore_flux_rs_thm": 14354.683656035,
+        "fuel_rs_thm": 15654.702146032,
+        "coke_dry_kg_thm": 299.350345175,
+        "coke_wet_kg_thm": 300.649846297,
+        "fuel_rate_kg_thm": 559.350345175,
         "slag_kg_thm": 340.0,
         "hbt_c": 1188.4,
         "enrichment_tag_pct": 4.158921765,
-        "blast_nm3h": 112810.053194918,
-        "o2_nm3h": 5539.730763702,
-        "hot_blast_pressure_needed_bar_g": 2.82670491,
-        "charges_per_h": 6.459986773,
-        "marginal_rs_per_t": 28872.978409282,
+        "blast_nm3h": 112925.656371487,
+        "o2_nm3h": 5545.407655571,
+        "hot_blast_pressure_needed_bar_g": 2.830447116,
+        "charges_per_h": 6.461421618,
+        "marginal_rs_per_t": 28790.416398576,
         "binding": "Al2O3 max, basicity min, slag cap",
         "binding_label": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
       },
       {
         "production_t_d": 2340.0,
-        "cost_rs_thm": 30306.695195574,
-        "ore_flux_rs_thm": 14676.341279162,
-        "fuel_rs_thm": 15630.353916413,
-        "coke_dry_kg_thm": 298.851884922,
-        "coke_wet_kg_thm": 300.149222193,
-        "fuel_rate_kg_thm": 560.149222193,
-        "slag_kg_thm": 307.062960663,
+        "cost_rs_thm": 30227.792794541,
+        "ore_flux_rs_thm": 14679.953544095,
+        "fuel_rs_thm": 15547.839250445,
+        "coke_dry_kg_thm": 296.024482419,
+        "coke_wet_kg_thm": 297.309545735,
+        "fuel_rate_kg_thm": 556.024482419,
+        "slag_kg_thm": 306.960956424,
         "hbt_c": 1188.4,
         "enrichment_tag_pct": 4.158921765,
-        "blast_nm3h": 115067.642851661,
-        "o2_nm3h": 5650.593568205,
-        "hot_blast_pressure_needed_bar_g": 2.87015713,
+        "blast_nm3h": 115184.327022687,
+        "o2_nm3h": 5656.323544156,
+        "hot_blast_pressure_needed_bar_g": 2.873980339,
         "charges_per_h": 6.5,
-        "marginal_rs_per_t": 37270.64603786,
+        "marginal_rs_per_t": 37310.41955047,
         "binding": "basicity min, charging",
         "binding_label": "CaO/SiO\u2082 floor, charging rate"
       }
@@ -3426,8 +3436,8 @@
     }
   },
   "reference": {
-    "facts_version": "1.8",
-    "facts_date": "2026-10-25",
+    "facts_version": "1.9",
+    "facts_date": "2026-11-25",
     "slag_bands": [
       {
         "key": "b2",
@@ -3458,7 +3468,7 @@
       {
         "key": "fuel_rate",
         "fact_id": "BAND-01",
-        "label": "Fuel rate (coke wet + nut coke + PCI)",
+        "label": "Fuel rate, dry (coke + nut coke + PCI, plant basis)",
         "unit": "kg/tHM",
         "lo": 520.0,
         "hi": 600.0
@@ -3484,13 +3494,13 @@
       {
         "id": "ASM-01",
         "statement": "Two-zone balance with fixed shaft efficiency",
-        "value": 0.8,
+        "value": 0.792,
         "unit": "",
         "uncertainty": "",
         "status": "Measured",
         "grade": "B",
         "next_test": "",
-        "version": "1.5"
+        "version": "1.9"
       },
       {
         "id": "ASM-02",
@@ -3512,7 +3522,7 @@
         "status": "Assumed",
         "grade": "C",
         "next_test": "",
-        "version": "1.0"
+        "version": "1.9"
       },
       {
         "id": "ASM-04",
@@ -3556,7 +3566,7 @@
         "status": "Plant choice",
         "grade": "D",
         "next_test": "",
-        "version": "1.6"
+        "version": "1.9"
       },
       {
         "id": "ASM-09",
@@ -3659,14 +3669,14 @@
       },
       {
         "id": "BAND-01",
-        "statement": "Fuel rate, coke (wet) + nut coke + PCI",
+        "statement": "Fuel rate, coke + nut coke + PCI, dry (as the plant's fuel-rate tag)",
         "value": null,
         "unit": "kg/tHM",
         "uncertainty": "",
         "status": "Plant practice",
         "grade": "D",
         "next_test": "",
-        "version": "1.1"
+        "version": "1.9"
       },
       {
         "id": "BAND-02",
@@ -3726,13 +3736,13 @@
       {
         "id": "GAS-14",
         "statement": "Plant-data scales on the model channels of shaft efficiency (STRATA 1.5)",
-        "value": 1.421,
+        "value": 1.399,
         "unit": "lam_pellet",
-        "uncertainty": "\u00b1 0.448",
+        "uncertainty": "\u00b1 0.453",
         "status": "Supported",
         "grade": "B",
         "next_test": "T5",
-        "version": "1.8"
+        "version": "1.9"
       },
       {
         "id": "GAS-15",
@@ -3770,13 +3780,13 @@
       {
         "id": "GAS-20",
         "statement": "Out-of-sample test of the shaft-efficiency model on 2026 data (STRATA 1.5)",
-        "value": 0.12,
+        "value": 0.1,
         "unit": "skill, burnt coke (day)",
         "uncertainty": "",
         "status": "Validated",
         "grade": "B",
         "next_test": "T5",
-        "version": "1.8"
+        "version": "1.9"
       },
       {
         "id": "GAS-21",
@@ -3803,13 +3813,13 @@
       {
         "id": "GAS-23",
         "statement": "Nut coke +1 kg/tHM -> shaft efficiency (data term, STRATA 1.3+)",
-        "value": 0.000995,
+        "value": 0.000583,
         "unit": "omega per kg/tHM",
-        "uncertainty": "\u00b1 0.000336",
+        "uncertainty": "\u00b1 0.000345",
         "status": "Supported",
         "grade": "B",
         "next_test": "Nut-coke step trial (+15 kg/tHM for 7 days at constant blend)",
-        "version": "1.8"
+        "version": "1.9"
       },
       {
         "id": "GAS-25",
@@ -3820,7 +3830,7 @@
         "status": "Supported",
         "grade": "B",
         "next_test": "Sinter strength 2023-24; a steam-specific moisture coefficient (steam injection resumes)",
-        "version": "1.8"
+        "version": "1.9"
       },
       {
         "id": "DATA-11",
@@ -3862,8 +3872,8 @@
         "statement": "Pellet for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
         "fixed_omega": -1.74,
-        "strata_omega": -5.96,
-        "sigma_strata": 1.19,
+        "strata_omega": -5.93,
+        "sigma_strata": 1.21,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3875,9 +3885,9 @@
         "id": "MOD-02",
         "statement": "Lloyds CLO for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
-        "fixed_omega": -1.9,
-        "strata_omega": -1.06,
-        "sigma_strata": 0.49,
+        "fixed_omega": -1.91,
+        "strata_omega": -1.09,
+        "sigma_strata": 0.5,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3890,8 +3900,8 @@
         "statement": "Geomin CLO for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
         "fixed_omega": -0.18,
-        "strata_omega": 0.69,
-        "sigma_strata": 0.49,
+        "strata_omega": 0.68,
+        "sigma_strata": 0.5,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3905,7 +3915,7 @@
         "unit": "kg/tHM dry coke",
         "fixed_omega": -2.17,
         "strata_omega": -0.84,
-        "sigma_strata": 0.81,
+        "sigma_strata": 0.82,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3946,8 +3956,8 @@
         "statement": "Lloyds oversize for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
         "fixed_omega": -1.85,
-        "strata_omega": -0.97,
-        "sigma_strata": 0.49,
+        "strata_omega": -0.99,
+        "sigma_strata": 0.5,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3960,8 +3970,8 @@
         "statement": "Pellet for Lloyds CLO, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke",
         "fixed_omega": 0.16,
-        "strata_omega": -4.7,
-        "sigma_strata": 1.24,
+        "strata_omega": -4.64,
+        "sigma_strata": 1.26,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -3973,8 +3983,8 @@
         "id": "MOD-09",
         "statement": "Production +1 t/h at the same burden: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke per t/h",
-        "fixed_omega": -0.36,
-        "strata_omega": -0.39,
+        "fixed_omega": -0.27,
+        "strata_omega": -0.28,
         "sigma_strata": 0.01,
         "status": "Model",
         "realised": null,
@@ -3987,9 +3997,9 @@
         "id": "MOD-10",
         "statement": "Blast moisture +1 g/Nm3 at the same burden: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke per g/Nm3",
-        "fixed_omega": 0.8,
-        "strata_omega": 0.88,
-        "sigma_strata": 0.02,
+        "fixed_omega": 0.79,
+        "strata_omega": 0.85,
+        "sigma_strata": 0.03,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -4001,9 +4011,9 @@
         "id": "MOD-11",
         "statement": "Nut coke +10 kg/tHM at the same burden: coke response, Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry coke per 10 kg/tHM nut coke",
-        "fixed_omega": -9.94,
-        "strata_omega": -13.17,
-        "sigma_strata": 0.34,
+        "fixed_omega": -9.97,
+        "strata_omega": -11.91,
+        "sigma_strata": 0.97,
         "status": "Model",
         "realised": null,
         "n": null,
@@ -4015,219 +4025,221 @@
         "id": "VAL-01",
         "statement": "Out-of-sample burnt coke, N1 No pellet, sinter + CLO: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 296.6,
-        "strata_omega": 296.0,
-        "sigma_strata": 1.06,
+        "fixed_omega": 291.0,
+        "strata_omega": 290.5,
+        "sigma_strata": 1.3,
         "status": "Neutral",
-        "realised": 296.8,
+        "realised": 291.8,
         "n": 21,
-        "rmse_fixed": 3.96,
-        "rmse_strata": 4.02,
-        "skill": -0.028
+        "rmse_fixed": 4.44,
+        "rmse_strata": 4.53,
+        "skill": -0.036
       },
       {
         "id": "VAL-02",
         "statement": "Out-of-sample burnt coke, N2 No pellet, with Gomti: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 301.4,
-        "strata_omega": 301.8,
-        "sigma_strata": 2.51,
+        "fixed_omega": 296.2,
+        "strata_omega": 296.6,
+        "sigma_strata": 2.53,
         "status": "Modelled only",
-        "realised": 304.3,
+        "realised": 299.5,
         "n": 9,
-        "rmse_fixed": 7.72,
-        "rmse_strata": 7.49,
-        "skill": 0.058
+        "rmse_fixed": 8.01,
+        "rmse_strata": 7.78,
+        "skill": 0.059
       },
       {
         "id": "VAL-03",
         "statement": "Out-of-sample burnt coke, N3 No pellet, with oversize: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 306.5,
-        "strata_omega": 306.8,
-        "sigma_strata": 1.39,
+        "fixed_omega": 300.2,
+        "strata_omega": 300.3,
+        "sigma_strata": 1.41,
         "status": "Supported",
-        "realised": 307.8,
+        "realised": 301.6,
         "n": 30,
-        "rmse_fixed": 6.39,
-        "rmse_strata": 5.98,
-        "skill": 0.125
+        "rmse_fixed": 6.49,
+        "rmse_strata": 6.15,
+        "skill": 0.102
       },
       {
         "id": "VAL-04",
         "statement": "Out-of-sample burnt coke, N4 No pellet, with ROM: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 303.5,
-        "strata_omega": 303.5,
-        "sigma_strata": 2.9,
+        "fixed_omega": 298.6,
+        "strata_omega": 298.7,
+        "sigma_strata": 2.94,
         "status": "Supported",
-        "realised": 304.6,
+        "realised": 300.4,
         "n": 30,
-        "rmse_fixed": 9.3,
-        "rmse_strata": 8.36,
-        "skill": 0.193
+        "rmse_fixed": 10.22,
+        "rmse_strata": 9.49,
+        "skill": 0.14
       },
       {
         "id": "VAL-05",
         "statement": "Out-of-sample burnt coke, N5 No pellet, ROM + oversize: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 292.0,
-        "strata_omega": 291.4,
+        "fixed_omega": 287.3,
+        "strata_omega": 286.7,
         "sigma_strata": null,
         "status": "Modelled only",
-        "realised": 293.6,
+        "realised": 288.9,
         "n": 1,
-        "rmse_fixed": 1.59,
-        "rmse_strata": 2.19,
-        "skill": -0.902
+        "rmse_fixed": 1.64,
+        "rmse_strata": 2.24,
+        "skill": -0.886
       },
       {
         "id": "VAL-06",
         "statement": "Out-of-sample burnt coke, P1 Pellet, sinter + CLO: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 314.8,
-        "strata_omega": 314.9,
-        "sigma_strata": 1.54,
+        "fixed_omega": 309.1,
+        "strata_omega": 309.3,
+        "sigma_strata": 1.53,
         "status": "Supported",
-        "realised": 313.9,
+        "realised": 308.3,
         "n": 43,
-        "rmse_fixed": 5.43,
-        "rmse_strata": 5.34,
-        "skill": 0.034
+        "rmse_fixed": 5.45,
+        "rmse_strata": 5.38,
+        "skill": 0.028
       },
       {
         "id": "VAL-07",
         "statement": "Out-of-sample burnt coke, P2 Pellet, with oversize: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 311.5,
-        "strata_omega": 311.5,
-        "sigma_strata": 1.9,
+        "fixed_omega": 307.4,
+        "strata_omega": 307.3,
+        "sigma_strata": 1.76,
         "status": "Modelled only",
-        "realised": 315.5,
+        "realised": 311.8,
         "n": 6,
-        "rmse_fixed": 5.87,
-        "rmse_strata": 5.68,
-        "skill": 0.064
+        "rmse_fixed": 6.06,
+        "rmse_strata": 5.88,
+        "skill": 0.06
       },
       {
         "id": "VAL-08",
         "statement": "Out-of-sample burnt coke, P3 Pellet, with ROM: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 306.4,
-        "strata_omega": 307.1,
-        "sigma_strata": 1.37,
+        "fixed_omega": 301.5,
+        "strata_omega": 302.1,
+        "sigma_strata": 1.73,
         "status": "Supported",
-        "realised": 306.2,
+        "realised": 300.8,
         "n": 27,
-        "rmse_fixed": 4.4,
-        "rmse_strata": 4.37,
-        "skill": 0.014
+        "rmse_fixed": 4.98,
+        "rmse_strata": 4.73,
+        "skill": 0.098
       },
       {
         "id": "VAL-09",
         "statement": "Out-of-sample burnt coke, P4 Pellet, ROM + oversize: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 299.9,
-        "strata_omega": 297.0,
-        "sigma_strata": 2.44,
+        "fixed_omega": 294.9,
+        "strata_omega": 291.8,
+        "sigma_strata": 2.51,
         "status": "Modelled only",
-        "realised": 297.5,
+        "realised": 292.6,
         "n": 8,
-        "rmse_fixed": 7.57,
-        "rmse_strata": 6.47,
-        "skill": 0.27
+        "rmse_fixed": 7.65,
+        "rmse_strata": 6.67,
+        "skill": 0.239
       },
       {
         "id": "VAL-10",
         "statement": "Out-of-sample burnt coke, All days: realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 306.4,
-        "strata_omega": 306.4,
-        "sigma_strata": 0.74,
+        "fixed_omega": 301.0,
+        "strata_omega": 301.0,
+        "sigma_strata": 0.81,
         "status": "Supported",
-        "realised": 306.7,
+        "realised": 301.5,
         "n": 175,
-        "rmse_fixed": 6.39,
-        "rmse_strata": 5.99,
-        "skill": 0.12
+        "rmse_fixed": 6.77,
+        "rmse_strata": 6.42,
+        "skill": 0.1
       },
       {
         "id": "VAL-11",
         "statement": "Out-of-sample burnt coke, ROM >= 10 % (any family): realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 307.1,
-        "strata_omega": 307.5,
-        "sigma_strata": 1.7,
+        "fixed_omega": 301.2,
+        "strata_omega": 301.6,
+        "sigma_strata": 1.89,
         "status": "Supported",
-        "realised": 305.7,
+        "realised": 299.8,
         "n": 26,
-        "rmse_fixed": 6.97,
-        "rmse_strata": 5.89,
-        "skill": 0.285
+        "rmse_fixed": 6.99,
+        "rmse_strata": 6.17,
+        "skill": 0.219
       },
       {
         "id": "VAL-12",
         "statement": "Out-of-sample burnt coke, Pellet >= 12 % (any family): realised against Fixed-omega and STRATA-omega",
         "unit": "kg/tHM dry burnt coke (mean)",
-        "fixed_omega": 310.0,
-        "strata_omega": 309.4,
-        "sigma_strata": 1.84,
+        "fixed_omega": 304.7,
+        "strata_omega": 304.0,
+        "sigma_strata": 1.91,
         "status": "Supported",
-        "realised": 308.9,
+        "realised": 303.7,
         "n": 35,
-        "rmse_fixed": 6.95,
-        "rmse_strata": 6.53,
-        "skill": 0.117
+        "rmse_fixed": 7.01,
+        "rmse_strata": 6.69,
+        "skill": 0.088
       }
     ],
-    "assumptions": "- **Shaft efficiency** is either Fixed-\u03c9 (held at the calibration, the Rist baseline; ASM-01; the default) or STRATA-\u03c9 (ASM-18, GAS-13..25, STRATA 1.5): the STRATA-Flow gas-flow network's ring counter-current description of the thermal reserve zone (size of each ferrous, coke layers, fuels, oxygen, nut coke), solved for every plan - one network solve per optimiser iteration and three per reported plan, about 1 s each, no surrogate. Plant-data scales: pellet 1.42 \u00b1 0.45, lump ore 0.92 \u00b1 0.46, other operation 0.80 \u00b1 0.28; nut-coke term; no production channel (production acts through the balance; the channel was not replicated on 2023-24 data, GAS-16) and no moisture term (the day's Open-Meteo moisture acts through the balance, GAS-19). Tested out of sample on 175 days of 2026 (burnt-coke RMSE 5.99 against 6.39 kg/tHM for Fixed-\u03c9, skill +0.12 day, +0.22 7-day; GAS-20) and with frozen parameters on 411 days of 2023-24 (RMSE 8.00 against 8.23 kg/tHM; GAS-25). Each plan carries \u03c3(coke), a certainty class (High / Medium / Low / Investigate), its critical assumptions and the network solves behind it; the calibration's own error (about \u00b12 kg/tHM) and the day-to-day spread (about \u00b17 kg/tHM) are reported apart.\n- **Reducibility and RDI** are the Evonith laboratory tests as given (GAS-21, DATA-13: pellet 82, Lloyds CLO 84, Geomin 79, NMDC ROM 61, Donimalai 78 % RI; Gomti not tested). The ore RDIs act in the network as shaft fines. The link from RI to reduction rate is calibrated on the plant data: the measured RI differences show no effect on the plant's shaft efficiency, particle size does (RI exponent 0, size exponent 1.0; both are critical assumptions of every plan).\n- **Oversize**: the Lloyds fines oversize (ore_6) reduces at the Lloyds CLO size (no size credit, GAS-24); the Donimalai oversize return (ore_11) is Donimalai.\n- **Investigate tier**: pellet above 25 % of ferrous or \u03c3(coke) above 8 kg/tHM is beyond common practice; such plans are excluded by default and are trial proposals only.\n- **Blast moisture** is the day's Open-Meteo relative humidity at Wardha mapped to 7-21 g/Nm\u00b3 (DATA-11; validated on the top-gas H\u2082, DATA-16). It acts on coke through the balance; STRATA 1.5 has no separate moisture term (GAS-19 retired). **PCI** defaults to the live tag's 1-h mean (else the regime window's median) and **nut coke** to 70 kg/tHM, unless overridden; both act through the balance, nut coke also through STRATA-\u03c9 (GAS-23).\n- **Burden-resistance rules** (FLOW-02..07) were fitted on pellet up to 16.6 % and Gomti up to 11.6 % of ferrous; beyond that the page warns that it is extrapolating.\n- **Process limits** default to the Jun-Oct 2026 operating envelope, not equipment ratings. Oxygen and stove gas have no price.\n- **Not limited:** phosphorus, alkalis, zinc, sulphur; sinter-plant cost of a basicity change.\n- **Slag** is the Blend Mix Optimiser's ledger on the plan's burden: hot-metal Si, S and C held for the slag side (page 9's values, Si 0.60 %; the coke balance keeps its thermal Si), top-gas dust as the plant burden sheet's row (530 kg per charge, CaO 5.63 %, MgO 3.57 %, held constant over the blend's charges per tHM; editable on page 11 and the SPA as operator inputs), TiO\u2082 left out of the slag total (as the UAT page 9), alkalis 80 % to slag, sulphur less the pig iron's and 10 % to gas, FeO from 0.1 % of the Fe charged less the dust's.\n- Steady day average: no transition between blends; heat losses (GJ/h) stay at the calibration."
+    "assumptions": "- **Shaft efficiency** is either Fixed-\u03c9 (held at the calibration, the Rist baseline; ASM-01; the default) or STRATA-\u03c9 (ASM-18, GAS-13..25, STRATA 1.5): the STRATA-Flow gas-flow network's ring counter-current description of the thermal reserve zone (size of each ferrous, coke layers, fuels, oxygen, nut coke), solved for every plan - one network solve per optimiser iteration and three per reported plan, about 1 s each, no surrogate. Plant-data scales (dry fuel basis): pellet 1.40 \u00b1 0.45, lump ore 0.93 \u00b1 0.46, other operation 0.68 \u00b1 0.29; nut-coke term; no production channel (production acts through the balance; the channel was not replicated on 2023-24 data, GAS-16) and no moisture term (the day's Open-Meteo moisture acts through the balance, GAS-19). Tested out of sample on 175 days of 2026 (burnt-coke RMSE 6.42 against 6.77 kg/tHM for Fixed-\u03c9, skill +0.10 day, +0.17 7-day; GAS-20) and with frozen parameters on 411 days of 2023-24 (RMSE 8.00 against 8.23 kg/tHM; GAS-25). Each plan carries \u03c3(coke), a certainty class (High / Medium / Low / Investigate), its critical assumptions and the network solves behind it; the calibration's own error (about \u00b12 kg/tHM) and the day-to-day spread (about \u00b17 kg/tHM) are reported apart.\n- **Reducibility and RDI** are the Evonith laboratory tests as given (GAS-21, DATA-13: pellet 82, Lloyds CLO 84, Geomin 79, NMDC ROM 61, Donimalai 78 % RI; Gomti not tested). The ore RDIs act in the network as shaft fines. The link from RI to reduction rate is calibrated on the plant data: the measured RI differences show no effect on the plant's shaft efficiency, particle size does (RI exponent 0, size exponent 1.0; both are critical assumptions of every plan).\n- **Oversize**: the Lloyds fines oversize (ore_6) reduces at the Lloyds CLO size (no size credit, GAS-24); the Donimalai oversize return (ore_11) is Donimalai.\n- **Investigate tier**: pellet above 25 % of ferrous or \u03c3(coke) above 8 kg/tHM is beyond common practice; such plans are excluded by default and are trial proposals only.\n- **Blast moisture** is the day's Open-Meteo relative humidity at Wardha mapped to 7-21 g/Nm\u00b3 (DATA-11; validated on the top-gas H\u2082, DATA-16). It acts on coke through the balance; STRATA 1.5 has no separate moisture term (GAS-19 retired). **PCI** defaults to the live tag's 1-h mean (else the regime window's median) and **nut coke** to 70 kg/tHM, unless overridden; both act through the balance, nut coke also through STRATA-\u03c9 (GAS-23).\n- **Fuel basis** (DATA-17): coke, nut coke and PCI are dry, as the plant's coke-rate, nut-coke-rate and coal-rate tags; coke and nut coke are charged wet at dry / (1 \u2212 TM) (costs and charging as charged), PCI takes no moisture correction; the fuel-rate band (BAND-01, 520-600 kg/tHM) applies to the dry sum.\n- **Burden-resistance rules** (FLOW-02..07) were fitted on pellet up to 16.6 % and Gomti up to 11.6 % of ferrous; beyond that the page warns that it is extrapolating.\n- **Process limits** default to the Jun-Oct 2026 operating envelope, not equipment ratings. Oxygen and stove gas have no price.\n- **Not limited:** phosphorus, alkalis, zinc, sulphur; sinter-plant cost of a basicity change.\n- **Slag** is the Blend Mix Optimiser's ledger on the plan's burden: hot-metal Si, S and C held for the slag side (page 9's values, Si 0.60 %; the coke balance keeps its thermal Si), top-gas dust as the plant burden sheet's row (530 kg per charge, CaO 5.63 %, MgO 3.57 %, held constant over the blend's charges per tHM; editable on page 11 and the SPA as operator inputs), TiO\u2082 left out of the slag total (as the UAT page 9), alkalis 80 % to slag, sulphur less the pig iron's and 10 % to gas, FeO from 0.1 % of the Fe charged less the dust's.\n- Steady day average: no transition between blends; heat losses (GJ/h) stay at the calibration."
   },
   "expected": {
     "step2": {
       "tiles": {
         "overview": {
-          "total": 30091.947812773,
+          "total": 30009.385802067,
           "P_tday": 2270.0,
           "P_th": 94.583333333,
-          "fe_wet_pct": 55.384959283,
-          "ferrous_kg": 1734.756458836
+          "fe_wet_pct": 55.384030998,
+          "ferrous_kg": 1734.796253183
         },
         "cost": {
-          "ore": 14350.606560347,
-          "flux": 4.393347123,
-          "fuel": 15736.947905303,
-          "coke": 9708.967905303,
-          "nut": 1825.18,
+          "ore": 14350.21479371,
+          "flux": 4.468862325,
+          "fuel": 15654.702146032,
+          "coke": 9618.389882744,
+          "nut": 1833.512263288,
           "pci": 4202.8,
           "slag_credit": 0.0,
-          "gross": 30091.947812773,
-          "total": 30091.947812773
+          "gross": 30009.385802067,
+          "total": 30009.385802067
         },
         "fuel": {
-          "coke_dry": 302.169378573,
-          "coke_wet": 303.48111732,
-          "nut": 70.0,
+          "coke_dry": 299.350345175,
+          "coke_wet": 300.649846297,
+          "nut": 70.319562142,
+          "nut_dry": 70.0,
           "pci": 190.0,
-          "total": 563.48111732
+          "charged": 560.969408439,
+          "total": 559.350345175
         },
         "slag": {
           "rate": 340.0,
           "t_day": 771.8,
           "Al2O3_pct": 20.0,
-          "MgO_pct": 6.937623783,
+          "MgO_pct": 6.937940675,
           "b2": 1.05,
-          "t_basicity": 1.249280662,
-          "ib4": 0.793449709,
-          "mgo_al2o3": 0.346881189
+          "t_basicity": 1.249285082,
+          "ib4": 0.793459318,
+          "mgo_al2o3": 0.346897034
         },
         "charging": {
-          "coke_t": 688.902136317,
-          "nut_t": 158.9,
+          "coke_t": 682.475151095,
+          "nut_t": 159.625406062,
           "pci_t": 431.3,
-          "ferrous_t": 3937.897161558,
-          "charges_per_h": 6.459986773,
-          "hm_per_charge": 14.641412848,
-          "flux_kg": 2.446184367
+          "ferrous_t": 3937.987494726,
+          "charges_per_h": 6.461421618,
+          "hm_per_charge": 14.638161526,
+          "flux_kg": 2.488230693
         }
       },
       "band_notes": {
@@ -4246,117 +4258,121 @@
       },
       "today_tiles": {
         "overview": {
-          "total": 30273.537049445,
+          "total": 30191.248658169,
           "P_tday": 2270.0,
           "P_th": 94.583333333,
           "fe_wet_pct": 55.9442289,
-          "ferrous_kg": 1717.216659494
+          "ferrous_kg": 1717.227032243
         },
         "cost": {
-          "ore": 14563.00356147,
+          "ore": 14563.091528463,
           "flux": 0.0,
-          "fuel": 15710.533487975,
-          "coke": 9682.553487975,
-          "nut": 1825.18,
+          "fuel": 15628.157129706,
+          "coke": 9591.844866418,
+          "nut": 1833.512263288,
           "pci": 4202.8,
           "slag_credit": 0.0,
-          "gross": 30273.537049445,
-          "total": 30273.537049445
+          "gross": 30191.248658169,
+          "total": 30191.248658169
         },
         "fuel": {
-          "coke_dry": 301.347290361,
-          "coke_wet": 302.655460364,
-          "nut": 70.0,
+          "coke_dry": 298.524192368,
+          "coke_wet": 299.820107102,
+          "nut": 70.319562142,
+          "nut_dry": 70.0,
           "pci": 190.0,
-          "total": 562.655460364
+          "charged": 560.139669244,
+          "total": 558.524192368
         },
         "slag": {
-          "rate": 328.271796146,
-          "t_day": 745.176977251,
-          "Al2O3_pct": 19.554188068,
-          "MgO_pct": 7.073312949,
-          "b2": 1.083043513,
-          "t_basicity": 1.288688251,
-          "ib4": 0.821602741,
-          "mgo_al2o3": 0.361728798
+          "rate": 328.213230793,
+          "t_day": 745.044033899,
+          "Al2O3_pct": 19.554702236,
+          "MgO_pct": 7.075040518,
+          "b2": 1.083557702,
+          "t_basicity": 1.289304699,
+          "ib4": 0.821912564,
+          "mgo_al2o3": 0.361807632
         },
         "charging": {
-          "coke_t": 687.027895027,
-          "nut_t": 158.9,
+          "coke_t": 680.591643122,
+          "nut_t": 159.625406062,
           "pci_t": 431.3,
-          "ferrous_t": 3898.081817051,
-          "charges_per_h": 6.388545315,
-          "hm_per_charge": 14.805143998,
+          "ferrous_t": 3898.105363192,
+          "charges_per_h": 6.389724693,
+          "hm_per_charge": 14.802411351,
           "flux_kg": 0.0
         }
       },
       "deltas": {
         "cost": {
-          "ore": -212.397001123,
-          "flux": 4.393347123,
-          "fuel": 26.414417328,
-          "coke": 26.414417328,
+          "ore": -212.876734753,
+          "flux": 4.468862325,
+          "fuel": 26.545016326,
+          "coke": 26.545016326,
           "nut": 0.0,
           "pci": 0.0,
           "slag_credit": 0.0,
-          "gross": -181.589236672,
-          "total": -181.589236672
+          "gross": -181.862856102,
+          "total": -181.862856102
         },
         "fuel": {
-          "coke_dry": 0.822088212,
-          "coke_wet": 0.825656956,
+          "coke_dry": 0.826152807,
+          "coke_wet": 0.829739195,
           "nut": 0.0,
+          "nut_dry": 0.0,
           "pci": 0.0,
-          "total": 0.825656956
+          "charged": 0.829739195,
+          "total": 0.826152807
         },
         "slag": {
-          "rate": 11.728203854,
-          "t_day": 26.623022749,
-          "Al2O3_pct": 0.445811932,
-          "MgO_pct": -0.135689166,
-          "b2": -0.033043513,
-          "t_basicity": -0.039407589,
-          "ib4": -0.028153032,
-          "mgo_al2o3": -0.014847609
+          "rate": 11.786769207,
+          "t_day": 26.755966101,
+          "Al2O3_pct": 0.445297764,
+          "MgO_pct": -0.137099843,
+          "b2": -0.033557702,
+          "t_basicity": -0.040019617,
+          "ib4": -0.028453246,
+          "mgo_al2o3": -0.014910599
         }
       },
-      "saving_lakh_rs_d": 4.122075672,
+      "saving_lakh_rs_d": 4.128286834,
       "lead": [
         "saving",
-        "**Charge** SINTER (SP-02) 62.54 %, GEOMIN CLO 14.07 %, LLOYDS CLO 13.40 %, LLOYDS PELLET 10.00 % with quartz 2.45 kg/tHM: Rs 30,092/tHM, coke 303.48 kg/tHM as charged. **Rs 182/tHM less than today's blend** (Rs 4.1 lakh/day at this output; coke +0.83 kg/tHM)."
+        "**Charge** SINTER (SP-02) 62.53 %, GEOMIN CLO 14.08 %, LLOYDS CLO 13.39 %, LLOYDS PELLET 10.00 % with quartz 2.49 kg/tHM: Rs 30,009/tHM, coke 300.65 kg/tHM as charged. **Rs 182/tHM less than today's blend** (Rs 4.1 lakh/day at this output; coke +0.83 kg/tHM)."
       ],
       "blend_table": [
         {
           "Material": "SINTER (SP-02)",
-          "Plan, wet %": 62.535088692,
+          "Plan, wet %": 62.532767505,
           "Today, wet %": 61.95,
           "Ore + flux only, wet %": 58.0,
-          "Plan, kg/tHM": 1084.831490116,
-          "Today, kg/tHM": 1063.815720556,
-          "Ore + flux only, kg/tHM": 1000.267916994,
-          "Plan, t/d": 2462.567482562,
+          "Plan, kg/tHM": 1084.816107682,
+          "Today, kg/tHM": 1063.822146475,
+          "Ore + flux only, kg/tHM": 1000.216353345,
+          "Plan, t/d": 2462.532564438,
           "Price, Rs/t": 8724.0
         },
         {
           "Material": "GEOMIN CLO",
-          "Plan, wet %": 14.06858041,
+          "Plan, wet %": 14.077818992,
           "Today, wet %": 12.05,
-          "Ore + flux only, wet %": 16.515149523,
-          "Plan, kg/tHM": 244.055607332,
-          "Today, kg/tHM": 206.924607469,
-          "Ore + flux only, kg/tHM": 284.820245035,
-          "Plan, t/d": 554.006228644,
+          "Ore + flux only, wet %": 16.651816522,
+          "Plan, kg/tHM": 244.221476406,
+          "Today, kg/tHM": 206.925857385,
+          "Ore + flux only, kg/tHM": 287.162399967,
+          "Plan, t/d": 554.382751441,
           "Price, Rs/t": 4284.0
         },
         {
           "Material": "LLOYDS CLO",
-          "Plan, wet %": 13.396330898,
+          "Plan, wet %": 13.389413503,
           "Today, wet %": 8.05,
-          "Ore + flux only, wet %": 7.122834063,
-          "Plan, kg/tHM": 232.393715505,
-          "Today, kg/tHM": 138.235941089,
-          "Ore + flux only, kg/tHM": 122.84038606,
-          "Plan, t/d": 527.533734196,
+          "Ore + flux only, wet %": 6.514795901,
+          "Plan, kg/tHM": 232.279043777,
+          "Today, kg/tHM": 138.236776096,
+          "Ore + flux only, kg/tHM": 112.348368939,
+          "Plan, t/d": 527.273429374,
           "Price, Rs/t": 8802.0
         },
         {
@@ -4364,20 +4380,20 @@
           "Plan, wet %": 10.0,
           "Today, wet %": 11.95,
           "Ore + flux only, wet %": 10.0,
-          "Plan, kg/tHM": 173.475645884,
-          "Today, kg/tHM": 205.20739081,
-          "Ore + flux only, kg/tHM": 172.459985689,
-          "Plan, t/d": 393.789716156,
+          "Plan, kg/tHM": 173.479625318,
+          "Today, kg/tHM": 205.208630353,
+          "Ore + flux only, kg/tHM": 172.451095404,
+          "Plan, t/d": 393.798749473,
           "Price, Rs/t": 10350.0
         },
         {
           "Material": "NMDC ROM",
           "Plan, wet %": 0.0,
           "Today, wet %": 6.0,
-          "Ore + flux only, wet %": 8.362016414,
+          "Ore + flux only, wet %": 8.833387578,
           "Plan, kg/tHM": 0.0,
-          "Today, kg/tHM": 103.03299957,
-          "Ore + flux only, kg/tHM": 144.211323109,
+          "Today, kg/tHM": 103.033621935,
+          "Ore + flux only, kg/tHM": 152.332736388,
           "Plan, t/d": 0.0,
           "Price, Rs/t": 10241.0
         }
@@ -4387,17 +4403,17 @@
           "Flux": "Limestone",
           "Plan, kg/tHM": 0.0,
           "Today, kg/tHM": 0.0,
-          "Ore + flux only, kg/tHM": 3.767204101
+          "Ore + flux only, kg/tHM": 4.582603625
         },
         {
           "Flux": "Dolomite",
           "Plan, kg/tHM": 0.0,
           "Today, kg/tHM": 0.0,
-          "Ore + flux only, kg/tHM": 20.029414784
+          "Ore + flux only, kg/tHM": 18.983355962
         },
         {
           "Flux": "Quartz",
-          "Plan, kg/tHM": 2.446184367,
+          "Plan, kg/tHM": 2.488230693,
           "Today, kg/tHM": 0.0,
           "Ore + flux only, kg/tHM": 0.0
         }
@@ -4407,88 +4423,88 @@
           "id": "sinter_sp_02",
           "material": "SINTER (SP-02)",
           "kind": "sinter",
-          "share_wet_pct": 62.535088692,
-          "wet_kg": 1084.831490116,
-          "dry_kg": 1084.831490116,
-          "fe_kg": 590.799229517,
-          "slag_kg": 233.076045651,
-          "kg_per_charge": 15883.465717816,
-          "t_day": 2462.567482562,
+          "share_wet_pct": 62.532767505,
+          "wet_kg": 1084.816107682,
+          "dry_kg": 1084.816107682,
+          "fe_kg": 590.790852244,
+          "slag_kg": 233.072740735,
+          "kg_per_charge": 15879.713409855,
+          "t_day": 2462.532564438,
           "price_rs_t": 8724.0,
-          "cost_rs_thm": 9464.069919769
+          "cost_rs_thm": 9463.935723417
         },
         {
           "id": "geomin_clo",
           "material": "GEOMIN CLO",
           "kind": "ore",
-          "share_wet_pct": 14.06858041,
-          "wet_kg": 244.055607332,
-          "dry_kg": 233.561216217,
-          "fe_kg": 119.606698825,
-          "slag_kg": 44.220145066,
-          "kg_per_charge": 3573.318904937,
-          "t_day": 554.006228644,
+          "share_wet_pct": 14.077818992,
+          "wet_kg": 244.221476406,
+          "dry_kg": 233.71995292,
+          "fe_kg": 119.68798789,
+          "slag_kg": 44.250198686,
+          "kg_per_charge": 3574.953419656,
+          "t_day": 554.382751441,
           "price_rs_t": 4284.0,
-          "cost_rs_thm": 1045.534221811
+          "cost_rs_thm": 1046.244804922
         },
         {
           "id": "lloyds_clo",
           "material": "LLOYDS CLO",
           "kind": "ore",
-          "share_wet_pct": 13.396330898,
-          "wet_kg": 232.393715505,
-          "dry_kg": 221.703604591,
-          "fe_kg": 140.826129636,
-          "slag_kg": 12.708050615,
-          "kg_per_charge": 3402.572332097,
-          "t_day": 527.533734196,
+          "share_wet_pct": 13.389413503,
+          "wet_kg": 232.279043777,
+          "dry_kg": 221.594207763,
+          "fe_kg": 140.756640771,
+          "slag_kg": 12.701779989,
+          "kg_per_charge": 3400.138161829,
+          "t_day": 527.273429374,
           "price_rs_t": 8802.0,
-          "cost_rs_thm": 2045.529483872
+          "cost_rs_thm": 2044.520143326
         },
         {
           "id": "lloyds_pellet",
           "material": "LLOYDS PELLET",
           "kind": "pellet",
           "share_wet_pct": 10.0,
-          "wet_kg": 173.475645884,
-          "dry_kg": 171.740889425,
-          "fe_kg": 109.562100409,
-          "slag_kg": 13.420691804,
-          "kg_per_charge": 2539.928550539,
-          "t_day": 393.789716156,
+          "wet_kg": 173.479625318,
+          "dry_kg": 171.744829065,
+          "fe_kg": 109.564613702,
+          "slag_kg": 13.420999667,
+          "kg_per_charge": 2539.422776815,
+          "t_day": 393.798749473,
           "price_rs_t": 10350.0,
-          "cost_rs_thm": 1795.472934895
+          "cost_rs_thm": 1795.514122045
         },
         {
           "id": "quartz",
           "material": "Quartz",
           "kind": "flux",
           "share_wet_pct": null,
-          "wet_kg": 2.446184367,
-          "dry_kg": 2.438845814,
-          "fe_kg": 0.01876448,
-          "slag_kg": 2.359827209,
-          "kg_per_charge": 35.815595217,
-          "t_day": 5.552838513,
+          "wet_kg": 2.488230693,
+          "dry_kg": 2.480766001,
+          "fe_kg": 0.019087014,
+          "slag_kg": 2.400389183,
+          "kg_per_charge": 36.4231228,
+          "t_day": 5.648283674,
           "price_rs_t": 1796.0,
-          "cost_rs_thm": 4.393347123
+          "cost_rs_thm": 4.468862325
         }
       ],
       "slag_components": [
         {
           "component": "CaO",
-          "kg_per_thm": 124.28359414,
-          "pct": 36.553998276
+          "kg_per_thm": 124.286514339,
+          "pct": 36.554857159
         },
         {
           "component": "SiO\u2082",
-          "kg_per_thm": 118.365327752,
-          "pct": 34.813331692
+          "kg_per_thm": 118.368108894,
+          "pct": 34.814149675
         },
         {
           "component": "MgO",
-          "kg_per_thm": 23.587920861,
-          "pct": 6.937623783
+          "kg_per_thm": 23.588998294,
+          "pct": 6.937940675
         },
         {
           "component": "Al\u2082O\u2083",
@@ -4502,8 +4518,8 @@
         },
         {
           "component": "MnO",
-          "kg_per_thm": 0.721298658,
-          "pct": 0.212146664
+          "kg_per_thm": 0.721521649,
+          "pct": 0.21221225
         },
         {
           "component": "TiO\u2082",
@@ -4512,13 +4528,13 @@
         },
         {
           "component": "S",
-          "kg_per_thm": 2.754008373,
-          "pct": 0.810002463
+          "kg_per_thm": 2.747665776,
+          "pct": 0.808136993
         },
         {
           "component": "Na\u2082O + K\u2082O",
-          "kg_per_thm": 1.064348293,
-          "pct": 0.313043616
+          "kg_per_thm": 1.063689125,
+          "pct": 0.312849743
         },
         {
           "component": "CaF\u2082",
@@ -4534,33 +4550,33 @@
       "slag_components_today": [
         {
           "component": "CaO",
-          "kg_per_thm": 122.288255491,
-          "pct": 37.25213586
+          "kg_per_thm": 122.293550763,
+          "pct": 37.260396379
         },
         {
           "component": "SiO\u2082",
-          "kg_per_thm": 112.911673474,
-          "pct": 34.395788734
+          "kg_per_thm": 112.862979524,
+          "pct": 34.38709014
         },
         {
           "component": "MgO",
-          "kg_per_thm": 23.219691464,
-          "pct": 7.073312949
+          "kg_per_thm": 23.221219063,
+          "pct": 7.075040518
         },
         {
           "component": "Al\u2082O\u2083",
-          "kg_per_thm": 64.190884392,
-          "pct": 19.554188068
+          "kg_per_thm": 64.181119982,
+          "pct": 19.554702236
         },
         {
           "component": "FeO",
           "kg_per_thm": 1.223501923,
-          "pct": 0.372710034
+          "pct": 0.372776539
         },
         {
           "component": "MnO",
-          "kg_per_thm": 0.626082894,
-          "pct": 0.190720891
+          "kg_per_thm": 0.626188235,
+          "pct": 0.190787018
         },
         {
           "component": "TiO\u2082",
@@ -4569,13 +4585,13 @@
         },
         {
           "component": "S",
-          "kg_per_thm": 2.749060141,
-          "pct": 0.837434155
+          "kg_per_thm": 2.742692519,
+          "pct": 0.835643497
         },
         {
           "component": "Na\u2082O + K\u2082O",
-          "kg_per_thm": 1.062646367,
-          "pct": 0.32370931
+          "kg_per_thm": 1.061978784,
+          "pct": 0.323563673
         },
         {
           "component": "CaF\u2082",
@@ -4584,64 +4600,64 @@
         },
         {
           "component": "Slag",
-          "kg_per_thm": 328.271796146,
+          "kg_per_thm": 328.213230793,
           "pct": 100.0
         }
       ],
       "slag_balance": [
         {
           "component": "SiO\u2082",
-          "ore": 95.513547127,
-          "flux": 2.343243058,
-          "fuel_ash": 35.009090467,
-          "dust": -1.6289861,
-          "hot_metal_gas": -12.8715668,
-          "slag": 118.365327752
+          "ore": 95.525079741,
+          "flux": 2.383519974,
+          "fuel_ash": 34.960422216,
+          "dust": -1.629347918,
+          "hot_metal_gas": -12.871565118,
+          "slag": 118.368108894
         },
         {
           "component": "Al\u2082O\u2083",
-          "ore": 52.611895647,
-          "flux": 0.016584152,
-          "fuel_ash": 17.130825189,
-          "dust": -1.759304988,
+          "ore": 52.62160512,
+          "flux": 0.016869209,
+          "fuel_ash": 17.121221423,
+          "dust": -1.759695752,
           "hot_metal_gas": 0.0,
           "slag": 68.0
         },
         {
           "component": "CaO",
-          "ore": 124.158566658,
+          "ore": 124.15699603,
           "flux": 0.0,
-          "fuel_ash": 2.163070091,
-          "dust": -2.038042609,
+          "fuel_ash": 2.168013594,
+          "dust": -2.038495285,
           "hot_metal_gas": 0.0,
-          "slag": 124.28359414
+          "slag": 124.286514339
         },
         {
           "component": "MgO",
-          "ore": 24.065378066,
+          "ore": 24.065116688,
           "flux": 0.0,
-          "fuel_ash": 0.814871768,
-          "dust": -1.292328972,
+          "fuel_ash": 0.816497621,
+          "dust": -1.292616015,
           "hot_metal_gas": 0.0,
-          "slag": 23.587920861
+          "slag": 23.588998294
         },
         {
           "component": "Na\u2082O + K\u2082O",
           "ore": 0.0,
           "flux": 0.0,
-          "fuel_ash": 1.330435367,
+          "fuel_ash": 1.329611406,
           "dust": -0.0,
-          "hot_metal_gas": -0.266087073,
-          "slag": 1.064348293
+          "hot_metal_gas": -0.265922281,
+          "slag": 1.063689125
         },
         {
           "component": "S",
           "ore": 0.0,
           "flux": 0.0,
-          "fuel_ash": 3.430361818,
-          "dust": -0.036199691,
-          "hot_metal_gas": -0.640153755,
-          "slag": 2.754008373
+          "fuel_ash": 3.423322485,
+          "dust": -0.036207732,
+          "hot_metal_gas": -0.639448978,
+          "slag": 2.747665776
         },
         {
           "component": "CaF\u2082",
@@ -4654,56 +4670,56 @@
         },
         {
           "component": "Fe \u2192 FeO",
-          "ore": 960.794158387,
-          "flux": 0.01876448,
-          "fuel_ash": 2.926580447,
-          "dust": -12.126896521,
-          "hot_metal_gas": -950.660994186,
+          "ore": 960.800094607,
+          "flux": 0.019087014,
+          "fuel_ash": 2.923015298,
+          "dust": -12.129590059,
+          "hot_metal_gas": -950.660994253,
           "slag": 1.223501923
         },
         {
           "component": "Mn \u2192 MnO",
-          "ore": 2.176849878,
+          "ore": 2.176954595,
           "flux": 0.0,
-          "fuel_ash": 0.017819476,
+          "fuel_ash": 0.017886823,
           "dust": -0.0,
-          "hot_metal_gas": -2.112019478,
-          "slag": 0.721298658
+          "hot_metal_gas": -2.112018621,
+          "slag": 0.721521649
         },
         {
           "component": "Ti \u2192 TiO\u2082",
-          "ore": 2.556044397,
+          "ore": 2.556787969,
           "flux": 0.0,
-          "fuel_ash": 0.550204719,
+          "fuel_ash": 0.548849316,
           "dust": -0.0,
-          "hot_metal_gas": -5.182770841,
+          "hot_metal_gas": -5.181750001,
           "slag": 0.0
         }
       ],
       "slag_rollup": [
         {
           "source": "Ore (slag-forming oxides)",
-          "kg_per_thm": 303.424933137
+          "kg_per_thm": 303.445719078
         },
         {
           "source": "Flux",
-          "kg_per_thm": 2.359827209
+          "kg_per_thm": 2.400389183
         },
         {
           "source": "Fuel ash",
-          "kg_per_thm": 57.389317277
+          "kg_per_thm": 57.334616126
         },
         {
           "source": "Top-gas dust",
-          "kg_per_thm": -6.718662669
+          "kg_per_thm": -6.72015497
         },
         {
           "source": "To hot metal and gas",
-          "kg_per_thm": -20.432925249
+          "kg_per_thm": -20.431737116
         },
         {
           "source": "FeO, S and CaF\u2082 of the slag",
-          "kg_per_thm": 3.977510296
+          "kg_per_thm": 3.971167699
         },
         {
           "source": "Slag",
@@ -4714,57 +4730,57 @@
         {
           "removal": "SiO\u2082 reduced to hot-metal Si",
           "rule": "theoretical pig iron 1,002 kg x Si 0.60 % x 2.14",
-          "kg_per_thm": 12.8715668
+          "kg_per_thm": 12.871565118
         },
         {
           "removal": "Fe to the hot metal",
           "rule": "99.9 % of the Fe charged less the dust's; the rest FeO",
-          "kg_per_thm": 950.660994186
+          "kg_per_thm": 950.660994253
         },
         {
           "removal": "MnO reduced to hot-metal Mn",
           "rule": "the hot metal's Mn, the rest MnO",
-          "kg_per_thm": 2.112019478
+          "kg_per_thm": 2.112018621
         },
         {
           "removal": "TiO\u2082 reduced to hot-metal Ti",
           "rule": "the hot metal's Ti; the rest left out (workbook basis)",
-          "kg_per_thm": 0.851478392
+          "kg_per_thm": 0.851478046
         },
         {
           "removal": "S to the hot metal",
           "rule": "theoretical pig iron x S 0.030 %",
-          "kg_per_thm": 0.300737542
+          "kg_per_thm": 0.300737503
         },
         {
           "removal": "S to the gas",
           "rule": "10 % of the S charged less the dust's",
-          "kg_per_thm": 0.339416213
+          "kg_per_thm": 0.338711475
         },
         {
           "removal": "Alkalis to the gas",
           "rule": "20 % of Na\u2082O + K\u2082O charged less the dust's",
-          "kg_per_thm": 0.266087073
+          "kg_per_thm": 0.265922281
         },
         {
           "removal": "P and Zn to the hot metal",
           "rule": "all",
-          "kg_per_thm": 1.232452592
+          "kg_per_thm": 1.232328738
         },
         {
           "removal": "TiO\u2082 left out of the slag",
           "rule": "workbook basis",
-          "kg_per_thm": 4.331292449
+          "kg_per_thm": 4.330271955
         }
       ],
       "fuel_ash": [
         {
           "fuel": "Coke",
-          "wet_kg": 303.48111732,
-          "dry_kg": 302.169378573,
+          "wet_kg": 300.649846297,
+          "dry_kg": 299.350345175,
           "moist_pct": 0.432230762,
           "ash_pct": 12.45421936,
-          "ash_kg": 37.632837247,
+          "ash_kg": 37.281748644,
           "sio2_pct": 57.183051746,
           "al2o3_pct": 26.548411029,
           "cao_pct": 2.756405455,
@@ -4775,15 +4791,15 @@
           "alk_pct": 2.077858081,
           "s_pct": 0.72,
           "p_pct": 0.032,
-          "slag_kg": 34.340142137
+          "slag_kg": 34.019772124
         },
         {
           "fuel": "Nut coke",
-          "wet_kg": 70.0,
-          "dry_kg": 69.681890085,
+          "wet_kg": 70.319562142,
+          "dry_kg": 70.0,
           "moist_pct": 0.454442736,
           "ash_pct": 12.466804509,
-          "ash_kg": 8.687105015,
+          "ash_kg": 8.726763156,
           "sio2_pct": 56.864510145,
           "al2o3_pct": 26.725451087,
           "cao_pct": 2.64929058,
@@ -4794,15 +4810,15 @@
           "alk_pct": 2.0,
           "s_pct": 0.78,
           "p_pct": 0.032,
-          "slag_kg": 7.893965434
+          "slag_kg": 7.930002756
         },
         {
           "fuel": "PCI",
           "wet_kg": 190.0,
-          "dry_kg": 187.164092108,
-          "moist_pct": 1.492583101,
+          "dry_kg": 190.0,
+          "moist_pct": 0.0,
           "ash_pct": 9.142232102,
-          "ash_kg": 17.110975712,
+          "ash_kg": 17.370240993,
           "sio2_pct": 49.965625,
           "al2o3_pct": 28.15875,
           "cao_pct": 5.234125,
@@ -4813,7 +4829,7 @@
           "alk_pct": 2.190034762,
           "s_pct": 0.38,
           "p_pct": 0.021,
-          "slag_kg": 15.155209706
+          "slag_kg": 15.384841246
         }
       ],
       "dust": [
@@ -4821,16 +4837,16 @@
           "id": "bf_gas_dust",
           "stream": "BF Gas Dust",
           "kg_per_charge": 530.0,
-          "kg_per_thm": 36.199691106,
-          "dry_kg": 36.199691106,
+          "kg_per_thm": 36.207731521,
+          "dry_kg": 36.207731521,
           "moist_pct": 0.0,
           "sio2_pct": 4.5,
           "al2o3_pct": 4.86,
           "cao_pct": 5.63,
           "mgo_pct": 3.57,
           "fe_pct": 33.5,
-          "fe_kg": 12.126896521,
-          "slag_kg": 6.718662669,
+          "fe_kg": 12.129590059,
+          "slag_kg": 6.72015497,
           "source": "BF-2 Burden (2).xlsx/BURDEN (plant burden sheet; constant)"
         }
       ],
@@ -4838,26 +4854,26 @@
         "segments": [
           [
             "sinter_sp_02",
-            62.535088692,
-            2462.567482562
+            62.532767505,
+            2462.532564438
           ],
           [
             "geomin_clo",
-            14.06858041,
-            554.006228644
+            14.077818992,
+            554.382751441
           ],
           [
             "lloyds_clo",
-            13.396330898,
-            527.533734196
+            13.389413503,
+            527.273429374
           ],
           [
             "lloyds_pellet",
             10.0,
-            393.789716156
+            393.798749473
           ]
         ],
-        "ferrous_t_d": 3937.897161558
+        "ferrous_t_d": 3937.987494726
       },
       "value_of_limits": {
         "useful": [
@@ -4867,10 +4883,10 @@
           "CaO/SiO\u2082 floor \u22120.01"
         ],
         "rest": [
-          "Charges per hour +0.1",
           "Charge mass +0.5 t",
-          "SINTER (SP-02) floor \u22122 pt",
+          "Charges per hour +0.1",
           "SINTER (SP-02) cap +5 pt",
+          "SINTER (SP-02) floor \u22122 pt",
           "GEOMIN CLO cap +5 pt",
           "LLOYDS CLO cap +5 pt",
           "NMDC ROM cap +5 pt",
@@ -4881,61 +4897,63 @@
     "step1": {
       "tiles": {
         "overview": {
-          "total": 30091.947812773,
+          "total": 30009.385802067,
           "P_tday": 2270.0,
           "P_th": 94.583333333,
-          "fe_wet_pct": 55.384959283,
-          "ferrous_kg": 1734.756458836
+          "fe_wet_pct": 55.384030998,
+          "ferrous_kg": 1734.796253183
         },
         "cost": {
-          "ore": 14350.606560347,
-          "flux": 4.393347123,
-          "fuel": 15736.947905303,
-          "coke": 9708.967905303,
-          "nut": 1825.18,
+          "ore": 14350.21479371,
+          "flux": 4.468862325,
+          "fuel": 15654.702146032,
+          "coke": 9618.389882744,
+          "nut": 1833.512263288,
           "pci": 4202.8,
           "slag_credit": 0.0,
-          "gross": 30091.947812773,
-          "total": 30091.947812773
+          "gross": 30009.385802067,
+          "total": 30009.385802067
         },
         "fuel": {
-          "coke_dry": 302.169378573,
-          "coke_wet": 303.48111732,
-          "nut": 70.0,
+          "coke_dry": 299.350345175,
+          "coke_wet": 300.649846297,
+          "nut": 70.319562142,
+          "nut_dry": 70.0,
           "pci": 190.0,
-          "total": 563.48111732
+          "charged": 560.969408439,
+          "total": 559.350345175
         },
         "slag": {
           "rate": 340.0,
           "t_day": 771.8,
           "Al2O3_pct": 20.0,
-          "MgO_pct": 6.937623783,
+          "MgO_pct": 6.937940675,
           "b2": 1.05,
-          "t_basicity": 1.249280662,
-          "ib4": 0.793449709,
-          "mgo_al2o3": 0.346881189
+          "t_basicity": 1.249285082,
+          "ib4": 0.793459318,
+          "mgo_al2o3": 0.346897034
         },
         "charging": {
-          "coke_t": 688.902136317,
-          "nut_t": 158.9,
+          "coke_t": 682.475151095,
+          "nut_t": 159.625406062,
           "pci_t": 431.3,
-          "ferrous_t": 3937.897161558,
-          "charges_per_h": 6.459986773,
-          "hm_per_charge": 14.641412848,
-          "flux_kg": 2.446184367
+          "ferrous_t": 3937.987494726,
+          "charges_per_h": 6.461421618,
+          "hm_per_charge": 14.638161526,
+          "flux_kg": 2.488230693
         }
       },
       "best": {
         "P_tday": 2270.0,
-        "cost": 30091.947812773,
+        "cost": 30009.385802067,
         "limited_by": "Al\u2082O\u2083 cap, CaO/SiO\u2082 floor, slag rate cap"
       },
       "top": {
         "P_tday": 2340.0,
-        "cost": 30306.695195574,
+        "cost": 30227.792794541,
         "limited_by": "CaO/SiO\u2082 floor, charging rate"
       },
-      "extra_rs_per_t": 37270.64603786
+      "extra_rs_per_t": 37310.41955047
     }
   }
 }

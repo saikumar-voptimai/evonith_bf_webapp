@@ -103,7 +103,7 @@ def test_the_basis_lists_days_the_calibration_point_and_materials(api) -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["days"] == [] and body["basis"] is None and "No day calibration" in body["message"]
-    assert body["facts_version"] == "1.8" and body["max_cases"] == 4
+    assert body["facts_version"] == "1.9" and body["max_cases"] == 4
     assert {"sinter_sp_02", "lloyds_pellet", "gomti_clo"} <= {m["id"] for m in body["materials"]}
     ref = call(api, "GET", "adm", f"{URL}/basis", params={"calibration": "reference"}).json()
     assert ref["basis"]["calibration"] == "reference" and ref["basis"]["omega"] == pytest.approx(0.80, abs=0.001)
@@ -143,7 +143,8 @@ def test_invalid_cases_are_refused(api, body, fragment) -> None:
 
 
 def test_a_forge_run_reproduces_the_deck_and_states_the_register_version(api) -> None:
-    pci = save(api, "adm", {"kind": "forge", "name": "PCI +10", "forge": {"pci_kg_thm": 196.8}})
+    # PCI as recorded, dry (25 Nov 2026): the calibration's 184.0 kg/tHM + 10
+    pci = save(api, "adm", {"kind": "forge", "name": "PCI +10", "forge": {"pci_kg_thm": 194.0}})
     hbt = save(api, "adm", {"kind": "forge", "name": "HBT +50", "forge": {"hbt_c": 1238.4}})
     r = call(api, "POST", "adm", f"{URL}/runs", json={"kind": "forge", "case_ids": [pci["id"], hbt["id"]],
                                                       "calibration": "reference"})  # fmt: skip
@@ -153,9 +154,9 @@ def test_a_forge_run_reproduces_the_deck_and_states_the_register_version(api) ->
     out = work(api, job["id"])
     assert out["stored"] == [pci["id"], hbt["id"]]
     cases = {c["name"]: c for c in call(api, "GET", "adm", f"{URL}/cases").json()}
-    for name, two_zone, fixed_eta in (("PCI +10", -8.7, -9.9), ("HBT +50", -6.7, -4.1)):
+    for name, two_zone, fixed_eta in (("PCI +10", -8.82, -10.09), ("HBT +50", -6.7, -4.14)):
         run = cases[name]["forge_run"]
-        assert run["facts_version"] == "1.8" and run["job_id"] == job["id"]
+        assert run["facts_version"] == "1.9" and run["job_id"] == job["id"]
         assert run["basis"]["calibration"] == "reference" and run["basis"]["blast_moisture_g_nm3"] == 15.0
         assert run["result"]["two_zone"]["d_coke_kg_thm"] == pytest.approx(two_zone, abs=0.06)
         assert run["result"]["fixed_eta"]["d_coke_kg_thm"] == pytest.approx(fixed_eta, abs=0.06)
@@ -171,15 +172,18 @@ def test_a_strata_run_reproduces_the_case_report(api) -> None:
     assert r.status_code == 202, r.text
     out = work(api, r.json()["job"]["id"])
     assert (
-        out["facts_version"] == "1.8" and out["basis"]["omega_mode"] == "fixed" and out["basis"]["yard"] == "reference"
+        out["facts_version"] == "1.9" and out["basis"]["omega_mode"] == "fixed" and out["basis"]["yard"] == "reference"
     )
     runs = [c["strata_run"] for c in call(api, "GET", "adm", f"{URL}/cases").json()]
     by_name = {r["result"]["name"]: r["result"] for r in runs}
-    for name in ("Cheapest", "Case 2 blend"):
+    # The run's yard carries page 9's slag basis (as the API's Step 2; the case report's own figures without it are
+    # reproduced in tests/test_services_whatif.py), dry fuel basis (25 Nov 2026). The forced case-2 blend runs with the
+    # slag-quality limits lifted (scenarios.run_today): its slag is 326 kg/tHM and its Al2O3 above the plan's cap.
+    for name, coke, cost in (("Cheapest", 299.35, 30009), ("Case 2 blend", 299.61, 29992)):
         res = by_name[name]
-        assert res["status"] == "ok" and res["facts_version"] == "1.8"
+        assert res["status"] == "ok" and res["facts_version"] == "1.9"
         assert res["production_t_d"] == pytest.approx(2270.0)
-        assert res["coke_kg_thm"] == pytest.approx(305.7, abs=0.3) and res["cost_rs_thm"] == pytest.approx(30139, abs=5)
+        assert res["coke_kg_thm"] == pytest.approx(coke, abs=0.3) and res["cost_rs_thm"] == pytest.approx(cost, abs=5)
     assert by_name["Case 2 blend"]["forced"] and not by_name["Cheapest"]["forced"]
 
 

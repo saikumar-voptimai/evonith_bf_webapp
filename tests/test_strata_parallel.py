@@ -278,7 +278,8 @@ def test_independent_items_start_from_the_same_anchors_and_merge_in_order(monkey
     seen = eng.run_items(add_anchor, [(k,) for k in range(4)], network=True)
     assert seen == [n_anchors + 1] * 4  # every item saw only the anchors present before the items, plus its own
     assert len(net.U) == n_anchors + 4 and net.n_solves == n_solves + 4
-    np.testing.assert_array_equal(net.Y[n_anchors:, 0] - net.Y[0, 0], [0.0, 1.0, 2.0, 3.0])  # in item order
+    # in item order (within rounding: Y[0, 0] + k - Y[0, 0] is not exact in floating point)
+    np.testing.assert_allclose(net.Y[n_anchors:, 0] - net.Y[0, 0], [0.0, 1.0, 2.0, 3.0], rtol=0, atol=1e-12)
     assert eng.run_items(add_anchor, [(0,)], network=False) == [n_anchors + 5]  # Fixed-ω: one after the other
 
 

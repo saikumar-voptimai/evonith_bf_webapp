@@ -36,11 +36,12 @@ def test_settings_from_regime_prefers_regime(eng):
     assert s.HBT == 1201.0 and s.Pb == 2.8
     assert s.O2_per_air == pytest.approx(eng.cal["case"]["O2_per_air"])
     assert s.HMT == 1470.0
-    # PCI: the regime's median when given, else the calibration's (as injected), not 190; nut coke: the config
+    # PCI: the regime's median when given, else the calibration's (as recorded = dry, 25 Nov 2026), not 190; nut
+    # coke: the config
     case = eng.cal["case"]
-    assert s.pci_plant == pytest.approx(case["pci_kg"] / (1 - case["pci"]["moist_pct"] / 100))
+    assert s.pci_plant == pytest.approx(case["pci_kg"])
     s2 = settings_from_regime(dict(pci_kgthm_dry=175.0, nut_kgthm_dry=65.0), THERMAL, eng.cal)
-    assert s2.pci_plant == pytest.approx(175.0 / (1 - case["pci"]["moist_pct"] / 100))
+    assert s2.pci_plant == pytest.approx(175.0)
     assert s2.nut_plant == pytest.approx(THERMAL.get("nut_kg_thm", 70.0))
 
 
@@ -53,7 +54,7 @@ def test_limits_from_register_and_saved():
 def test_fixed_tables(eng, fixed):
     s, res = fixed
     r, r0 = res["with_fuel"], res["ore_only"]
-    assert r["cost"]["total"] == pytest.approx(30139, abs=5) and r0["cost"]["total"] == pytest.approx(30139, abs=5)
+    assert r["cost"]["total"] == pytest.approx(30055, abs=5) and r0["cost"]["total"] == pytest.approx(30055, abs=5)
     B = blend_table(eng, r, r0)
     assert B.share_wet_pct.dropna().sum() == pytest.approx(100.0, abs=0.01)
     assert cost_table(r).set_index("item").loc["Total", "rs_per_thm"] == pytest.approx(r["cost"]["total"])
@@ -92,7 +93,8 @@ def test_cheapest_level_matches_case4(eng):
                              humidity_g=eng.cal["case"]["humidity_g"])  # case report
     res = run_cheapest_level(eng, s, limits_from(load_register()))
     assert res["best"]["P_tday"] == pytest.approx(2290, abs=3)
-    assert res["best"]["cost"]["total"] == pytest.approx(29935, abs=10)
+    # PCI 190 and nut coke 70 kg/tHM dry (25 Nov 2026); 29,935 with the fuels on the case report's basis
+    assert res["best"]["cost"]["total"] == pytest.approx(29851, abs=10)
     assert res["top"]["P_tday"] == pytest.approx(2412, abs=3)
     F = res["frontier"]
     assert F.cost_rs_thm.idxmin() == F.index[(F.prod_t_day - res["best"]["P_tday"]).abs().argmin()] or \

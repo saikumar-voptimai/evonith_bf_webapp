@@ -207,6 +207,10 @@ def test_failed_windows_of_the_backfill_period_are_due_again(store) -> None:
     stored_window(store, "2026-05-21 06:00", "failed")  # outside a 4-h backfill
     due = twin.due_windows(store, end, 4)
     assert due == [pd.Timestamp("2026-05-21 08:00"), pd.Timestamp("2026-05-21 09:00"), end]  # 08:00 has no row
+    # redo (a change of the model or of the data basis): every window of the backfill period, stored or not
+    redo = twin.due_windows(store, end, 4, redo=True)
+    assert redo == [pd.Timestamp(f"2026-05-21 {h:02d}:00") for h in (8, 9, 10, 11)] + [end]
+    assert twin.due_windows(store, end, 0, redo=True) == [end]
 
 
 def test_provisional_dpr_windows_are_due_once_the_days_dpr_has_arrived(store) -> None:

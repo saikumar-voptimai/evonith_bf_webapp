@@ -42,7 +42,7 @@ import pandas as pd
 from utils.burden_engine import strata_window
 from utils.burden_engine.strata_network import solve_stats
 from utils.coke_energy import burden_column, hmt_forecast
-from utils.coke_energy.build_shifts import build_shift_inputs, window_key
+from utils.coke_energy.build_shifts import ChargeMoisture, build_shift_inputs, window_key
 from utils.coke_energy.burnt import k_burnt
 from utils.coke_energy.pipeline import (
     PipelineResult,
@@ -165,16 +165,28 @@ def _count(row: pd.Series, col: str) -> int:
 
 
 def window_inputs(
-    fd: pd.DataFrame, m10: pd.DataFrame, hm: pd.DataFrame, dpr: pd.DataFrame, window: Window, history_start: str
+    fd: pd.DataFrame,
+    m10: pd.DataFrame,
+    hm: pd.DataFrame,
+    dpr: pd.DataFrame,
+    window: Window,
+    history_start: str,
+    moisture: ChargeMoisture | None = None,
 ) -> pd.DataFrame:
     """The window's input row (the columns of a shift row of ``build_shift_inputs``); empty without hourly rows.
 
     The whole hourly dataset from ``history_start`` is passed, not only the window's rows: the ash analyses are filled
-    with the median of that history, exactly as for the shifts."""
+    with the median of that history, exactly as for the shifts. ``moisture``: the pipeline's dry basis of the fuels."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return build_shift_inputs(
-            fd, m10, hm, dpr, start=history_start, key_fn=window_key(window.start, window.end, window.key)
+            fd,
+            m10,
+            hm,
+            dpr,
+            start=history_start,
+            key_fn=window_key(window.start, window.end, window.key),
+            moisture=moisture,
         )
 
 
@@ -237,7 +249,7 @@ def evaluate_window(
     flags: dict[str, Any] = {"provisional_dpr": window.date.date() in set(provisional_dates)}
     ev = WindowEvaluation(window=window, status="failed", flags=flags)
 
-    S = window_inputs(fd, m10, hm, dpr, window, settings.history_start)
+    S = window_inputs(fd, m10, hm, dpr, window, settings.history_start, settings.charge_moisture)
     if S.empty or key not in S.index:
         ev.notes.append("no hourly data in the window")
         return ev
@@ -434,7 +446,9 @@ def _evaluate_strata(
     dk = (k_up - k) / DOMEGA
     t = sw.terms
     sigma_k = abs(dk) * sw.sigma
-    wet = 1 - (_num(row.get("COKE_MOIST%")) or 0.0) / 100  # the certainty tiers are set on wet coke (engine sig_K)
+    # the certainty tiers are set on wet coke (engine sig_K): the TM the pipeline used (build_shifts.dry_fuels)
+    tm = _num(row.get("COKE_TM_USED%"))
+    wet = 1 - (tm if tm is not None else (_num(row.get("COKE_MOIST%")) or 0.0)) / 100
     ev.omega_strata, ev.omega_strata_sd = sw.omega, sw.sigma
     ev.k_strata, ev.k_strata_sd = k, sigma_k
     ev.quantities.update(

@@ -134,11 +134,12 @@ def test_replay_of_the_strata_evidence_over_2026() -> None:
     r = drift.evidence_residuals(seed, cs)
     assert len(r) == 191
     rep = drift.evaluate(r, drift.DriftSettings(lag=DAY, max_gap=7, min_pairs=30))
-    assert rep.ar1.rho == pytest.approx(0.693, abs=0.001) and rep.ar1.sigma_e == pytest.approx(0.0200, abs=0.0001)
+    # evidence seed on the dry fuel basis (25 Nov 2026; earlier basis: rho 0.693, sigma_e 0.0200, S+ 2.53, S- 3.26)
+    assert rep.ar1.rho == pytest.approx(0.715, abs=0.001) and rep.ar1.sigma_e == pytest.approx(0.0217, abs=0.0001)
     year = rep.points.loc["2026-01-01":"2026-10-07"]
     assert len(year) == 175 and year.signal.isna().all() and not rep.episodes  # no alarm: in control
-    assert year.s_pos.idxmax() == pd.Timestamp("2026-06-23") and year.s_pos.max() == pytest.approx(2.53, abs=0.01)
-    assert year.s_neg.idxmax() == pd.Timestamp("2026-07-19") and year.s_neg.max() == pytest.approx(3.26, abs=0.01)
+    assert year.s_pos.idxmax() == pd.Timestamp("2026-05-20") and year.s_pos.max() == pytest.approx(1.99, abs=0.01)
+    assert year.s_neg.idxmax() == pd.Timestamp("2026-07-19") and year.s_neg.max() == pytest.approx(3.64, abs=0.01)
     done, censored = drift.run_lengths(year, DAY)
     assert done == [] and censored == [175] and drift.arl_estimate(done, censored) is None
 
@@ -246,7 +247,7 @@ def test_the_replay_script_reports_alarms_and_the_run_length(tmp_path, capsys) -
     assert replay.main(["--out", str(out)]) == 0
     text = capsys.readouterr().out
     assert "175 evaluations 2026-01-01 to 2026-10-07, lag 1 day" in text
-    assert "largest S+ 2.53 on 2026-06-23" in text and "alarm episodes: 0" in text
+    assert "largest S+ 1.99 on 2026-05-20" in text and "alarm episodes: 0" in text
     assert "in-control ARL > 175 (no signal); nominal ARL for iid N(0, 1) innovations 469" in text
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["episodes"] == [] and report["run_lengths"]["censored"] == [175] and len(report["points"]) == 175

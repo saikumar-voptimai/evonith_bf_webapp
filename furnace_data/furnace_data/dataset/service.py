@@ -439,14 +439,26 @@ class DatasetService:
         fuel = self._table_with_time_column(
             self._fetch_offline_table("offline_feed.fuel_chemistry", chem_start, end_dt)
         )
+        coke_codes = {code for code in quantities["material_code"].dropna().unique() if str(code).startswith("coke_")}
+        nut_codes = {code for code in quantities["material_code"].dropna().unique() if str(code).startswith("nut_coke_")}
+        # Coke and nut coke are charged wet. ``tm`` is the total moisture of the as-received sample (coke_1 about
+        # 2.2 %, coke_2 about 3.7 %, nut coke 4-14 %); ``moisture`` is the inherent moisture of the air-dried lab
+        # sample (about 0.45 %). The charge record's wet mass becomes dry mass with the TM, as in the historical
+        # static dataset, whose COKE_MOIST% / NUTCOKE_MOIST% are the TM. Each charge takes the latest sample that
+        # carries a TM, which is not always the latest proximate analysis.
+        fuel_tm = (
+            fuel[pd.to_numeric(fuel["tm"], errors="coerce").notna()]
+            if "tm" in fuel.columns
+            else fuel.iloc[0:0]
+        )
         outputs.extend(
             [
                 self._weighted_latest_before(
                     quantities,
                     fuel,
-                    material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("coke_")},
+                    material_codes=coke_codes,
                     column_map={
-                        "moisture": ["coke_moist_pct", "coke_im_pct"],
+                        "moisture": "coke_im_pct",
                         "ash": "coke_ash_pct",
                         "vm": "coke_vm_pct",
                         "fc": "coke_fc_pct",
@@ -454,14 +466,26 @@ class DatasetService:
                 ),
                 self._weighted_latest_before(
                     quantities,
+                    fuel_tm,
+                    material_codes=coke_codes,
+                    column_map={"tm": "coke_moist_pct"},
+                ),
+                self._weighted_latest_before(
+                    quantities,
                     fuel,
-                    material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("nut_coke_")},
+                    material_codes=nut_codes,
                     column_map={
-                        "moisture": ["nutcoke_moist_pct", "nutcoke_im_pct"],
+                        "moisture": "nutcoke_im_pct",
                         "ash": "nutcoke_ash_pct",
                         "vm": "nutcoke_vm_pct",
                         "fc": "nutcoke_fc_pct",
                     },
+                ),
+                self._weighted_latest_before(
+                    quantities,
+                    fuel_tm,
+                    material_codes=nut_codes,
+                    column_map={"tm": "nutcoke_moist_pct"},
                 ),
                 self._latest_before_context(
                     quantities["time"],

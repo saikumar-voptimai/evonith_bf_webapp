@@ -3,8 +3,8 @@
 These notes are the static context the furnace commentary is given with every request, ahead of the fact register and
 the live results. They say what the page's numbers are, how they were made and validated, and where they are weak.
 They are written for a metallurgist and for the commentary model alike. Everything here holds for BF-02 at Evonith
-Steel as of 25 October 2026 (STRATA 1.5, fact register v1.8); the fact register version sent with the request governs
-any coefficient.
+Steel as of 25 November 2026 (STRATA 1.5 on the dry fuel basis, fact register v1.9); the fact register version sent
+with the request governs any coefficient.
 
 ## 1. What the page answers
 
@@ -41,16 +41,16 @@ any coefficient.
   units grow with the blend's reduction rate and the residence time in the zone. The reduction rate follows particle
   size, (11.25/d)^1.0: the laboratory RI differences (GAS-21) show no effect on the plant's omega, so the calibrated
   RI exponent is 0. Omega responds to the blend (pellet reduces fastest by size; NMDC ROM and Donimalai lumps slowest),
-  the coke layers, fuels, oxygen and blast (other-operation scale 0.80 ± 0.28) and nut coke (GAS-23: +0.0010 ± 0.0003
-  per kg/tHM). Blend scales (GAS-14): pellet 1.42 ± 0.45, lump ore 0.92 ± 0.46. **There is no production channel**
+  the coke layers, fuels, oxygen and blast (other-operation scale 0.68 ± 0.29) and nut coke (GAS-23: +0.00058 ±
+  0.00035 per kg/tHM dry). Blend scales (GAS-14): pellet 1.40 ± 0.45, lump ore 0.93 ± 0.46. **There is no production channel**
   (GAS-16 retired, since STRATA 1.4): the residence-time penalty of the network was not replicated on 2023–24 data and
   lowered out-of-sample skill in both periods; production lowers coke through the balance (fixed heat loss per hour
   spread over more tonnes; GAS-22). **There is no moisture term** (GAS-19 retired, STRATA 1.5): the day's Open-Meteo
   moisture enters the balance of every shift and plan, and with it in the balance a separate moisture term on omega is
   zero (0.0000 ± 0.0009 per g/Nm³) and lowers out-of-sample skill.
   Coke responses of both models side by side: MOD-01..11 (10 pt pellet for sinter: Fixed-ω -1.7, STRATA-ω
-  -6.0 ± 1.2 kg/tHM; nut coke +10 kg/tHM: -9.9 and -13.1; production +1 t/h: -0.38 and
-  -0.41; blast moisture +1 g/Nm³: +0.80 and +0.88). 0.01 of omega is about 2.5 kg/tHM of coke.
+  -5.9 ± 1.2 kg/tHM; nut coke +10 kg/tHM dry: -10.0 and -11.9; production +1 t/h: -0.27 and
+  -0.28; blast moisture +1 g/Nm³: +0.79 and +0.85). 0.01 of omega is about 2.5 kg/tHM of coke.
 * **Reducibility and RDI are measured (GAS-21, DATA-13).** Evonith laboratory tests as given: RI pellet 82, Lloyds CLO
   84, Geomin 79, NMDC ROM 61, Donimalai 78 %; RDI 7-28 %; Gomti not tested (65 % assumed). The ore RDIs act in the
   network as shaft fines. The RI-to-rate exponent (0) and the size exponent (1.0) are calibrated on the plant data and
@@ -70,10 +70,11 @@ any coefficient.
   High only) beside today's blend, picks by a fixed rule (lowest cost + 1σ; hold today's blend when the saving is
   inside 1σ; ASM-19) and offers a language-model review of that pick.
 * **Out-of-sample test (GAS-20).** Each day's omega and burnt coke predicted from the previous 14 days with every
-  parameter estimated on earlier days only (175 days, Jan–Oct 2026; Open-Meteo daily moisture). Skill of STRATA 1.5
-  against holding omega: omega +0.144, burnt coke +0.120 (day; RMSE 5.99 against 6.39 kg/tHM) and +0.221 (7-day); time
-  splits +0.095 and +0.111. The moisture basis itself lowered the Fixed-ω error (6.94 → 6.39 kg/tHM; STRATA 1.4 on the
-  RH-scaled record: 6.44). By blend family (VAL-01..12) seven groups are Supported, one Neutral, four Modelled only
+  parameter estimated on earlier days only (175 days, Jan–Oct 2026; Open-Meteo daily moisture; dry fuel basis). Skill
+  of STRATA 1.5 against holding omega: omega +0.094, burnt coke +0.100 (day; RMSE 6.42 against 6.77 kg/tHM) and +0.174
+  (7-day); time splits +0.099 and +0.088. On the earlier fuel basis the figures were +0.144, +0.120 (5.99 against
+  6.39) and +0.221. The moisture basis itself lowered the Fixed-ω error (6.94 → 6.39 kg/tHM on the earlier fuel basis;
+  STRATA 1.4 on the RH-scaled record: 6.44). By blend family (VAL-01..12) seven groups are Supported, one Neutral, four Modelled only
   (fewer than 10 days), none Disputed. Per ore (GAS-26), no ore is over- or under-credited in 2026 (joint p 0.45).
 * **Strict test on unseen 2023–24 data (GAS-25).** 411 stable days, Mar 2023 – Jul 2024, every parameter frozen at
   the 2026 fit, Open-Meteo daily ambient moisture + measured steam: day RMSE of burnt coke Fixed-ω 8.23, **STRATA 1.5
@@ -103,22 +104,30 @@ any coefficient.
   (DATA-04); the plan takes the plan day's Open-Meteo relative humidity at Wardha mapped to 7–21 g/Nm³ (DATA-11,
   fetched live), which the top-gas H₂ confirms day by day (+0.041 pt H₂ per g/Nm³, the physically expected slope;
   DATA-16). The calibration is made at its window's Open-Meteo mean; a drier plan day than the window needs less coke
-  (+0.80 kg/tHM per g/Nm³ under Fixed-ω, +0.88 under STRATA-ω).
-* **Plausibility bands** (fact register): fuel rate 520–600 kg/tHM (coke wet + nut coke + PCI; the upper end is a
-  limit row, below 520 a result is marked infeasible and not reported), HMT 1,440–1,520 °C, Si 0.20–0.80 %.
+  (+0.79 kg/tHM per g/Nm³ under Fixed-ω, +0.85 under STRATA-ω).
+* **Fuel basis** (DATA-17, user decision 25 Nov 2026). Every coke figure of the models is dry. Coke and nut coke are
+  the charge record less their total moisture; PCI is taken as recorded. The plan's PCI and nut-coke inputs are the
+  plant's dry rates: nut coke is charged wet at dry / (1 − TM), and PCI takes no moisture correction. Costs and
+  charging use the masses as charged. The plant's coke, nut-coke and coal-rate tags are dry, and its fuel rate is their
+  sum. The dry charge record is 0.4 % above that tag; the wet record, used as dry until 25 Nov 2026, was 2.8 % above.
+* **Plausibility bands** (fact register): fuel rate 520–600 kg/tHM, dry (coke + nut coke + PCI, the plant's basis;
+  the upper end is a limit row, below 520 a result is marked infeasible and not reported), HMT 1,440–1,520 °C, Si
+  0.20–0.80 %.
 
 ## 3. Model check: is the model right on today's furnace?
 
 The page opens with the model against the furnace, before any plan.
 
 * **Burnt coke** (the measurement) = the dry coke rate that closes the oxygen balance at the metered blast air with
-  the analyser's ηCO, plus the 14-day median of (charged − burnt). That offset carries the blast meter's scale error.
+  the analyser's ηCO, plus the exponentially weighted mean of (charged − burnt) over the stable shifts before (half-life
+  3 days). That offset carries the blast meter's scale error (about −10.6 kg/tHM on the dry basis: the meter reads about
+  4 % above the blast that closes the balance at the dry charge, DATA-01).
 * **Energy balance** = the optimiser's model with omega and losses at the 14-day medians before the shift: out of
   sample. **Oxygen balance** = ηCO fixed at the analyser value.
 * **Verdict.** On track when, over the chosen period's stable shifts, the energy model's bias is within ±8 kg/tHM and
-  its SD within ±12 (about 1.5 × the validated shift SD). The validated record (DATA-06, Open-Meteo daily moisture,
-  546 stable shifts Dec 2025 – Oct 2026): by shift bias -0.9, SD 7.3, MAE 5.7, r 0.92 (86 % within ±10 kg/tHM); one
-  day SD 6.5; one week SD 5.4 (RH-scaled record: 7.8 / 7.0 / 5.8). Oxygen balance with the analyser's ηCO: SD 4.8, r
+  its SD within ±12 (about 1.5 × the validated shift SD). The validated record (DATA-06, dry fuel basis, exponential
+  calibration tracker, Open-Meteo daily moisture, 590 stable shifts Dec 2025 – Nov 2026): by shift bias +0.5 (burnt −
+  model), SD 6.2, MAE 4.6, r 0.93; one day SD 5.3; one week SD 2.8 (the earlier fuel basis: 5.9 / 4.9 / 2.8). Oxygen balance with the analyser's ηCO: SD 4.8, r
   0.97. Last 14 days to 7 Oct 2026: bias -2.3, SD 4.2 over 38 stable shifts (95 % within ±10 kg/tHM).
 * A warning appears when the latest scored shift is more than 2 days old; then the check is for that older period.
 * **What to make of it.** On track means the coke figures of the plans can be read at face value within about
@@ -194,7 +203,9 @@ The page opens with the model against the furnace, before any plan.
 ## 7. Validation against the case report (16 Oct 2026, UAT yard, PCI 190, nut coke 70, HMT 1,470 °C)
 
 * Fixed-ω, UAT prices, no slag credit, calibration and plan at 15 g/Nm³ (the report's basis; reproduced by the tests
-  on the report's calibration): fixed 2,270 t/d with fuel: coke 305.7 kg/tHM dry, slag 340, Rs 30,139/tHM; sinter 58 /
+  on the report's calibration with the fuels on its basis, PCI 190 less its inherent moisture and nut coke 70 less
+  0.45 %; with PCI 190 and nut coke 70 dry the same case gives coke 302.8 kg/tHM, Rs 30,055/tHM): fixed 2,270 t/d with
+  fuel: coke 305.7 kg/tHM dry, slag 340, Rs 30,139/tHM; sinter 58 /
   Lloyds CLO 18.6 / Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg/tHM; RAFT 2,214 °C. Maximum production 2,412 t/d
   (charging binds); cheapest level 2,290 t/d at Rs 29,935/tHM; blast ≤ 105,000 Nm³/h → 2,257 t/d. Page-9 LP and the
   engine on the same yard and objective agree within 0.3 pt of share.

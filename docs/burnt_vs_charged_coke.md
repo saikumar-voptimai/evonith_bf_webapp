@@ -25,6 +25,72 @@ and each gives a number:
 Pearson's r alone is not enough: two series can correlate perfectly and differ by 10 kg/tHM. CCC is 1 only when the
 series are identical; C_b (≤ 1) is the level-and-scale part, r the scatter part.
 
+## Update 25 Nov 2026: dry fuel basis
+
+**Finding.** From 7 Dec 2025 the hourly dataset carried the inherent moisture (IM) of the laboratory sample
+(0.30–0.53 %) in `COKE_MOIST%` and `NUTCOKE_MOIST%`, the same values as `COKE_IM%` / `NUTCOKE_IM%`, instead of the total
+moisture (TM). The dataset service mapped `fuel_chemistry.moisture` to both columns. The charge record (`charge_data`)
+is wet, as charged. The pipeline therefore entered the wet coke and nut coke as dry. The plant's tags `coke_rate`,
+`nut_coke_rate` and `coal_rate_actual_value` are dry, and `fuel_rate` is their sum.
+
+**Correction (user decision 25 Nov 2026).**
+
+- Coke and nut coke, dry = charge record × (1 − TM/100). TM comes from `fuel_chemistry.tm`: the latest sample before
+  each charge, weighted by the charge over coke_1 / coke_2 and nut_coke_1 / nut_coke_2.
+- The pipeline takes a reading as TM only when it is ≥ 1.0 % and differs from the same hour's IM. Otherwise it uses the
+  default TM (coke 2.5 %, nut coke 6.5 %).
+- PCI is taken as recorded, without the earlier deduction of its IM.
+- Fix in `furnace_data/dataset/service.py`. The published dataset needs a rebuild before the corrected TM reaches the
+  app.
+
+**Data.** TM samples from the 19 Oct and 12 Nov exports cover 1 Aug 2025 – 12 Nov 2026. Hourly charge-weighted TM was
+1.40–9.19 % for coke (monthly 1.87 % in May 2026 to 5.90 % in Sep 2025) and 3.50–13.80 % for nut coke. Two pipeline runs
+on identical inputs (earlier basis, dry basis) cover 1 Aug 2025 – 25 Nov 2026 (780 shifts).
+
+| Quantity (stable shifts) | Earlier basis | Dry basis |
+|---|---:|---:|
+| Charge record over the plant's fuel-rate tag, median per shift (901 shifts) | +2.83 % (robust SD 2.49) | +0.44 % (2.35) |
+| Daily medians 1 Sep – 11 Nov: coke charged / tag | 305.3 wet / 297.6 | 297.7 dry / 297.6 |
+| Daily medians 1 Sep – 11 Nov: nut coke charged / tag | 75.3 / 70.0 | 71.1 / 70.0 |
+| Charged coke, kg/tHM | 310.0 | 304.7 |
+| Raw burnt coke (GBC), kg/tHM | 314.0 | 314.3 |
+| TRACE offset (charged − raw), kg/tHM | −5.0 | −10.6 |
+| Raw mass closure (raw burnt / charged) | 1.013 | 1.031 |
+| Blast meter over the reconciled blast, median | 1.7 % | 4.3 % |
+| ω (FORGE per shift) | 0.802 | 0.797 |
+| Lower / upper-zone loss, GJ/h | 43.2 / 20.7 | 32.9 / 15.3 |
+| FORGE − TRACE SD per shift | 5.94 | 6.20 |
+| Charged − TRACE SD per shift | 10.71 | 10.60 |
+
+The dry charge record agrees with the plant's dry tags to 0.4 %. The raw gas-side estimate is unchanged by the fuel
+basis, since it uses no coke moisture. Raw burnt coke now exceeds the dry charge by 3.1 %, and the blast meter reads 4.3 %
+above the blast that closes the carbon and oxygen balance at the dry charge (DATA-01). The TRACE offset absorbs this
+gas-side bias. The calibrated zone losses fall because less coke carbon has to be dissipated, and the coke moisture now
+evaporates explicitly in the upper zone (about 27 MJ/tHM).
+
+Concordance of charged and burnt coke (CCC; stable shifts / all shifts):
+
+| Window | Stable, earlier | Stable, dry | All, earlier | All, dry |
+|---|---:|---:|---:|---:|
+| Shift | 0.871 | 0.883 | 0.818 | 0.817 |
+| 1 day | 0.908 | 0.913 | 0.908 | 0.894 |
+| 1 week | 0.956 | 0.945 | 0.958 | 0.941 |
+
+**Two checks on the slight widening of FORGE − TRACE (+0.26 kg/tHM):**
+
+- The TM sampling is not the cause: replacing the per-sample TM with its 30-day mean gives the same day error.
+- The PCI basis is not the cause: with PCI less its IM, the day error is 5.28 against 5.29.
+
+The smaller calibrated loss weakens the model's production response. The slope of the error on production rises from
+0.58 to 0.61 kg/tHM per t/h.
+
+**The stable band of the blast meter (−9 to +15 %) is kept.** On the dry basis 61 shifts fall outside it, against 48 on
+the earlier basis. A band shifted by the +2.8-point change of the median does not restore the earlier exclusions,
+because the change has a per-shift SD of 2.0 points.
+
+Fact register v1.9: DATA-17 (this evidence), BAND-01 (dry fuel rate), DATA-01, DATA-06, DATA-12, ASM-01, ASM-03 and
+ASM-08 restated. Charge-record check band −9 to +10 % (median ± 4 robust SD; it was −6 to +12 %).
+
 ## Update 21 Nov 2026: the charged − burnt step of 18–20 Nov
 
 From about 12 Nov charged coke ran above TRACE and FORGE, by 35–45 kg/tHM raw (charged − raw burnt) on 18–20 Nov
